@@ -17,7 +17,7 @@ function context() {
         chatId: 'one', getCurrentChatId() { return this.chatId; }, chatMetadata: { state: 'private-one' },
         chat: [{ is_user: true, name: 'user', mes: 'before' }], getRequestHeaders: () => ({}) };
 }
-function hostFixture({ missingEvent, builder, dataBuilder, capture, readSettings, beforeGeneration, independent } = {}) {
+function hostFixture({ missingEvent, builder, dataBuilder, capture, readSettings, beforeGeneration, independent, warn } = {}) {
     let ctx = context();
     const injections = new Map();
     const callbacks = new Map(), captured = [], replies = [], logs = [], builds = [];
@@ -34,6 +34,7 @@ function hostFixture({ missingEvent, builder, dataBuilder, capture, readSettings
     const host = createLinkageHost(getContext, {
         beforeGeneration,
         ...(independent ? { independent } : {}),
+        ...(warn ? { warn } : {}),
         readSettings: readSettings ?? (() => settings),
         manages: (_ctx, module) => settings.enabled && settings.modules.includes(module),
         buildPrompt: builder ?? ((live, options) => { builds.push(options); return `${options.purpose}:${options.write}:${live.chatMetadata.state}`; }),
@@ -432,4 +433,21 @@ test('native migration failure leaves the generation without stale data injectio
         assert.match(f.logs.at(-1), /migration collision/);
         assert.ok(!f.injected()?.value);
     } finally { f.host.destroy(); }
+});
+
+test('warns once per chat when Amin prompts take most of the host context budget', async () => {
+    const warnings = [];
+    const rules = '更新规则'.repeat(1400);
+    const f = hostFixture({ independent: () => true, warn: text => warnings.push(text), builder: () => rules, dataBuilder: () => 'DATA' });
+    Object.assign(f.ctx(), { mainApi: 'openai', chatCompletionSettings: { openai_max_context: 4095, openai_max_tokens: 300 } });
+    await f.start();
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /已超出上限/);
+    assert.match(f.logs.at(-1), /token/);
+    await f.start('regenerate');
+    assert.equal(warnings.length, 1, 'same chat and severity does not repeat the notice');
+    f.ctx().chatCompletionSettings.openai_max_context = 32000;
+    await f.start();
+    assert.equal(warnings.length, 1, 'a comfortable budget stays quiet');
+    assert.doesNotMatch(f.logs.at(-1), /token/);
 });

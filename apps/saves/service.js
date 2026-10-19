@@ -16,7 +16,8 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
     createId = uuid, now = () => new Date().toISOString(), loadBranchHost = defaultLoadBranchHost, autoCheckpoints = true,
 } = {}) {
     const operations = createOperationService(getContext), listeners = new Set(), hostListeners = [];
-    let branchPending = null, branching = false, branchMessage = '', checkpointMessage = '', timer = null, disposed = false;
+    let branchPending = null, branching = false, branchMessage = '', checkpointMessage = '', timer = null, disposed = false, generating = false;
+    const generationActive = () => { const stream = getContext()?.streamingProcessor; return generating || (!!stream && stream.isFinished === false); };
     const notify = () => { for (const fn of listeners) { try { fn(); } catch {} } };
     const capture = () => operations.capture([[KEY], ...RESTORE_DEPENDENCIES]);
     const off = operations.subscribe(notify);
@@ -110,7 +111,7 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
         if (index >= 0) { saved.id = store.checkpoints[index].id; store.checkpoints.splice(index, 1); }
         store.checkpoints.push(saved); fitCheckpoints(store);
         operations.stage({ label: '记录当前楼层检查点', patches: [{ path: [KEY], value: store }], summary: { kind: 'checkpoint', name: saved.name, moduleNames: names(saved), changes: [], warnings: [] } }, token);
-        await operations.confirm(); checkpointMessage = ''; notify(); return clone(saved);
+        await operations.confirm({ disposable: automatic }); checkpointMessage = ''; notify(); return clone(saved);
     }
     function stageBranch(id, token = capture()) {
         ensureIdle();
@@ -165,23 +166,27 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
         branchMessage = ''; return operations.confirm();
     }
     function scheduleCheckpoint() {
-        if (!autoCheckpoints || !hostListeners.length || disposed || branching || externalHistory(getContext())) return;
+        // The reply is still changing the tail; GENERATION_ENDED/STOPPED schedules again.
+        if (!autoCheckpoints || !hostListeners.length || disposed || branching || generationActive() || externalHistory(getContext())) return;
         clearTimeout(timer);
         let token;
         try { token = capture(); } catch { return; }
         timer = setTimeout(async () => {
             timer = null;
-            if (disposed || branching || branchPending || operations.preview() || operations.busy() || operations.dirty()) return;
+            if (disposed || branching || branchPending || generationActive() || operations.preview() || operations.busy() || operations.dirty()) return;
             try { operations.check(token); await captureCheckpoint({ automatic: true }); }
-            catch (error) { if (!['STALE_CONTEXT', 'STALE_BASIS'].includes(error?.code)) { checkpointMessage = '自动检查点未记录：' + error.message; notify(); } }
+            catch (error) { if (!['STALE_CONTEXT', 'STALE_BASIS', 'STALE_COMPLETION'].includes(error?.code)) { checkpointMessage = '自动检查点未记录：' + error.message; notify(); } }
         }, 400);
         timer?.unref?.();
     }
     const ctx = getContext(), events = ctx?.eventTypes ?? ctx?.event_types ?? {}, source = ctx?.eventSource;
     if (autoCheckpoints && source?.on) {
-        for (const key of ['CHAT_CHANGED', 'MESSAGE_RECEIVED', 'USER_MESSAGE_RENDERED', 'CHARACTER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'GENERATION_ENDED']) {
+        for (const key of ['GENERATION_STARTED', 'CHAT_CHANGED', 'MESSAGE_RECEIVED', 'USER_MESSAGE_RENDERED', 'CHARACTER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'GENERATION_ENDED', 'GENERATION_STOPPED']) {
             const event = events[key]; if (!event) continue;
-            const callback = () => scheduleCheckpoint(); source.on(event, callback);
+            const callback = key === 'GENERATION_STARTED'
+                ? (type, _options, dryRun) => { if (type !== 'quiet' && !dryRun) { generating = true; clearTimeout(timer); timer = null; } }
+                : () => { if (['CHAT_CHANGED', 'GENERATION_ENDED', 'GENERATION_STOPPED'].includes(key)) generating = false; scheduleCheckpoint(); };
+            source.on(event, callback);
             hostListeners.push(() => { if (source.removeListener) source.removeListener(event, callback); else source.off?.(event, callback); });
         }
         scheduleCheckpoint();

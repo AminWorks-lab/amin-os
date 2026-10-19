@@ -2,6 +2,7 @@ import { chatIdentity } from '../shared/operations.js';
 import { managesModule, readLinkageSettings } from './policy.js';
 import { isUnifiedEntry, hasUnifiedPlaceholder, LINKAGE_PLACEHOLDER } from './lorebook.js';
 import { isIndependent } from '../story-state/access.js';
+import { checkPromptBudget, budgetMessage } from './budget.js';
 
 const storyTypes = new Set(['normal', 'regenerate', 'swipe']);
 const buckets = ['chatLore', 'characterLore', 'globalLore', 'personaLore'];
@@ -53,6 +54,7 @@ export function createLinkageHost(getContext, {
     captureGeneration, collectReply, buildPrompt, buildDataPrompt, beforeGeneration, cancelGeneration = () => {}, report = () => {},
     readSettings = readLinkageSettings, manages = managesModule,
     independent = isIndependent,
+    warn = text => globalThis.toastr?.warning?.(text, 'Amin OS', { timeOut: 15000 }),
 } = {}) {
     const initial = getContext(), events = initial?.eventTypes ?? initial?.event_types ?? {}, source = initial?.eventSource;
     const supported = !!source?.on && requiredEvents.every(key => events[key]) && typeof buildPrompt === 'function'
@@ -63,7 +65,7 @@ export function createLinkageHost(getContext, {
         && typeof buildDataPrompt === 'function' && typeof initial?.setExtensionPrompt === 'function';
     const hostReady = ctx => independent(ctx) ? independentSupported : supported;
     const subscriptions = [];
-    let run = null, timer = null, disposed = false, epoch = 0, message = hostReady(initial)
+    let run = null, timer = null, disposed = false, epoch = 0, budgetWarning = '', message = hostReady(initial)
         ? independent(initial) ? '等待酒馆生成与 Amin 更新协议' : '等待酒馆生成和统一世界书条目'
         : '当前酒馆缺少统一联动所需的生成或世界书事件；不会自动接收更新';
     const say = value => { message = value; try { report(value); } catch { /* Status UI cannot interrupt host generation. */ } };
@@ -111,6 +113,19 @@ export function createLinkageHost(getContext, {
             } catch { active.failed = true; clearData(); return false; }
         });
     }
+    // Warn once per chat and severity; the status line keeps the latest estimate.
+    function checkBudget(active) {
+        if (!current(active)) return;
+        const result = checkPromptBudget(getContext(), [active.data, active.prompt]);
+        active.budget = result;
+        const text = budgetMessage(result);
+        if (!text) return;
+        say(text);
+        const key = `${active.identity}|${result.level}`;
+        if (budgetWarning === key) return;
+        budgetWarning = key;
+        try { warn(text); } catch { /* A notice cannot interrupt host generation. */ }
+    }
     function cancel(reason = '') {
         epoch++;
         clearData();
@@ -151,6 +166,7 @@ export function createLinkageHost(getContext, {
         say(run.write ? run.independent ? '已收到当前聊天的生成事件，等待组装 Amin 更新规则' : '已收到当前聊天的生成事件，等待加载统一更新规则' : '本轮为续写或工具生成，仅提供资料，不接收自动更新');
         injectData(run);
         injectIndependentRules(run);
+        checkBudget(run);
         options?.signal?.addEventListener?.('abort', () => { if (run?.signal === options.signal) cancel('生成已停止，未接收本轮统一更新'); }, { once: true });
     }
     async function loaded(payload) {

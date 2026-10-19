@@ -17,7 +17,10 @@ export function createStore({context,setVariable,saveMetadata=ctx=>saveChatMetad
  let disposed=false,busy=false,epoch=0,pending=null,lastError='',lastIdentity='',lastMetadata=null,accepted=null,lastLocks=[],controller=null,requestToken=null;
  const listeners=new Set();
  const notify=()=>{for(const fn of listeners)fn();};
- const meta=()=>{const c=context();chatIdentity(c);return c.chatMetadata[META]??=legacyModule(c,'organizations',META)??{locks:[],assessment:null,backups:[]};};
+ // Readers must never write: an applied-state listener that re-materializes the removed legacy
+ // root would change a path the shared operation is about to verify after saving (STALE_BASIS).
+ const view=()=>{const c=context();chatIdentity(c);return c.chatMetadata[META]??legacyModule(c,'organizations',META)??{locks:[],assessment:null,backups:[]};};
+ const meta=()=>{const c=context();chatIdentity(c);return c.chatMetadata[META]??=view();};
  const readDoc=()=>read(readStoryRoot(context(),ROOT));
  const floor=c=>JSON.stringify((c.chat??[]).map(m=>[m.extra?.amin_org_message_id??null,m.swipe_id??0,m.mes??'']));
  const scope=()=>{const c=context();return {identity:chatIdentity(c),metadata:c.chatMetadata,floor:floor(c),epoch};};
@@ -35,11 +38,11 @@ export function createStore({context,setVariable,saveMetadata=ctx=>saveChatMetad
   externalRead:async index=>{
    const runtime=getState2Runtime();
    if(typeof runtime?.readStoryFloor!=='function')throw Error('外置楼层读取尚未就绪。');
-   if(isIndependent(context()))return {doc:readDoc(),assessment:clone(meta().assessment)};
+   if(isIndependent(context()))return {doc:readDoc(),assessment:clone(view().assessment)};
    const snapshot=await runtime.readStoryFloor(index);
    return {doc:read(snapshot.variables?.[ROOT]),assessment:null};
   },
-  read:()=>({doc:readDoc(),assessment:clone(meta().assessment)}),
+  read:()=>({doc:readDoc(),assessment:clone(view().assessment)}),
   write:value=>{writeDoc(value?.doc??empty(),{checkpoint:false});meta().assessment=clone(value?.assessment??null);},
   beforeRestore:()=>{invalidate();accepted=null;},warn:message=>{lastError=message;notify();},changed:()=>notify()});
  function sync(){
@@ -52,14 +55,14 @@ export function createStore({context,setVariable,saveMetadata=ctx=>saveChatMetad
    if(native?.managed&&!native.ready)return;
    // Legacy history restores earlier values; native history only records replayed variables.
    history.sync();
-   const next=readDoc(),locks=meta().locks??[];
+   const next=readDoc(),locks=view().locks??[];
    if(!native?.managed&&!isIndependent(context())&&accepted){try{enforceLocks(accepted,next,lastLocks);}catch(e){writeDoc(accepted);lastError='外部变量修改触及锁定字段，已恢复：'+e.message;history.sync();notify();return;}}
    if(!equal(accepted,next)){accepted=clone(next);notify();}
    lastLocks=clone(locks);
   }catch(e){if(lastError!==e.message){lastError=e.message;notify();}}
  }
- function capture(){sync();requireReady();const t={...scope(),doc:readDoc(),locks:clone(meta().locks??[])};return t;}
- function check(t){requireReady();checkScope(t);if(!equal(t.doc,readDoc())||!equal(t.locks,meta().locks??[]))throw Error('资料或锁定设置已变化，请重新生成/预览');}
+ function capture(){sync();requireReady();const t={...scope(),doc:readDoc(),locks:clone(view().locks??[])};return t;}
+ function check(t){requireReady();checkScope(t);if(!equal(t.doc,readDoc())||!equal(t.locks,view().locks??[]))throw Error('资料或锁定设置已变化，请重新生成/预览');}
  async function persist(c){try{if(isIndependent(c)){writeStoryRoot(c,ROOT,JSON.stringify(readDoc()));prepareIndependentManualWrite(c,[['variables',ROOT],[META]]);}await saveMetadata(c);}catch{throw Error('已写入内存，但聊天保存失败；请保持本聊天并重试保存，不要重复应用');}}
  const api={
   context,read:readDoc,history:()=>history.list(),readHistory:index=>history.readFloor(index),error:()=>lastError,clearError:()=>{lastError='';},
@@ -82,8 +85,8 @@ export function createStore({context,setVariable,saveMetadata=ctx=>saveChatMetad
     history.sync({persist:false});await persist(c);checkScope(p.t);
    }finally{release();busy=false;sync();notify();}
   },
-  assessment(){const a=meta().assessment;return a?{...clone(a),stale:!equal(a.basis,readDoc())||a.floor!==floor(context())}:null;},
-  locks:()=>clone(meta().locks??[]),
+  assessment(){const a=view().assessment;return a?{...clone(a),stale:!equal(a.basis,readDoc())||a.floor!==floor(context())}:null;},
+  locks:()=>clone(view().locks??[]),
   async setLocks(locks){if(busy)throw Error('正在保存');requireReady();const c=context(),d=readDoc();for(const path of locks){const [g,id,k,...rest]=path.split('.');if(rest.length||!d[g]?.[id]||!Object.hasOwn(d[g][id],k))throw Error('锁定路径不存在');}const release=acquireMetadataWrite(context);busy=true;try{requireReady();invalidate();meta().locks=[...new Set(locks)];lastLocks=clone(meta().locks);await persist(c);notify();}finally{release();busy=false;}},
   config(){const c=context();chatIdentity(c);const role=roleIdentity(c);return {...defaults(),...clone(c.extensionSettings?.[SETTINGS]?.[role]??{})};},
   async saveConfig(value){const c=context();chatIdentity(c);const role=roleIdentity(c);c.extensionSettings[SETTINGS]??={};c.extensionSettings[SETTINGS][role]={...defaults(),...clone(value)};await c.saveSettingsDebounced?.();notify();},
@@ -99,7 +102,7 @@ export function createStore({context,setVariable,saveMetadata=ctx=>saveChatMetad
   if(disposed||change.phase!=='applied'||metadata!==context()?.chatMetadata||change.identity!==operationIdentity(context())||!change.paths.some(path=>path[0]===STATE_KEY||path[0]===META||path[0]==='variables'&&path[1]===ROOT))return;
   const native=nativeState();
   if(native?.managed&&!native.ready){invalidate();accepted=null;lastLocks=[];notify();return;}
-  invalidate();accepted=clone(readDoc());lastLocks=clone(meta().locks??[]);
+  invalidate();accepted=clone(readDoc());lastLocks=clone(view().locks??[]);
   lastIdentity=chatIdentity(context());lastMetadata=context().chatMetadata;
   history.adoptExternal();lastError='已应用跨应用状态，原预览已取消。';notify();
  });

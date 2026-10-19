@@ -290,7 +290,7 @@ export function createOperationService(getContext = () => globalThis.SillyTavern
         if (!pending) return null;
         const { token, ...value } = pending; return clone(value);
     }
-    async function persist(ctx, operation, token, retry) {
+    async function persist(ctx, operation, token, retry, disposable = false) {
         const state = observe(ctx.chatMetadata);
         state.active = operation.operationId; active = true; message = retry ? '正在重试保存已确认的操作。' : '正在保存已确认的操作。'; notifyCoordinator(state);
         try {
@@ -305,12 +305,15 @@ export function createOperationService(getContext = () => globalThis.SillyTavern
             emitStateChange(operation, 'saved', ctx.chatMetadata);
             return { operationId: operation.operationId, label: operation.label, summary: clone(operation.summary), saved: true, retried: retry };
         } catch (error) {
-            if (error instanceof OperationError && error.code === 'STALE_COMPLETION') { message = error.message; throw error; }
+            // A disposable background write (an automatic checkpoint) stays in
+            // memory and is persisted by the next save; it must not lock the chat.
+            if (disposable && state.dirty === operation) state.dirty = null;
+            if (error instanceof OperationError && error.code === 'STALE_COMPLETION') { message = disposable ? '后台记录保存期间聊天已变化；未锁定聊天，将随下次保存写入。' : error.message; throw error; }
             message = `操作已更新当前聊天，但保存失败：${error?.message ?? '未知错误'}。请重试保存，不会重复执行操作。`;
             throw new OperationError('SAVE_FAILED', message, { committed: true, cause: error });
         } finally { state.active = null; active = false; notifyCoordinator(state); }
     }
-    async function confirm() {
+    async function confirm({ disposable = false } = {}) {
         ensureOpen();
         if (!pending) fail('NO_PENDING', '没有待确认的操作。');
         const operation = pending, ctx = check(operation.token), state = observe(ctx.chatMetadata);
@@ -324,7 +327,7 @@ export function createOperationService(getContext = () => globalThis.SillyTavern
         // Lock before notifying any subscribers: a synchronous listener cannot start a second commit.
         state.active = operation.operationId; active = true;
         emitStateChange(operation, 'applied', ctx.chatMetadata);
-        return persist(ctx, operation, after, false);
+        return persist(ctx, operation, after, false, disposable === true);
     }
     async function retrySave() {
         ensureOpen();
