@@ -27,6 +27,7 @@ const stubs = {
     './settings/appearance.js': { initializeAppearance() {}, installAppearance() {} },
     './ai/service.js': { initializeAI() {} },
     './shell.js': { createShell: () => shell },
+    './apps/views.js': { views: {} },
     './apps/linkage/service.js': { getSharedService: () => ({ reportHost() {} }) },
     './apps/linkage/host.js': { createLinkageHost: () => ({ status: () => ({}) }) },
     './apps/linkage/prompt.js': { buildUpdateRules() {}, buildDataPrompt() {} },

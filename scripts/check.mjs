@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {startupGraph} from './startup-graph.mjs';
 const root=path.resolve(import.meta.dirname,'..');let count=0;const skip=new Set(['.git','.claude','node_modules']);
 function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const file=path.join(dir,entry.name);if(entry.isDirectory()){if(!skip.has(entry.name))walk(file);}else if(/\.(?:m?js|json)$/.test(file)){const source=fs.readFileSync(file,'utf8');if(file.endsWith('.json'))JSON.parse(source);else{const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(result.status)throw Error(result.stderr);for(const match of source.matchAll(/^import\s+(?:[^;\n]*?\s+from\s+)?['"](\.[^'"]+)['"]/gm)){if(!fs.existsSync(path.resolve(path.dirname(file),match[1])))throw Error('Missing import '+file+' '+match[1]);}count++;}}}}
 walk(root);const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));for(const key of ['js','css'])if(!fs.existsSync(path.join(root,manifest[key])))throw Error('Missing entry '+key);
@@ -17,9 +18,8 @@ if(unused.length)throw Error('Unreferenced assets: '+unused.map(rel).join(', '))
 // A stylesheet reached twice through the @import chain is parsed twice and reorders the cascade.
 const cssSeen=new Map();
 (function css(file,from){const key=rel(file);if(cssSeen.has(key))throw Error(`Duplicate @import ${key}: ${cssSeen.get(key)} and ${from}`);cssSeen.set(key,from);for(const m of read(file).matchAll(/@import\s+(?:url\()?\s*['"]([^'"]+)['"]/g))css(path.resolve(path.dirname(file),m[1]),key);})(path.join(root,manifest.css),'manifest.json');
-// Startup budget: modules reachable from the entry through static and literal dynamic imports.
-const MODULE_BUDGET=260,graph=new Set();let bytes=0;
-(function mod(file){if(graph.has(file)||!fs.existsSync(file))return;graph.add(file);const source=read(file);bytes+=Buffer.byteLength(source);for(const m of source.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g))mod(path.resolve(path.dirname(file),m[1]));})(path.join(root,manifest.js));
-console.log(`Startup graph: ${graph.size} modules, ${(bytes/1024).toFixed(1)} KiB (budget ${MODULE_BUDGET})`);
+// Startup budget: modules the entry loads before any window opens (see startup-graph.mjs).
+const MODULE_BUDGET=188,{modules:graph,views,bytes}=startupGraph(path.join(root,manifest.js));
+console.log(`Startup graph: ${graph.size} modules, ${(bytes/1024).toFixed(1)} KiB (budget ${MODULE_BUDGET}); ${views.size} lazy views`);
 if(graph.size>MODULE_BUDGET)throw Error(`Startup graph has ${graph.size} modules, over the ${MODULE_BUDGET} budget`);
 console.log(`PASS: ${count} JS modules, relative imports, JSON, entry points, HUD inline script, version ${manifest.version}, assets, ${cssSeen.size} stylesheets`);
