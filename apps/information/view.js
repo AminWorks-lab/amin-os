@@ -5,6 +5,7 @@ import {current,apply,diff,compile,matches,path,fieldKey,groupRecords,resetRecor
 import {catalog,searchEndpoint} from './sources.js';
 import {generateRecord,simulate} from './generator.js';
 import {contextLine} from '../shared/context-line.js';
+import {takeAppRequest} from '../shared/open-app.js';
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 const STATUS={known:'资料记载',inferred:'待确认推测',invented:'新增设定',unknown:'未知',edited:'手动改写'};
 export function mount(target){
@@ -90,5 +91,5 @@ export function mount(target){
  function render(){fieldEditing=false;fieldSession=null;body.replaceChildren();intro.textContent=contextLine(api.context(),'资料档案','预览后应用到当前剧情');for(const b of tabButtons){const on=b.textContent===tab;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;if(on)body.setAttribute('aria-labelledby',b.id);}notice.textContent=taskNotice||api.status();try{if(tab==='资料面板')board();else if(tab==='生成资料')generation();else if(tab==='历史版本')history();else settings();}catch(e){say(e.message);}}
  const unsubscribe=api.subscribe(()=>{if(!controller&&!taskNotice)notice.textContent=api.status();});const ctx=api.context(),events=ctx.eventTypes??ctx.event_types??{};
  const chatChanged=()=>{let now;try{now=api.capture();}catch{}if(now&&chatScope&&now.meta===chatScope.meta&&now.identity===chatScope.identity)return;if(chatScope){keepDraft();chatDrafts.set(chatScope.identity,{drafts:new Map(drafts),selectedId});}chatScope=now;taskNotice='已切换聊天，旧聊天的任务已取消';stop();draft=null;base=null;token=null;search=null;simulation=null;drafts.clear();selectedId='';bookList=[];loaded=false;options.books=[];options.name='';options.requirement='';options.webQuery='';const cached=chatDrafts.get(now?.identity);if(cached){drafts=new Map(cached.drafts);for(const entry of drafts.values()){const fresh=api.capture();if(entry.token?.path===fresh.path&&entry.token?.revision===fresh.revision)entry.token=fresh;}selectedId=cached.selectedId;}if(selectedId){choose(selectedId);}else render();};if(events.CHAT_CHANGED)ctx.eventSource?.on(events.CHAT_CHANGED,chatChanged);
- render();return {open(){if(!fieldEditing)render();},dispose(){stop();unsubscribe();if(events.CHAT_CHANGED)ctx.eventSource?.removeListener?.(events.CHAT_CHANGED,chatChanged);page.remove();}};
+ render();return {open(){const request=takeAppRequest('information');if(fieldEditing)return;if(request?.focus&&!controller&&current(api.read(),api.context().chat).some(r=>r.id===request.focus)){tab='资料面板';choose(request.focus);return;}render();},dispose(){stop();unsubscribe();if(events.CHAT_CHANGED)ctx.eventSource?.removeListener?.(events.CHAT_CHANGED,chatChanged);page.remove();}};
 }

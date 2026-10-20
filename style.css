@@ -6,6 +6,8 @@
 
 @import url('./ui/standard.css');
 @import url('./apps/dice/style.css');
+@import url('./apps/home/home.css');
+@import url('./apps/scene/style.css');
 @import url('./apps/relationships/relationships.css');
 
 @import url('./desktop-effects.css');

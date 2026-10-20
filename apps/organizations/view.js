@@ -6,6 +6,7 @@ import {generate,followPrompt} from './ai.js';
 import {syncWorldbook} from './lorebook.js';
 import {isIndependent} from '../story-state/access.js';
 import {contextLine} from '../shared/context-line.js';
+import {takeAppRequest} from '../shared/open-app.js';
 const el=(tag,text='',cls='')=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e;};
 const show=v=>v===null||v===undefined||v===''?'未明确':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 const storyReference=m=>JSON.stringify([m?.extra?.amin_story_v2??null,m?.swipe_info?.[m.swipe_id??0]?.extra?.amin_story_v2??null]);
@@ -216,6 +217,6 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
   if(api.error())say(api.error());
   if(!editing)render();else if(!api.pending())say(api.error()||'资料可能已更新；表单草稿保留，保存时会检查冲突。');
  });
- const handle={open(){if(!editing)render();},dispose(){disposed=true;historyRequest++;unsubscribe();page.remove();if(mounted.get(target)===handle)mounted.delete(target);}};
+ const handle={open(){const request=takeAppRequest('organizations');if(editing)return;if(request?.focus&&GROUPS.includes(request.group)&&historyIndex===null){search='';navigate(request.group,request.focus);return;}render();},dispose(){disposed=true;historyRequest++;unsubscribe();page.remove();if(mounted.get(target)===handle)mounted.delete(target);}};
  mounted.set(target,handle);render();return handle;
 }

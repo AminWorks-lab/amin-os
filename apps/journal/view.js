@@ -8,7 +8,7 @@ import { readCurrentScene, formatGameTime } from '../scene/model.js';
 import { readInventory } from '../inventory/model.js';
 import { readCharacters } from '../characters/model.js';
 import {contextLine} from '../shared/context-line.js';
-import {linkedEmpty} from '../shared/open-app.js';
+import {linkedEmpty,takeAppRequest} from '../shared/open-app.js';
 
 const mounted = new WeakMap();
 const tabNames = { task: '任务', clue: '线索', hook: '伏笔', chronicle: '编年史', memory: '事实与记忆', auto: '自动整理', prior: '前作参考', references: '引用预览', transfer: '导入 / 导出' };
@@ -492,6 +492,6 @@ export function mount(target, options = {}) {
         go(() => { selected = 'memory'; memoryCharacterId = event.detail.characterId; render(); });
     }
     doc.addEventListener?.('amin:select-character', selectCharacter);
-    const view = { open(options = {}) { if (!form) { if (options.tab && Object.hasOwn(tabNames, options.tab)) selected = options.tab; if (options.characterId) { selected = 'memory'; memoryCharacterId = options.characterId; } render(); } }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); stop(); unsubscribe(); doc.removeEventListener?.('amin:select-character', selectCharacter); if (ownService) api.dispose(); page.remove(); mounted.delete(target); } };
+    const view = { open(options = takeAppRequest('journal') ?? {}) { if (!form) { if (options.tab && Object.hasOwn(tabNames, options.tab)) selected = options.tab; if (typeof options.query === 'string') { filters.query = options.query.slice(0, 200); filters.status = ''; filters.scope = 'current'; } if (options.characterId) { selected = 'memory'; memoryCharacterId = options.characterId; } render(); } }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); stop(); unsubscribe(); doc.removeEventListener?.('amin:select-character', selectCharacter); if (ownService) api.dispose(); page.remove(); mounted.delete(target); } };
     mounted.set(target, view); render(); say(api.status()); return view;
 }

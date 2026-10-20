@@ -100,7 +100,7 @@ async function application(f, runtime = { archiveStory: () => f.service.capture(
     isIndependent, readStoryRoot, writeStoryRoot, STATE_KEY, prepareIndependentManualWrite,
     mountGeneration: (_target, options) => {const view={options,opens:0,disposed:false,open(){this.opens++;},dispose(){this.disposed=true;}};generationViews.push(view);return view;},
     mountLinkage: () => ({ open() {}, dispose() {} }), getLinkageService: () => ({ subscribe: () => () => {} }),
-    managesModule: () => !!f.ctx.chatMetadata.amin_os_linkage_v1?.enabled, getState2Runtime: () => runtime, state2HistoryMode: () => ({ managed: true }), contextLine,
+    managesModule: () => !!f.ctx.chatMetadata.amin_os_linkage_v1?.enabled, getState2Runtime: () => runtime, state2HistoryMode: () => ({ managed: true }), contextLine, takeAppRequest: () => undefined,
   };
   const source = readFileSync(new URL('../apps/status/index.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gmu, '').replace('export async function initialize', 'async function initialize')

@@ -5,6 +5,7 @@ import {referenceSamples,chatIdentity} from '../stylewriter/model.js';
 import {getAI} from '../../ai/service.js';
 import {LINKED_SOURCES,DEFAULT_LINKED_SOURCES,collectLinkedContext} from './linked-context.js';
 import {getState2Runtime} from '../state2/runtime.js';
+import { styleTags, usedStyleKeys, rememberStyles } from './style-tags.js';
 import { CONTENT_MODES, normalizeSettings, chatStamp, collectContext, generateOptions, inputElement, DraftSelection, waitForResult } from './generator.js';
 const KEY='reply_options_mvp';
 const context=()=>globalThis.SillyTavern?.getContext?.();
@@ -23,17 +24,20 @@ export function mount({target,instanceId='reply-options-panel',contextProvider,h
     const panel=node('details');panel.id=instanceId;panel.className='ro-panel amin-stack';panel.open=target ? true : settings.expanded;
     panel.append(node('summary','回复选项'));
     const controls=node('div',null,'ro-controls amin-toolbar'), cards=node('div',null,'ro-options'), status=node('div','点击生成，选择后填入，由你发送。','ro-status');
+    const tagRow=node('div',null,'ro-style-tags');tagRow.setAttribute('role','group');tagRow.setAttribute('aria-label','常用风格');
     controls.setAttribute('aria-label','候选操作');cards.setAttribute('aria-label','回复候选');
     status.setAttribute('role','status');status.setAttribute('aria-live','polite');
     const button=(label,fn,parent=controls)=>{const b=node('button',label,'menu_button');b.type='button';b.addEventListener('click',fn);parent.append(b);return b;};
     const generate=button('生成选项',()=>run(false)), expand=button('根据草稿扩写',()=>run(true));
-    generate.className='menu_button amin-primary';
+    generate.className='menu_button amin-primary ro-generate';
     const cancel=button('停止等待',()=>controller?.abort());cancel.hidden=true;
     const undo=button('撤销填入',()=>{try{if(chatIdentity(context())!==draftIdentity)throw Error('聊天已变化，不能撤销旧候选。');draft.undo(inputElement());status.textContent='已还原原草稿。';updateSelection();}catch(e){status.textContent=e.message;}});
     const settingsBox=node('section');settingsBox.id=settingsId;settingsBox.className='ro-settings amin-card amin-form-grid';settingsBox.hidden=true;
     settingsBox.append(node('h3','生成设置','amin-section-heading amin-span-full'));
+    // Styles the user picks become the quick tags on the candidates page (most recent first).
+    function rememberUsed(){settings.recentStyles=rememberStyles(settings.recentStyles,usedStyleKeys(settings));}
     function save(){const c=hostContext();if(c?.extensionSettings){c.extensionSettings[KEY]={...settings};c.saveSettingsDebounced?.();}}
-    function invalidate(message='上下文已更新，请重新生成。',reset=false){revision++;controller?.abort();candidates=[];candidateScope=null;cards.replaceChildren();if(reset){draft.reset();excludedLinkedRecords=[];}updateSelection();status.textContent=message;}
+    function invalidate(message='上下文已更新，请重新生成。',reset=false){drawTags();revision++;controller?.abort();candidates=[];candidateScope=null;cards.replaceChildren();if(reset){draft.reset();excludedLinkedRecords=[];}updateSelection();status.textContent=message;}
     const fieldRows=new Map();
     function field(key,label,type,options){
         const row=node('label',null,type==='checkbox'?'amin-check':type==='textarea'?'amin-field amin-span-full':'amin-field'), title=node('span',label);row.append(title);fieldRows.set(key,row);
@@ -73,7 +77,7 @@ export function mount({target,instanceId='reply-options-panel',contextProvider,h
     const contentRow=node('div',null,'ro-content-settings amin-stack');
     const contentControls=mountContentStyles(contentRow,{library:contents,
         getSelection:()=>settings.contentMode,
-        setSelection:id=>{settings.contentMode=id;save();},
+        setSelection:id=>{const changed=settings.contentMode!==id;settings.contentMode=id;if(changed)rememberUsed();save();},
         onChange:()=>invalidate('内容风格已变化，请重新生成。'),
     });
     const styleRow=node('div',null,'ro-writing-mode amin-field'),styleMode=node('select'),styleSelect=node('select');
@@ -89,11 +93,11 @@ export function mount({target,instanceId='reply-options-panel',contextProvider,h
         styleSelect.value=settings.writingStyleId;
     }
     styleMode.addEventListener('change',()=>{settings.writingStyleMode=styleMode.value;save();reflectContent();invalidate('文风已变化，请重新生成。');});
-    styleSelect.addEventListener('change',()=>{settings.writingStyleId=styleSelect.value;save();invalidate('文风已变化，请重新生成。');});
+    styleSelect.addEventListener('change',()=>{settings.writingStyleId=styleSelect.value;rememberUsed();save();invalidate('文风已变化，请重新生成。');});
     const styleManager=node('div',null,'ro-style-manager');
     const styleControls=mountContentStyles(styleManager,{library:styles,kind:'文风预设',managementOnly:true,
         getSelection:()=>settings.writingStyleId||'none',
-        setSelection:id=>{settings.writingStyleId=id==='none'?'':id;if(id!=='none')settings.writingStyleMode='custom';save();reflectContent();},
+        setSelection:id=>{const changed=settings.writingStyleId!==(id==='none'?'':id);settings.writingStyleId=id==='none'?'':id;if(id!=='none')settings.writingStyleMode='custom';if(changed)rememberUsed();save();reflectContent();},
         onChange:()=>invalidate('文风预设已变化，请重新生成。')});
     const selectedStyleStamp=()=>settings.writingStyleMode==='custom'?JSON.stringify([settings.writingStyleId,styles.get(settings.writingStyleId),styles.hasDraft(settings.writingStyleId)]):settings.writingStyleMode;
     let styleMark=selectedStyleStamp();
@@ -122,7 +126,20 @@ export function mount({target,instanceId='reply-options-panel',contextProvider,h
     mainTab.setAttribute('aria-controls',instanceId+'-main');mainPage.id=instanceId+'-main';settingsTab.setAttribute('aria-controls',settingsPage.id);
     function showPage(page){const isSettings=page==='settings'||page==='rewrite';mainPage.hidden=isSettings;settingsPage.hidden=!isSettings;mainTab.setAttribute('aria-pressed',String(!isSettings));settingsTab.setAttribute('aria-pressed',String(isSettings));}
     settingsBox.hidden=false;
-    mainPage.append(controls,status,cards);
+    // Recently used content styles and writing presets, one tap to switch before generating.
+    function drawTags(){
+        tagRow.replaceChildren();let tags=[];try{tags=styleTags({recent:settings.recentStyles,contents,styles,settings});}catch{tags=[];}
+        tagRow.hidden=!tags.length;if(!tags.length)return;
+        tagRow.append(node('span',tags.some(tag=>tag.recent)?'最近用过':'试试这些风格','ro-style-tags-label'));
+        for(const tag of tags){const chip=button(tag.label,()=>chooseTag(tag),tagRow);chip.className='menu_button ro-style-tag';chip.setAttribute('data-style-kind',tag.kind);chip.setAttribute('aria-pressed',String(tag.active));chip.title=(tag.kind==='writing'?'文风预设：':'内容风格：')+tag.label;}
+    }
+    function chooseTag(tag){
+        if(controller)return;
+        if(tag.kind==='content'){settings.contentMode=tag.active?'none':tag.id;if(!tag.active)rememberUsed();save();contentControls.refresh();}
+        else{settings.writingStyleMode=tag.active?'none':'custom';settings.writingStyleId=tag.active?'':tag.id;if(!tag.active)rememberUsed();save();reflectContent();invalidate('文风已变化，请重新生成。');}
+        drawTags();status.textContent=tag.active?`已取消「${tag.label}」，点击生成使用新的设置。`:`已选择「${tag.label}」，点击生成使用。`;
+    }
+    mainPage.append(tagRow,controls,status,cards);drawTags();
     settingsPage.append(configGrid,modeHelp,contentRow,styleManager,settingsBox,promptHelp,referenceBox);
     panel.append(tabs,mainPage,settingsPage);showPage('candidates');reflectMode();
     if(target){target.append(panel);panel.classList.add('amin-reply-embedded');}else form.before(panel);

@@ -3,6 +3,7 @@ import {createBrandMark,createCollapseMark} from './brand.js';
 import {getAppearance} from './settings/appearance.js';
 import { clampPosition, drawerPlacement, resizedHeight } from './window-state.js';
 import { STORY_APPS, renderStoryGate } from './apps/shared/story-readiness.js';
+import { openApp as openLinkedApp } from './apps/shared/open-app.js';
 
 const APPS=[
     {id:'characters',name:'人物卡',sub:'人物档案、状态绑定与属性检定',icon:'♙',color:'mint'},
@@ -86,7 +87,10 @@ export function createShell(){
     resizeGrip.addEventListener('dblclick',()=>{endResize(true);manualHeight=null;place();save();});
     resizeGrip.addEventListener('keydown',e=>{if(e.key==='Escape'&&resizing){e.preventDefault();e.stopPropagation();endResize(true);return;}if(!['ArrowUp','ArrowDown','Home','End'].includes(e.key))return;e.preventDefault();e.stopPropagation();const {edge,available}=resizeLimits();manualHeight=e.key==='Home'?Math.min(220,available):e.key==='End'?available:resizedHeight(drawer.getBoundingClientRect().height,(e.key==='ArrowUp'?-1:1)*(e.shiftKey?40:10),edge,available);place();save();});
     window.addEventListener('blur',()=>endResize(true));
-    function open(){opened=true;drawer.hidden=false;launcher.setAttribute('aria-expanded','true');launcher.setAttribute('aria-label','收起 Amin os');place();}
+    // Home tools (first-run guide, search, quick actions) load when the window first opens.
+    const homeTools=el('div','amin-home-top');let homeView=null,homeLoad=null;
+    function syncHome(){if(blocked||active!=='home')return;if(homeView){homeView.refresh();return;}homeLoad??=import(/* view */ './apps/home/view.js').then(m=>{homeView=m.mount(homeTools,{openApp:(id,request)=>openLinkedApp(id,request,{opener:showApp}),onLayout:place});},error=>{homeLoad=null;console.warn('[Amin os] Home tools unavailable:',error);});}
+    function open(){opened=true;drawer.hidden=false;launcher.setAttribute('aria-expanded','true');launcher.setAttribute('aria-label','收起 Amin os');place();syncHome();}
     function close(){endResize(true);tileDesktop?.leave();opened=false;drawer.hidden=true;root.dataset.open='false';launcher.setAttribute('aria-expanded','false');launcher.setAttribute('aria-label','打开 Amin os');launcher.focus();}
     function select(id){active=id;nav.hidden=id==='home';appHeading.textContent=APPS.find(a=>a.id===id)?.name??'';home.hidden=id!=='home';for(const [key,pane]of Object.entries(panes)){pane.hidden=key!==id;tabs[key].setAttribute('aria-current',key===id?'page':'false');}homeButton.setAttribute('aria-current',id==='home'?'page':'false');notice.hidden=true;updateStoryGate();}
     function updateStoryGate(){if(!STORY_APPS.includes(active)){storyGate.hidden=true;return;}try{renderStoryGate(storyGate,globalThis.SillyTavern?.getContext?.(),document);}catch{storyGate.hidden=true;}}
@@ -110,5 +114,6 @@ export function createShell(){
     getAppearance()?.subscribe(()=>{const next=getAppearance().snapshot().window.height;if(next!==configuredHeight){configuredHeight=next;manualHeight=null;save();}place();});
     window.addEventListener('resize',place);window.visualViewport?.addEventListener('resize',place);window.visualViewport?.addEventListener('scroll',place);place();select('home');
     tileDesktop=createTileDesktop({home,cards,apps:APPS,createIcon:icon,openApp:showApp,onLayout:place});
-    return {panes,open:resume,close,home:showHome,showApp,register(id,fn){handlers[id]=fn;},refreshActive(){if(opened&&active!=='home')showApp(active);},setBlocked(text){blocked=text;cards.querySelectorAll('button').forEach(b=>b.disabled=true);message.textContent=text;retry.hidden=true;notice.hidden=false;}};
+    const startHeading=home.querySelector('.amin-start-heading');if(startHeading)startHeading.after(homeTools);else home.prepend(homeTools);
+    return {panes,open:resume,close,home:showHome,showApp,register(id,fn){handlers[id]=fn;},refreshActive(){if(opened&&active!=='home')showApp(active);else if(opened)syncHome();},setBlocked(text){blocked=text;cards.querySelectorAll('button').forEach(b=>b.disabled=true);message.textContent=text;retry.hidden=true;notice.hidden=false;}};
 }

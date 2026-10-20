@@ -89,5 +89,5 @@ export function mount(target){
   }
  }
  // Other apps may ask for a specific page, e.g. 剧情存储 from a “还没有剧情资料” prompt.
- draw();return {open(){const request=takeAppRequest('settings');if(request?.page&&['global','apps','floor','effects','story'].includes(request.page)&&request.page!==page){page=request.page;draw();}},dispose(){storyView?.dispose();noticeNode=null;target.replaceChildren();}};
+ draw();return {open(){const request=takeAppRequest('settings');if(request?.page&&['global','apps','floor','effects','story'].includes(request.page)&&request.page!==page){page=request.page;draw();}if(request?.focus==='import')target.querySelector?.('[data-story-import]')?.focus?.();},dispose(){storyView?.dispose();noticeNode=null;target.replaceChildren();}};
 }

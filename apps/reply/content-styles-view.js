@@ -72,5 +72,5 @@ export function mountContentStyles(target, {library, getSelection, setSelection,
     name.addEventListener('input',changed);prompt.addEventListener('input',changed);
     const unsubscribe=library.subscribe((error,event)=>{if(event?.draftOwner===owner)return;render();changedSelection();if(error){const p=library.get(editing),d=drafts.get(editing);if(d)library.setDraft(owner,editing,!p||p.name!==d.name||p.description!==d.description);note.textContent=`保存失败：${error.message}。已回滚，编辑内容仍保留。`;}});
     render();selectionMark=selectionStamp();
-    return {selection:()=>contentSelection(library,getSelection()),assertSaved(){if(library.hasDraft(getSelection()))throw Error(`请先保存或放弃所选${kind}的修改。`);},dispose(){disposed=true;unsubscribe();library.clearDrafts(owner);root.remove();}};
+    return {selection:()=>contentSelection(library,getSelection()),refresh(){render();changedSelection();},assertSaved(){if(library.hasDraft(getSelection()))throw Error(`请先保存或放弃所选${kind}的修改。`);},dispose(){disposed=true;unsubscribe();library.clearDrafts(owner);root.remove();}};
 }

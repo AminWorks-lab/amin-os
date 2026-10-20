@@ -11,6 +11,7 @@ import {durationFields,appendTiming,timingLabel} from './timing-view.js';
 import {ruleFields,appendRules} from './rules-view.js';
 import {ACTION_TEMPLATES,actionTaskFields} from './action-fields.js';
 import {contextLine} from '../shared/context-line.js';
+import {takeAppRequest} from '../shared/open-app.js';
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 export function mount(target,options={}){
  const instanceId='amin-'+uuid();
@@ -186,5 +187,5 @@ export function mount(target,options={}){
  const unsubscribe=api.subscribe(event=>{if(!formOpen&&!event?.error)render();else status.textContent=api.status();syncRecovery();});
  const ctx=api.context(),events=ctx.eventTypes??ctx.event_types??{};
  const chatChanged=()=>{entries=[];books=[];chosenBook='';loadedBook='';consoleState.target='';consoleState.holder='';consoleState.skillId='';consoleState.targetMode=null;managementState.skillId='';loadEpoch++;render();};if(events.CHAT_CHANGED)ctx.eventSource?.on(events.CHAT_CHANGED,chatChanged);
- render();return {open(){if(!formOpen)render();},dispose(){stopDraft();consoleView?.dispose();consoleView=null;loadEpoch++;unsubscribe();if(events.CHAT_CHANGED)ctx.eventSource?.removeListener?.(events.CHAT_CHANGED,chatChanged);page.remove();}};
+ render();return {open(){const request=takeAppRequest('effects');if(formOpen)return;if(request?.focus&&request.tab==='能力管理'){selected='能力管理';managementState.group='';managementState.skillId=request.focus;}else if(request?.tab==='生效中')selected='生效中';render();},dispose(){stopDraft();consoleView?.dispose();consoleView=null;loadEpoch++;unsubscribe();if(events.CHAT_CHANGED)ctx.eventSource?.removeListener?.(events.CHAT_CHANGED,chatChanged);page.remove();}};
 }

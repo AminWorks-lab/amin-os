@@ -24,6 +24,7 @@ import { managesModule, mayWrite } from '../linkage/policy.js';
 import { buildDataPrompt, buildUpdateRules } from '../linkage/prompt.js';
 import { getState2Runtime, state2HistoryMode } from '../state2/runtime.js';
 import { contextLine } from '../shared/context-line.js';
+import { takeAppRequest } from '../shared/open-app.js';
 
 const KEY = 'world_status_hud_v1';
 const context = () => SillyTavern.getContext();
@@ -38,9 +39,14 @@ export async function initialize({mount: target, loadVariables = () => import('/
   embeddedMount=target; mount(); return {open: openEmbedded};
 }
 async function openEmbedded(page = selectedPage){
+  // A cross-app link (for example the home guide's 联合初始化) names a page and a linkage section.
+  const request = takeAppRequest('status');
+  if (request?.page) page = request.page;
   identity();
   if (!embeddedMount) { notify('世界状态应用窗口尚未就绪，请重新打开 Amin OS。'); return; }
-  return showHud(page,{target:embeddedMount,embedded:true});
+  const shown = await showHud(page,{target:embeddedMount,embedded:true});
+  if (request?.section) openLinkageSection?.(request.section);
+  return shown;
 }
 let running = null;
 let hudPanel = null;
@@ -48,6 +54,7 @@ let hudEpoch = 0;
 let generationForm, formHome, sourceHost, sourcePicker, sourceIdentity, restorePanel;
 let selectedPage = 'state';
 let selectHudPage = null;
+let openLinkageSection = null;
 let requestUpdate = null;
 let openStatusUpdate = null;
 let invalidateStatusFrame = null;
@@ -278,7 +285,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
     const j = e.key === 'Home' ? 0 : e.key === 'End' ? pages.length-1 : (i + (e.key === 'ArrowRight' ? 1 : pages.length-1)) % pages.length;
     selectPage(pages[j]); [stateTab, linkageTab, generateTab, templateTab, rulesTab, historyTab, displayTab][j].focus();
   });
-  selectHudPage = selectPage; tabs.append(stateTab, linkageTab, generateTab, templateTab, rulesTab, historyTab, displayTab); body.append(frame, linkagePage, generationPage, templatePage, historyPage, displayPage, rulesPage); selectPage(page);
+  selectHudPage = selectPage; openLinkageSection = section => linkageView.open(section); tabs.append(stateTab, linkageTab, generateTab, templateTab, rulesTab, historyTab, displayTab); body.append(frame, linkagePage, generationPage, templatePage, historyPage, displayPage, rulesPage); selectPage(page);
   frame.title = '世界状态栏编辑器';
   // Only the bundled frame may use this variable bridge; commands are allowlisted.
   const token = uuid();
@@ -344,7 +351,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   };
   addEventListener('message', listener);
   let closed=false;
-  dialog.close=()=>{if(closed)return;closed=true;recordsView.dispose();statusGeneration.dispose();linkageView.dispose();unsubscribeLinkage();removeEventListener('message',listener);frame.srcdoc='';restorePanel?.remove();restorePanel=null;if(generationForm?.parentElement===generationPage)formHome?.append(generationForm);dialog.remove();mapLink.destroy();if(hudPanel===dialog){hudPanel=null;selectHudPage=null;openStatusUpdate=null;invalidateStatusFrame=null;}onClose();};
+  dialog.close=()=>{if(closed)return;closed=true;recordsView.dispose();statusGeneration.dispose();linkageView.dispose();unsubscribeLinkage();removeEventListener('message',listener);frame.srcdoc='';restorePanel?.remove();restorePanel=null;if(generationForm?.parentElement===generationPage)formHome?.append(generationForm);dialog.remove();mapLink.destroy();if(hudPanel===dialog){hudPanel=null;selectHudPage=null;openLinkageSection=null;openStatusUpdate=null;invalidateStatusFrame=null;}onClose();};
   close.onclick = closeHud;
   const quickActions = node('div', undefined, 'wsh-actions');
   const quickStatus = node('p', '', 'wsh-quick-status'); quickStatus.setAttribute('role', 'status');

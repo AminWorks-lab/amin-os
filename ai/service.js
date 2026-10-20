@@ -24,7 +24,7 @@ export const AI_APPS = [
     {id:'relationships',name:'人物关系',tasks:['人物关系 · 剧情更新','人物关系 · 资料生成']},
     {id:'characters',name:'人物卡',tasks:['人物卡 · 资料生成']},
     {id:'inventory',name:'背包与账本',tasks:['背包与账本 · 资料生成']},
-    {id:'scene',name:'场景与时间',tasks:['场景与时间 · 资料生成']},
+    {id:'scene',name:'场景与时间',tasks:['场景与时间 · 资料生成','场景与时间 · 提取时间']},
     {id:'linkage',name:'联合初始化',tasks:['联合初始化 · 资料生成']},
 ];
 const appId = app => AI_APPS.find(a=>a.id===app||a.tasks.includes(app))?.id;
