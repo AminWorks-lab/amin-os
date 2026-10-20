@@ -146,7 +146,7 @@ function mountIndependentStoryStorage(target, report, getRuntime) {
       report(value.valid === false ? '备份存在错误，请核对预览。' : '备份已读取，请核对预览后确认导入。');
     }, token);
   };
-  const backups = button('查看最近 5 份备份', () => void run(async (runtime, token) => {
+  const backups = button('查看最近备份', () => void run(async (runtime, token) => {
     const value = await runtime.listBackups(); check(token);
     backupList = { token, entries: Array.isArray(value) ? value : value.backups ?? [] }; renderBackups();
     report(backupList.entries.length ? `已读取 ${backupList.entries.length} 份最近备份。` : '当前没有备份。');
@@ -170,7 +170,7 @@ function mountIndependentStoryStorage(target, report, getRuntime) {
   }), previewView);
   const refresh = button('刷新剧情存储状态', () => void loadStatus());
   box.append(mode, notice,
-    make('p', '只保存当前剧情资料和最近 5 份备份，不按楼层或回复候选回退。备份数量固定，资料本身增多时占用也会增加。', 'amin-meta'),
+    make('p', '聊天内只保存当前剧情资料；最近备份与楼层检查点共用一个外部滚动区（默认 10 份，可在剧情存档中调整），不按楼层或回复候选回退。', 'amin-meta'),
     importToolbar, toolbar, input, previewView, backupView,
     make('p', '旧聊天请先选择来源、预览导入，或直接开始空白资料。导入会替换当前应用中的资料展示；如需保留完整原件，请先从酒馆导出聊天。聊天正文、旧变量和旧存档文件保留。重新生成前可使用「备份并清空当前资料」。', 'amin-meta'));
   target.append(box);
@@ -201,7 +201,7 @@ function mountIndependentStoryStorage(target, report, getRuntime) {
       const available = !!runtime;
       const externalAvailable = (status?.backupAvailable ?? status?.available) !== false;
       reset.textContent = externalAvailable ? '备份并清空当前资料' : '清空当前资料重新生成';
-      mode.textContent = enabled ? `当前聊天：Amin 剧情资料已启用 · 最近备份 ${status?.backupCount ?? 0} / 5。` : '当前聊天：尚未建立独立的 Amin 剧情资料。';
+      mode.textContent = enabled ? `当前聊天：Amin 剧情资料已启用 · 最近备份 ${status?.backupCount ?? 0} / ${status?.backupLimit ?? 10}。` : '当前聊天：尚未建立独立的 Amin 剧情资料。';
       notice.textContent = status?.error ? status.message || String(status.error) : status?.message || ''; notice.hidden = !notice.textContent;
       if (!externalAvailable) {
         notice.textContent += (notice.textContent ? ' ' : '') + '外部备份存储不可用；清空前可先导出当前剧情 JSON 备份。当前资料仍可在聊天内保存。';

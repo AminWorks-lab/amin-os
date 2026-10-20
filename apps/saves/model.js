@@ -3,8 +3,11 @@ import { validMessageRevision } from '../shared/message-revision.js';
 import { sha256HexSync } from '../tts/source-hash.js';
 export const KEY='amin_os_saves_v1';
 export const FORMAT='amin-os-save';
-export const LIMITS=Object.freeze({saves:20,backups:5,checkpoints:24,snapshotBytes:8*1024*1024,storeBytes:24*1024*1024});
-export const DEFAULT_CHECKPOINT_SETTINGS=Object.freeze({enabled:true,limit:12});
+// checkpoints: the configurable ring size. ring: references kept in chat metadata.
+// inlineRing: full fallback snapshots kept in metadata while external storage is unavailable.
+export const LIMITS=Object.freeze({saves:20,backups:5,checkpoints:24,ring:32,inlineRing:2,snapshotBytes:8*1024*1024,storeBytes:24*1024*1024});
+export const DEFAULT_CHECKPOINT_SETTINGS=Object.freeze({enabled:true,limit:10});
+export const RING_KINDS=Object.freeze(['auto','before-restore','before-change']);
 const clone=value=>structuredClone(value);
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value));
 const forbidden=new Set(['__proto__','constructor','prototype']);
@@ -50,9 +53,43 @@ export function validateCheckpointSettings(value){
     if(typeof value.enabled!=='boolean'||!Number.isInteger(value.limit)||value.limit<1||value.limit>LIMITS.checkpoints)throw Error(`检查点设置无效；保留数量应为 1 至 ${LIMITS.checkpoints}。`);
     return clone(value);
 }
-export const empty=()=>({version:1,saves:[],backups:[],checkpoints:[],checkpointSettings:{...DEFAULT_CHECKPOINT_SETTINGS}});
+const canonical=v=>Array.isArray(v)?'['+v.map(canonical).join(',')+']':object(v)?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}':JSON.stringify(v);
+export const modulesHash=modules=>'sha256:'+sha256HexSync(canonical(modules));
+const HASH=/^sha256:[a-f0-9]{64}$/u;
+/** Chat metadata keeps {id,hash,revision,kind,at,label}; snapshot is present only for inline copies. */
+export function validateItem(value,kinds){
+    shape(value,['id','hash','revision','kind','at','label','snapshot'],'存档引用');
+    text(value.id,100,'存档编号',true);text(value.label,120,'存档名称',true);text(value.at,100,'存档时间',true);
+    if(!Number.isFinite(Date.parse(value.at))||!HASH.test(value.hash??'')||!kinds.includes(value.kind)
+        ||!(value.revision===null||Number.isSafeInteger(value.revision)&&value.revision>=0))throw Error('存档引用无效。');
+    if(value.snapshot!==undefined){
+        const saved=validateSnapshot(value.snapshot);
+        if(saved.id!==value.id||saved.createdAt!==value.at||saved.name!==value.label||modulesHash(saved.modules)!==value.hash)throw Error('存档引用与内容不一致。');
+    }
+    return clone(value);
+}
+export const itemOf=(snapshot,kind,revision=null)=>validateItem({id:snapshot.id,hash:modulesHash(snapshot.modules),revision,kind,at:snapshot.createdAt,label:snapshot.name,snapshot},kind==='named'?['named']:RING_KINDS);
+export const refOf=({snapshot,...ref})=>clone(ref);
+export const empty=()=>({version:2,saves:[],ring:[],checkpointSettings:{...DEFAULT_CHECKPOINT_SETTINGS}});
+function validateStoreV2(value){
+    shape(value,['version','saves','ring','checkpointSettings','legacy'],'存档库');
+    if(!Array.isArray(value.saves)||!Array.isArray(value.ring)||value.saves.length>LIMITS.saves||value.ring.length>LIMITS.ring)throw Error('存档库数量或格式无效。');
+    const saves=value.saves.map(item=>validateItem(item,['named'])),ring=value.ring.map(item=>validateItem(item,RING_KINDS));
+    if(ring.filter(item=>item.snapshot).length>LIMITS.inlineRing)throw Error('聊天内保留的完整备份超过上限。');
+    let legacy;
+    if(value.legacy!==undefined){
+        shape(value.legacy,['backups','checkpoints'],'旧检查点');
+        if(!Array.isArray(value.legacy.backups)||!Array.isArray(value.legacy.checkpoints)||value.legacy.backups.length>LIMITS.backups||value.legacy.checkpoints.length>LIMITS.checkpoints)throw Error('旧检查点数量或格式无效。');
+        legacy={backups:value.legacy.backups.map(validateSnapshot),checkpoints:value.legacy.checkpoints.map(validateSnapshot)};
+    }
+    const ids=new Set();for(const id of [...saves,...ring,...(legacy?.backups??[]),...(legacy?.checkpoints??[])].map(item=>item.id)){if(ids.has(id))throw Error('存档编号重复。');ids.add(id);}
+    return {version:2,saves,ring,checkpointSettings:validateCheckpointSettings(value.checkpointSettings??DEFAULT_CHECKPOINT_SETTINGS),...(legacy?{legacy}:{})};
+}
+/** Version 1 (0.18 and earlier) kept every full snapshot in metadata; it stays readable. */
 export function validateStore(value){
-    validateJSON(value,LIMITS.storeBytes);shape(value,['version','saves','backups','checkpoints','checkpointSettings'],'存档库');
+    validateJSON(value,LIMITS.storeBytes);
+    if(object(value)&&value.version===2)return validateStoreV2(value);
+    shape(value,['version','saves','backups','checkpoints','checkpointSettings'],'存档库');
     if(value.version!==1||!Array.isArray(value.saves)||!Array.isArray(value.backups)||value.saves.length>LIMITS.saves||value.backups.length>LIMITS.backups)throw Error('存档库版本、格式或数量不兼容。');
     if(value.checkpoints!==undefined&&(!Array.isArray(value.checkpoints)||value.checkpoints.length>LIMITS.checkpoints))throw Error('检查点数量或格式无效。');
     const settings=validateCheckpointSettings(value.checkpointSettings??DEFAULT_CHECKPOINT_SETTINGS);
@@ -61,6 +98,13 @@ export function validateStore(value){
     return {...clone(value),checkpoints:clone(value.checkpoints??[]),checkpointSettings:settings};
 }
 export function readStore(ctx){return ctx?.chatMetadata?.[KEY]===undefined?empty():validateStore(ctx.chatMetadata[KEY]);}
+/** In-memory v2 view of any store. Old checkpoints and backups stay as read-only legacy copies. */
+export function upgradeStore(store){
+    if(store.version===2)return clone(store);
+    const legacy=store.backups.length||store.checkpoints.length?{legacy:{backups:clone(store.backups),checkpoints:clone(store.checkpoints)}}:{};
+    return {version:2,saves:store.saves.map(saved=>itemOf(saved,'named')),ring:[],checkpointSettings:clone(store.checkpointSettings),...legacy};
+}
+export function ringLimit(ctx){try{return readStore(ctx).checkpointSettings.limit;}catch{return DEFAULT_CHECKPOINT_SETTINGS.limit;}}
 export function parseImport(raw){
     if(typeof raw!=='string'||new TextEncoder().encode(raw).byteLength>LIMITS.snapshotBytes)throw Error('导入文件无效或超过 8 MiB。');
     let value;try{value=JSON.parse(raw);}catch{throw Error('导入文件不是有效 JSON。');}return validateSnapshot(value);
