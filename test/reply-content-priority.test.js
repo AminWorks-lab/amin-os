@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {generateOptions} from '../apps/reply/generator.js';
 import {contentInstruction,NONE_STYLE} from '../apps/reply/writing-library.js';
 import {initializeAI} from '../ai/service.js';
-import {compilePreset} from '../apps/map/src/core/generation-presets.js';
+import {compilePreset} from '../ai/presets.js';
 
 const selected={id:'custom',name:'克制',description:'CONTENT_RULE：禁止威胁，所有选项以耐心沟通解决分歧。'};
 const ctx=generateRaw=>({chat:[{name:'甲',mes:'CONTEXT：门口发生争执。'}],name1:'乙',characters:[],generateRaw});

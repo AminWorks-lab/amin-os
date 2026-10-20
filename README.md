@@ -293,7 +293,7 @@ npm test
 | --- | --- |
 | `index.js`、`shell.js` | 扩展入口与 OS 窗口 |
 | `settings/`、`ui/` | 统一外观与公共界面 |
-| `ai/` | 共享模型请求、API 设置与模型列表 |
+| `ai/` | 共享模型请求（`transport.js`）、请求体（`request-body.js`）、异步预设（`presets.js`）、模型输出 JSON 解析（`json.js`）与结构化任务（`task.js`）、API 设置与模型列表 |
 | `apps/map/` | 地图 |
 | `apps/status/` | 世界状态 |
 | `apps/reply/` | 回复选项 |

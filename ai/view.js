@@ -1,8 +1,8 @@
 import { uuid } from '../uuid.js';
-import {parseRequestBody} from '../apps/map/src/adapters/request-body.js';
+import {parseRequestBody} from './request-body.js';
 import {fetchModels} from './models.js';
 import {getAI,AI_APPS} from './service.js';
-import {renderPresetEditor} from '../apps/map/src/ui/generation-presets.js';
+import {renderPresetEditor} from './preset-editor.js';
 
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 const input=(value='',type='text')=>{const e=el('input');e.type=type;e.value=value;return e;};

@@ -1,4 +1,4 @@
-import {BLOCKS,defaultPreset} from '../core/generation-presets.js';
+import {BLOCKS,defaultPreset} from './presets.js';
 
 export function renderPresetEditor(form,library,current,setCurrent,kit){
     const {el,field,input,select,button,uid}=kit;

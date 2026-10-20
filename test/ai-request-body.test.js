@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseRequestBody,buildRequestBody} from '../apps/map/src/adapters/request-body.js';
-import {createApiSettings,createApiProfiles,generateMapText} from '../apps/map/src/adapters/generation.js';
+import {parseRequestBody,buildRequestBody} from '../ai/request-body.js';
+import {createApiSettings,createApiProfiles,generateText} from '../ai/transport.js';
 import {createAI} from '../ai/service.js';
 import {resolveHostConnection} from '../ai/host-connection.js';
 const config={enabled:true,baseUrl:'https://example.test/v1',model:'test',apiKey:'',rememberKey:false,maxTokens:4096,timeoutSeconds:30,stream:true,queueMode:'parallel',requestBody:'{"temperature":0.6,"stream":false,"max_tokens":null,"max_completion_tokens":12000,"thinking":{"type":"enabled"}}'};
 test('request body covers provider fields, deletes defaults and preserves generated messages',()=>{const messages=[{role:'user',content:'hello'}],b=buildRequestBody(config,{messages});assert.equal(b.temperature,.6);assert.equal(b.stream,false);assert.equal(b.max_tokens,undefined);assert.equal(b.max_completion_tokens,12000);assert.deepEqual(b.thinking,{type:'enabled'});assert.deepEqual(b.messages,messages);});
 test('invalid JSON, non-object and unsafe nested keys are rejected',()=>{for(const value of ['{','[]','null','42','{"nested":{"__proto__":{}}}'])assert.throws(()=>parseRequestBody(value));assert.throws(()=>buildRequestBody({...config,requestBody:'{"stream":"true"}'},{messages:[{}]}),/stream/);});
 test('custom JSON persists independently in saved API configurations',()=>{const m=new Map(),storage={getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,v),removeItem:k=>m.delete(k)};const settings=createApiSettings(storage,'body');settings.save(config);assert.equal(JSON.parse(createApiSettings(storage,'body').snapshot().requestBody).temperature,.6);const profiles=createApiProfiles(storage,'body');profiles.save('one','One',config);profiles.save('two','Two',{...config,requestBody:'{"temperature":1}'});assert.equal(JSON.parse(profiles.get('one').requestBody).temperature,.6);assert.equal(JSON.parse(profiles.get('two').requestBody).temperature,1);});
-test('actual transport sends overrides and uses effective non-stream response',async()=>{let sent;const text=await generateMapText({},config,{systemPrompt:'format',prompt:'hello'},{fetchImpl:async(url,init)=>{sent=JSON.parse(init.body);return Response.json({choices:[{message:{content:'answer'}}]});}});assert.equal(text,'answer');assert.equal(sent.stream,false);assert.equal(sent.max_tokens,undefined);assert.equal(sent.thinking.type,'enabled');});
+test('actual transport sends overrides and uses effective non-stream response',async()=>{let sent;const text=await generateText({},config,{systemPrompt:'format',prompt:'hello'},{fetchImpl:async(url,init)=>{sent=JSON.parse(init.body);return Response.json({choices:[{message:{content:'answer'}}]});}});assert.equal(text,'answer');assert.equal(sent.stream,false);assert.equal(sent.max_tokens,undefined);assert.equal(sent.thinking.type,'enabled');});
 const previewStore=()=>{const m=new Map();return {getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,v),removeItem:k=>m.delete(k)};};
 const previewReply=()=>({ok:true,json:async()=>({choices:[{message:{content:'ok'},finish_reason:'stop'}]})});
 const seedAssembled=ai=>{const preset=ai.presets.list()[0];preset.blocks.unshift({type:'text',enabled:true,role:'system',text:'ASSEMBLED-CONTEXT'});ai.presets.save(preset);return ai;};

@@ -1,5 +1,5 @@
 import {parseRequestBody,buildRequestBody} from './request-body.js';
-import { waitForSignal } from '../core/generation-job.js';
+import { waitForSignal } from './signal.js';
 const targetQueues=new Map();
 const defaults={requestBody:'',stream:false,queueMode:'serial',enabled:false,baseUrl:'',model:'',maxTokens:4096,timeoutSeconds:120,rememberKey:false,apiKey:''};
 export function endpointFor(baseUrl){
@@ -27,7 +27,7 @@ export function createApiSettings(storage,namespace){
   storage.setItem(key,JSON.stringify(publicFields));value=next;return {...value};
  }};
 }
-async function generateMapTextInternal(ctx,config,request,{fetchImpl=globalThis.fetch,signal}={}){
+async function generateTextInternal(ctx,config,request,{fetchImpl=globalThis.fetch,signal}={}){
  const c=validateApiSettings(config);
  if(!c.enabled){if(typeof ctx?.generateRaw!=='function')throw new Error('请配置酒馆模型，或在设置中启用独立 API');const {messages,...hostRequest}=request;if(messages)hostRequest.prompt=messages.filter((_,i)=>i>0).map(m=>`[${m.role}]\n${m.content}`).join('\n\n');return ctx.generateRaw(hostRequest);}
  const controller=new AbortController(),abort=()=>controller.abort();
@@ -39,7 +39,7 @@ async function generateMapTextInternal(ctx,config,request,{fetchImpl=globalThis.
   const response=await fetchImpl(endpointFor(c.baseUrl),{method:'POST',headers,credentials:'omit',redirect:'error',cache:'no-store',signal:controller.signal,
    body:JSON.stringify(body)});
   if(!response.ok)throw new Error(`独立 API 请求失败（HTTP ${response.status}），请检查地址、密钥、模型名称及额度`);
-  if(body.stream&&response.headers?.get('content-type')?.includes('text/event-stream'))return await readMapStream(response,controller.signal);
+  if(body.stream&&response.headers?.get('content-type')?.includes('text/event-stream'))return await readStream(response,controller.signal);
   let data;try{data=await response.json();}catch{throw new Error('API 返回的不是有效 JSON 响应');}
   const choice=data?.choices?.[0];if(choice?.finish_reason==='length')throw new Error('模型输出被截断，请增加输出长度后重新生成');
   const content=choice?.message?.content;
@@ -51,12 +51,12 @@ async function generateMapTextInternal(ctx,config,request,{fetchImpl=globalThis.
  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
 }
 
-export async function generateMapText(ctx,config,request,options={}){
+export async function generateText(ctx,config,request,options={}){
  const c=validateApiSettings(config),controller=new AbortController();
  const abort=()=>controller.abort(options.signal.reason);
  if(options.signal?.aborted)abort();options.signal?.addEventListener('abort',abort,{once:true});
  const timer=setTimeout(()=>controller.abort(new Error('模型等待超时，已停止等待；未应用生成结果')),c.timeoutSeconds*1000);
- try{const run=()=>{if(controller.signal.aborted)throw controller.signal.reason;return generateMapTextInternal(ctx,c,request,{...options,signal:controller.signal});};let task;if(options.targetKey&&c.queueMode==='serial'){const previous=targetQueues.get(options.targetKey)??Promise.resolve();task=previous.catch(()=>{}).then(run);const tracked=task.then(()=>{},()=>{}).finally(()=>{if(targetQueues.get(options.targetKey)===tracked)targetQueues.delete(options.targetKey);});targetQueues.set(options.targetKey,tracked);}else task=Promise.resolve().then(run);task.catch(()=>{});return await waitForSignal(()=>task,controller.signal);}
+ try{const run=()=>{if(controller.signal.aborted)throw controller.signal.reason;return generateTextInternal(ctx,c,request,{...options,signal:controller.signal});};let task;if(options.targetKey&&c.queueMode==='serial'){const previous=targetQueues.get(options.targetKey)??Promise.resolve();task=previous.catch(()=>{}).then(run);const tracked=task.then(()=>{},()=>{}).finally(()=>{if(targetQueues.get(options.targetKey)===tracked)targetQueues.delete(options.targetKey);});targetQueues.set(options.targetKey,tracked);}else task=Promise.resolve().then(run);task.catch(()=>{});return await waitForSignal(()=>task,controller.signal);}
  finally{clearTimeout(timer);options.signal?.removeEventListener('abort',abort);}
 }
 
@@ -65,7 +65,7 @@ export function createApiProfiles(storage,namespace){let instances=profileInstan
  const api={list:()=>state.profiles.map(p=>({id:p.id,name:p.name})),binding:mode=>state.bindings[mode]??'',bind(mode,id){state.bindings[mode]=id;storage.setItem(key,JSON.stringify(state));},save(id,name,config){const valid=validateApiSettings(config);const {apiKey,...fields}=valid;secrets.set(id,apiKey);const record={id,name,...fields};if(valid.rememberKey)record.apiKey=apiKey;state.profiles=state.profiles.filter(p=>p.id!==id);state.profiles.push(record);storage.setItem(key,JSON.stringify(state));},resolve(mode,fallback){const p=state.profiles.find(p=>p.id===state.bindings[mode]);return p?validateApiSettings({...p,apiKey:secrets.get(p.id)??p.apiKey??''}):fallback;},get(id){const p=state.profiles.find(p=>p.id===id);return p?validateApiSettings({...p,apiKey:secrets.get(id)??p.apiKey??''}):null;},remove(id){state.profiles=state.profiles.filter(p=>p.id!==id);secrets.delete(id);for(const mode of Object.keys(state.bindings))if(state.bindings[mode]===id)delete state.bindings[mode];storage.setItem(key,JSON.stringify(state));}};instances.set(namespace,api);return api;
 }
 
-async function readMapStream(response,signal){
+async function readStream(response,signal){
  if(!response.body)throw Error('API 未返回流式内容');const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',text='',finished=false;
  const abort=()=>void reader.cancel();signal.addEventListener('abort',abort,{once:true});
  const event=block=>{const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).join('\n');if(!data)return;if(data==='[DONE]'){finished=true;return;}const value=JSON.parse(data);if(value.error)throw Error('流式 API 返回错误');const choice=value.choices?.[0];if(choice?.finish_reason==='length')throw Error('模型输出被截断，请增加输出长度');if(choice?.finish_reason==='stop')finished=true;const delta=choice?.delta?.content;if(typeof delta==='string')text+=delta;};
