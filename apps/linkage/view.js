@@ -179,13 +179,10 @@ export function mount(target, options = {}) {
             nativePanel.replaceChildren(make('h3', '当前剧情资料 · Amin 独立存储'),
                 make('p', '人物、背包、场景等应用读取同一份当前剧情资料。回复中的 <amin_update> 由 Amin 校验和应用，不按旧楼层或候选回复恢复变量。', 'amin-meta'),
                 make('p', status?.message || (status?.enabled ? '当前剧情资料已启用。' : '请先导入旧资料，或开始空白剧情资料。'), status?.ready === false ? 'amin-notice' : 'amin-meta'),
-                button('打开设置 → 剧情存储', async () => {
+                button('打开存档与历史 → 剧情存储', async () => {
                     if (options.openStorySettings) return options.openStorySettings();
-                    if (typeof globalThis.AminOS?.openApp !== 'function') throw Error('请打开 Amin 设置中的「剧情存储」。');
-                    await globalThis.AminOS.openApp('settings');
-                    const pane = document.querySelector?.('[data-app="settings"]');
-                    const tab = [...(pane?.querySelectorAll?.('button') ?? [])].find(node => node.textContent === '剧情存储');
-                    if (tab) tab.click();
+                    if (typeof globalThis.AminOS?.openApp !== 'function') throw Error('请在 Amin OS 的“存档与历史”中打开「剧情存储」。');
+                    await globalThis.AminOS.openApp('story');
                 }, { lock: 'busy' }));
             return;
         }

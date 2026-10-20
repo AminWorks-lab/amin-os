@@ -186,7 +186,7 @@ try {
   if (backupKey) vars.setLocalVariable(backupKey, JSON.stringify(latest));
   vars.setLocalVariable('状态栏', JSON.stringify(finalState));
   if (!equal(readState(), finalState)) throw Error(currentStory
-    ? '本地写入后校验失败，请检查当前资料；最近备份在设置 → 剧情存储中管理。'
+    ? '本地写入后校验失败，请检查当前资料；最近备份在存档与历史 → 剧情存储中管理。'
     : '本地写入后校验失败，请检查变量面板及生成前备份。');
   // setLocalVariable 本身会安排酒馆保存；此处主动等待当前聊天元数据保存。
   try { if(isIndependent(ctx))prepareIndependentManualWrite(ctx,[['variables','状态栏']]);await saveChatMetadata(ctx); }

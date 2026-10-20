@@ -3,24 +3,24 @@ import assert from 'node:assert/strict';
 import {defaultTiles,normalizeTiles,moveTile,migrateTiles,loadTiles,saveTiles,TILE_KEY,LEGACY_TILE_KEY,PREVIOUS_TILE_KEY,TILE_COLUMNS,TILE_SPANS,moveTileToCell,canPlaceTile,loadTileGrid,saveTileGrid,normalizeTileGrid} from '../tile-layout.js';
 test('release applications appear once while later user removals remain removed',()=>{
  const data=new Map([[TILE_KEY,JSON.stringify({version:2,tiles:[{id:'mine',target:'map',label:'我的地图',size:'wide'}]})]]),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
- const migrated=loadTiles(storage);assert.deepEqual(migrated.map(t=>t.target),['map','characters','inventory','relationships','saves','linkage']);assert.equal(migrated[0].label,'我的地图');
- assert.deepEqual(loadTiles(storage),migrated);saveTiles(storage,migrated.filter(t=>t.target!=='saves'));assert.equal(loadTiles(storage).some(t=>t.target==='saves'),false);
+ const migrated=loadTiles(storage);assert.deepEqual(migrated.map(t=>t.target),['map','characters','inventory','relationships','archive','linkage']);assert.equal(migrated[0].label,'我的地图');
+ assert.deepEqual(loadTiles(storage),migrated);saveTiles(storage,migrated.filter(t=>t.target!=='archive'));assert.equal(loadTiles(storage).some(t=>t.target==='archive'),false);
 });
 test('corrupt or old layouts retain every application exactly once',()=>{
  assert.deepEqual(normalizeTiles(null),defaultTiles());
  const normalized=migrateTiles([{id:'reply',size:'wide'},{id:'reply',size:'small'},{id:'map',size:'huge'},{id:'unknown',size:'wide'},null]);
- assert.deepEqual(normalized.map(t=>t.id),['reply','map','characters','inventory','relationships','saves','scene','journal','dice','status','organizations','information','effects','worldbooks','tts','ai','settings','linkage']);
+ assert.deepEqual(normalized.map(t=>t.id),['reply','map','characters','inventory','scene','journal','status','abilities','relationships','library','archive','tts','preferences','linkage']);
  assert.equal(normalized[0].size,'wide');assert.equal(normalized[1].size,'wide');
 });
 test('drag moves before or after target, keeping sizes and source immutable',()=>{
- const start=defaultTiles(),moved=moveTile(start,'settings','map');
- assert.equal(moved.findIndex(t=>t.id==='settings')+1,moved.findIndex(t=>t.id==='map'));assert.equal(moved.find(t=>t.id==='settings').size,'small');
- assert.deepEqual(moveTile(moved,'settings','ai',true),start);
+ const start=defaultTiles(),moved=moveTile(start,'linkage','map');
+ assert.equal(moved.findIndex(t=>t.id==='linkage')+1,moved.findIndex(t=>t.id==='map'));assert.equal(moved.find(t=>t.id==='linkage').size,'slimWide');
+ assert.deepEqual(moveTile(moved,'linkage','preferences',true),start);
  assert.deepEqual(start,defaultTiles());assert.deepEqual(moveTile(start,'map','map'),start);
  assert.deepEqual(moveTile(start,'map','missing'),start);
 });
 test('saved layout round trips including all three tile sizes',()=>{
- const custom=moveTile(defaultTiles(),'ai','map');custom[0].label='自定义';
+ const custom=moveTile(defaultTiles(),'preferences','map');custom[0].label='自定义';
  assert.deepEqual(normalizeTiles(JSON.parse(JSON.stringify(custom))),custom);
 });
 
@@ -77,7 +77,7 @@ test('packing reserves explicit coordinates and deterministically repairs overla
 test('version2 migrates custom identities images colors and order without changing old storage',()=>{
  const tiles=[{id:'mine',target:'reply',label:'自定义',size:'wide',image:'https://example.com/pic.png',backgroundColor:'#12abEF',textColor:'#ffffff',iconColor:'#ffeedd'},{id:'other',target:'dice',size:'compactTall',backgroundColor:'red',textColor:'url(bad)',iconColor:'#abc'}];
  const old=JSON.stringify({version:2,knownTargets:defaultTiles().map(t=>t.target),tiles});const data=new Map([[PREVIOUS_TILE_KEY,old]]),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
- const layout=loadTiles(storage);assert.deepEqual(layout.map(t=>t.id),['mine','other']);assert.equal(layout[0].backgroundColor,'#12abEF');assert.equal(layout[0].image,tiles[0].image);assert.equal(layout[1].backgroundColor,undefined);assert.equal(layout[1].textColor,undefined);assert.equal(layout[1].iconColor,undefined);assert.equal(data.get(PREVIOUS_TILE_KEY),old);assert.equal(JSON.parse(data.get(TILE_KEY)).version,3);assert.deepEqual(loadTiles(storage),layout);
+ const layout=loadTiles(storage);assert.deepEqual(layout.map(t=>t.id),['mine','abilities']);assert.equal(layout[1].size,'compactTall');assert.equal(layout[0].backgroundColor,'#12abEF');assert.equal(layout[0].image,tiles[0].image);assert.equal(layout[1].backgroundColor,undefined);assert.equal(layout[1].textColor,undefined);assert.equal(layout[1].iconColor,undefined);assert.equal(data.get(PREVIOUS_TILE_KEY),old);assert.equal(JSON.parse(data.get(TILE_KEY)).version,4);assert.deepEqual(loadTiles(storage),layout);
  data.set(TILE_KEY,'broken');assert.deepEqual(loadTiles(storage),layout);
 });
 
@@ -106,7 +106,7 @@ test('legacy layouts default to six columns and invalid grid settings fall back 
  assert.deepEqual(normalizeTileGrid({columns:5,scale:85}),{columns:6,scale:85});
  for(const scale of [0,69,101,NaN,Infinity,'80',null])assert.deepEqual(normalizeTileGrid({columns:4,scale}),{columns:4,scale:100});
  assert.deepEqual(normalizeTileGrid({columns:4,scale:70.4}),{columns:4,scale:70});
- saveTiles(storage,loadTiles(storage),{columns:4,scale:75});const saved=JSON.parse(data.get(TILE_KEY));assert.deepEqual(saved.grid,{columns:4,scale:75});assert.equal(saved.version,3);
+ saveTiles(storage,loadTiles(storage),{columns:4,scale:75});const saved=JSON.parse(data.get(TILE_KEY));assert.deepEqual(saved.grid,{columns:4,scale:75});assert.equal(saved.version,4);
 });
 
 test('saved layouts gain the linkage tile once, below the last row, without moving existing tiles',()=>{
@@ -116,7 +116,7 @@ test('saved layouts gain the linkage tile once, below the last row, without movi
  data.set(TILE_KEY,JSON.stringify({version:3,knownTargets,grid:{columns:6,scale:100},tiles:saved}));
  const loaded=loadTiles(storage),linkage=loaded.filter(t=>t.target==='linkage');
  assert.equal(linkage.length,1);assert.equal(loaded.at(-1).target,'linkage');
- assert.deepEqual(loaded.slice(0,2).map(({id,x,y})=>({id,x,y})),[{id:'map',x:0,y:0},{id:'dice',x:5,y:3}]);
+ assert.deepEqual(loaded.slice(0,2).map(({id,target,x,y})=>({id,target,x,y})),[{id:'map',target:'map',x:0,y:0},{id:'abilities',target:'abilities',x:5,y:3}]);
  // The gap beside the map is free, but the new tile goes below the bottom row (dice ends at row 4).
  assert.deepEqual({x:linkage[0].x,y:linkage[0].y,size:linkage[0].size},{x:0,y:4,size:'slimWide'});
  assert.ok(JSON.parse(data.get(TILE_KEY)).knownTargets.includes('linkage'));

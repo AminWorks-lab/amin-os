@@ -92,6 +92,11 @@ const history = createHistory({ context, read: () => parseState(readStoryRoot(co
   externalRead: async () => parseState(readStoryRoot(context(),'状态栏')) });
 const floorButtons = installFloorButtons({ history, node, context, enabled: () => getSettings().floorButtons,
   openWorkbench:(target,{page,onClose,validate})=>showHud(page,{target,onClose,validate}) });
+// 存档与历史 → 楼层记录: the same read-only records as the workbench's 楼层记录 tab.
+export function mountFloorHistory() {
+  try { history.sync(); } catch (e) { console.warn('[世界状态栏] 记录同步失败', e); }
+  return historyView({ history, node });
+}
 async function persistStatusChange(write) {
   const token=captureContext(context),ctx=assertContext(context,token),release=acquireMetadataWrite(context,token);
   try {
@@ -117,7 +122,7 @@ function createDisplaySettings() {
     ? '所有应用共用当前剧情资料；切换旧楼层或 Swipe 不回退资料。'
     : '旧版楼层记录仅供只读浏览；打开聊天或翻页不会写入新的楼层记录。';
   const storageNote = isIndependent(context())
-    ? '最近备份在设置 → 剧情存储中管理，旧楼层没有单独状态快照。'
+    ? '最近备份在存档与历史 → 剧情存储中管理，旧楼层没有单独状态快照。'
     : '导入旧资料或开始空白剧情资料后，状态随当前剧情资料保存。';
   label.append(input); page.append(node('h3', '显示与记录设置'), label, node('p', '最新楼层打开当前状态工作台，旧楼层打开只读记录。' + storageNote), node('p', historyNote));
   const appearanceLink=node('button','打开设置 · 统一外观','menu_button');appearanceLink.type='button';appearanceLink.onclick=()=>globalThis.AminOS?.openApp('settings');page.append(appearanceLink);
@@ -330,8 +335,8 @@ async function restoreBackup() {
   }
   if (!candidates.size) {
     if (currentOnly) {
-      notify('最近备份请在设置 → 剧情存储中恢复；该操作会恢复整套受管变量。当前聊天没有既有状态栏手工备份。');
-      globalThis.AminOS?.openApp('settings');
+      notify('最近备份请在存档与历史 → 剧情存储中恢复；该操作会恢复整套受管变量。当前聊天没有既有状态栏手工备份。');
+      globalThis.AminOS?.openApp('story');
       return;
     }
     throw Error('当前聊天没有备份或楼层记录。');
@@ -362,13 +367,13 @@ async function restoreBackup() {
       await persistStatusChange(()=>{
         if (!isIndependent(context()) && current !== undefined) setLocalVariable('状态栏_生成前备份_' + Date.now(), current);
         setLocalVariable('状态栏', JSON.stringify(restored));
-      });d.close(); notify(isIndependent(context()) ? '已恢复所选状态栏；最近整套剧情备份在设置 → 剧情存储中管理。'
+      });d.close(); notify(isIndependent(context()) ? '已恢复所选状态栏；最近整套剧情备份在存档与历史 → 剧情存储中管理。'
         : '已恢复，恢复前的状态也已备份。');
     } catch (e) { result.textContent = e.message; }
   };
   cancel.onclick = () => d.close();
   d.append(title, node('p', currentOnly
-    ? '这里仅恢复既有状态栏手工备份，不改变其他资料。最近整套剧情备份请在设置 → 剧情存储中恢复。'
+    ? '这里仅恢复既有状态栏手工备份，不改变其他资料。最近整套剧情备份请在存档与历史 → 剧情存储中恢复。'
     : '恢复会用所选完整状态覆盖当前值，并先备份当前状态。楼层记录只在点击恢复后才应用；不会回退聊天正文。'), select, restore, cancel, result); generationForm.append(d); d.scrollIntoView({block:'nearest'}); select.focus({preventScroll:true});
 }
 function mount() {
@@ -411,7 +416,7 @@ function mount() {
     if(mode==='update'){if(running)throw Error('请先完成当前状态栏生成。');if(selectHudPage)selectHudPage('generate');else await openEmbedded('generate');openStatusUpdate?.();report.textContent='请选择已有剧情楼层并生成草稿，预览确认后才会保存。';return;}
     if (running) throw Error('生成任务已经运行。');
     if (mode === 'replace' && !confirm(isIndependent(context())
-      ? '重新生成将替换当前状态栏全部项目；最近整套剧情备份在设置 → 剧情存储中管理。继续？'
+      ? '重新生成将替换当前状态栏全部项目；最近整套剧情备份在存档与历史 → 剧情存储中管理。继续？'
       : '重新生成将替换当前状态栏全部项目，操作前会备份。继续？')) return;
     const s = save(); identity();
     running = new AbortController(); report.textContent = '正在读取设定并请求模型…';
@@ -440,7 +445,7 @@ function mount() {
       if (typeof runtime?.saveBackup !== 'function') throw Error('当前剧情备份服务尚未就绪。');
       await runtime.saveBackup('手动另存状态');
       checkIdentity(id);
-      report.textContent = '已保存当前剧情备份，可在设置 → 剧情存储中恢复。';
+      report.textContent = '已保存当前剧情备份，可在存档与历史 → 剧情存储中恢复。';
     } else {
       await persistStatusChange(() => setLocalVariable('状态栏_生成前备份_' + Date.now(),current));
       report.textContent = '已另存变量备份；可在“恢复备份”中选择。';

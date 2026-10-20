@@ -22,6 +22,7 @@ test('a full snapshot yields two lines and a short value for every live tile',()
   characters:{lines:['旅人','生命 76/100'],short:'76/100'},
   scene:{lines:['1024-03-07 18:05','黄昏 · 观测站'],short:'18:05'},
   effects:{lines:['2 个效果生效中','1 个已暂停'],short:'2'},
+  abilities:{lines:['2 个效果生效中','1 个已暂停'],short:'2'},
   journal:{lines:['2 项任务进行中','1 项待开始'],short:'2'},
   inventory:{lines:['金币 1.3万枚','2 件物品'],short:'1.3万'},
   relationships:{lines:['2 条关系','涉及 2 位人物'],short:'2'},

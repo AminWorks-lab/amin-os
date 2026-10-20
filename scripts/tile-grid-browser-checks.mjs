@@ -93,8 +93,11 @@ export async function checkTileGrid({send,evaluate,waitFor,delay,artifacts,check
     await send('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
     await evaluate("window.dispatchEvent(new Event('resize'));(await import('/tile-layout.js')).resetTileLayout();document.querySelector('.amin-home').scrollTop=0");
     await delay(150);await screenshot('tile-grid-default-1280');
-    await evaluate("tileButton('dice').scrollIntoView({block:'center'})");
-    const launch=await center('dice');await mouse('mousePressed',launch);await mouse('mouseReleased',launch);
-    await waitFor("!pane('dice').hidden&&!!pane('dice').querySelector('.amin-dice')",'tile still opens app outside edit mode');
+    // The default home opens 骰子 through its suite tile (能力与检定), which starts on its first tab.
+    await evaluate("tileButton('abilities').scrollIntoView({block:'center'})");
+    const launch=await center('abilities');await mouse('mousePressed',launch);await mouse('mouseReleased',launch);
+    await waitFor("!pane('abilities').hidden&&!pane('effects').hidden",'suite tile still opens its window outside edit mode');
+    await evaluate("pane('abilities').querySelector('[data-suite-tab=dice]').click()");
+    await waitFor("!pane('dice').hidden&&!!pane('dice').querySelector('.amin-dice')",'suite tab opens the dice app');
     checks.push('Tile grid: exact top-left mouse/touch drop, full valid/invalid preview, collisions/bounds reject without reflow, 3x2 and 2x3 resizing, independent colors/reload, four/six columns and 80% overall sizing with persisted settings, mobile long press and six-column layout');
 }

@@ -44,7 +44,7 @@ export function createStoryStateRuntime(getContext = () => globalThis.SillyTaver
     function expand(ctx, patches) {
         const direct = patches.find(patch => patch.path[0] === STATE_KEY);
         if (!isIndependent(ctx) && !direct) {
-            if (patches.some(patch => storyPath(patch.path))) throw Error('请先在设置 → 剧情存储中预览导入旧资料，或开始空白剧情资料。');
+            if (patches.some(patch => storyPath(patch.path))) throw Error('请先在存档与历史 → 剧情存储中预览导入旧资料，或开始空白剧情资料。');
             return patches;
         }
         if (!patches.some(patch => storyPath(patch.path))) return patches.filter(patch => !ignoredPath(patch.path));

@@ -151,7 +151,7 @@ export function createLinkageHost(getContext, {
             const ready = await beforeGeneration(type);
             if (disposed || epoch !== started || options?.signal?.aborted || getContext()?.chatMetadata !== metadata || chatIdentity(getContext()) !== identity) return;
             if (ready === false) {
-                say('Amin 当前剧情资料尚未初始化；请在设置 → 剧情存储中导入旧资料或开始空白资料。正文可正常生成，本轮不注入更新规则。');
+                say('Amin 当前剧情资料尚未初始化；请在存档与历史 → 剧情存储中导入旧资料或开始空白资料。正文可正常生成，本轮不注入更新规则。');
                 return;
             }
         }

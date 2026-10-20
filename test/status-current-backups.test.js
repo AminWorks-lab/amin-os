@@ -60,7 +60,7 @@ async function application(f, runtime = {}, loadVariables = async () => ({setLoc
     managesModule: () => !!f.ctx.chatMetadata.amin_os_linkage_v1?.enabled, getState2Runtime: () => runtime, contextLine,
   };
   const source = readFileSync(new URL('../apps/status/index.js', import.meta.url), 'utf8')
-    .replace(/^import .*;\r?\n/gmu, '').replace('export async function initialize', 'async function initialize')
+    .replace(/^import .*;\r?\n/gmu, '').replace(/^export (?=(?:async )?function )/gmu, '')
     .replaceAll('import.meta.url', JSON.stringify(new URL('../apps/status/index.js', import.meta.url).href));
   vm.runInNewContext(source + '\nglobalThis.api = { initialize };', sandbox);
   const app = await sandbox.api.initialize({ mount: target, loadVariables });

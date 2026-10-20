@@ -65,7 +65,7 @@ test('independent linkage renders typed current-state workflow and excludes all 
     assert.ok(find(f.root, '刷新更新规则预览'));
     assert.ok(find(f.root, '复制更新规则'));
     for (const label of ['初始化／迁移剧情变量', '重试恢复当前分支', '检查剧情存档引用', '确认采用这些楼层的原有存档']) assert.equal(find(f.root, label), undefined);
-    await click(f.root, '打开设置 → 剧情存储'); assert.deepEqual(f.calls, ['story-settings']);
+    await click(f.root, '打开存档与历史 → 剧情存储'); assert.deepEqual(f.calls, ['story-settings']);
   } finally { f.view.dispose(); }
 });
 
@@ -134,13 +134,10 @@ test('external source describes user-supplied macros rather than a native variab
   } finally { f.view.dispose(); }
 });
 
-test('story settings shortcut opens the actual shell settings app then selects its story tab', async () => {
+test('story storage shortcut opens 剧情存储 inside 存档与历史 through the shell', async () => {
   const f = fixture({ useShell: true }), original = globalThis.AminOS;
   try {
-    const pane = new Node('section', f.document), tab = new Node('button', f.document); tab.textContent = '剧情存储';
-    tab.addEventListener('click', () => f.calls.push('story-tab')); pane.append(tab);
-    f.document.querySelector = selector => { assert.equal(selector, '[data-app="settings"]'); return pane; };
-    globalThis.AminOS = { async openApp(id) { assert.equal(id, 'settings'); f.calls.push('settings-app'); } };
-    await click(f.root, '打开设置 → 剧情存储'); assert.deepEqual(f.calls, ['settings-app', 'story-tab']);
+    globalThis.AminOS = { async openApp(id) { assert.equal(id, 'story'); f.calls.push('story-app'); } };
+    await click(f.root, '打开存档与历史 → 剧情存储'); assert.deepEqual(f.calls, ['story-app']);
   } finally { globalThis.AminOS = original; f.view.dispose(); }
 });

@@ -33,7 +33,7 @@ test('choices go through story storage, the joint initializer and settings', asy
     const openApp = async (id, request) => { calls.push(['open', id, request]); };
     const openLinkage = async section => { calls.push(['linkage', section]); };
     assert.match(await runOnboardingAction('import', { runtime, openApp, openLinkage, getContext: () => ctx }), /预览导入/);
-    assert.deepEqual(calls.splice(0), [['open', 'settings', { page: 'story', focus: 'import' }]]);
+    assert.deepEqual(calls.splice(0), [['open', 'story', { focus: 'import' }]]);
     await runOnboardingAction('ai', { runtime, openApp, openLinkage, getContext: () => ctx });
     assert.deepEqual(calls.splice(0), [['blank'], ['linkage', 'joint']], 'AI setup starts blank data, then opens 联合初始化 in the linkage app');
     await runOnboardingAction('ai', { runtime, openApp, openLinkage, getContext: () => ctx });
