@@ -147,13 +147,13 @@ test('stale resource values and candidate switches invalidate a settlement befor
     }
 });
 
-test('manual settlement prepares a State 2.0 checkpoint without modifying unrelated variable roots', async () => {
+test('manual settlement never writes LittleWhiteBox checkpoints or unrelated variable roots', async () => {
     const ctx = fixture(); ctx.extensionSettings = { LittleWhiteBox: { variablesMode: '2.0' } }; ctx.chatMetadata.LWB_RULES_V2 = { keep: true };
     setClock(ctx, advanceClock(clock, 10)); const api = createEffects(() => ctx);
     try {
-        api.stageSettlement(); assert.equal(ctx.chatMetadata.extensions, undefined); await api.confirmSettlement();
-        const point = ctx.chatMetadata.extensions.LittleWhiteBox.stateCkptV2.points['0'];
-        assert.equal(JSON.parse(point.vars.状态栏).项目.调查员.生命.当前, 28); assert.deepEqual(point.vars.unrelated, { keep: true }); assert.deepEqual(point.rules, { keep: true });
+        api.stageSettlement(); await api.confirmSettlement();
+        assert.equal(ctx.chatMetadata.extensions, undefined); assert.deepEqual(ctx.chatMetadata.LWB_RULES_V2, { keep: true });
+        assert.equal(JSON.parse(ctx.chatMetadata.variables.状态栏).项目.调查员.生命.当前, 28); assert.deepEqual(ctx.chatMetadata.variables.unrelated, { keep: true });
     } finally { api.dispose(); }
 });
 

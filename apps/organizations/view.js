@@ -9,7 +9,6 @@ import {contextLine} from '../shared/context-line.js';
 import {attachLinkageBadge} from '../linkage/badge.js';
 const el=(tag,text='',cls='')=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e;};
 const show=v=>v===null||v===undefined||v===''?'未明确':typeof v==='object'?JSON.stringify(v,null,2):String(v);
-const storyReference=m=>JSON.stringify([m?.extra?.amin_story_v2??null,m?.swipe_info?.[m.swipe_id??0]?.extra?.amin_story_v2??null]);
 const tabsMap={overview:'总览',organizations:'组织',alliances:'联盟／阵营',regions:'地区',assessment:'评估排行',settings:'生成与规则'};
 const mounted=new WeakMap();
 export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
@@ -206,7 +205,7 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
    if(historyIndex!==null){
     const message=api.context().chat?.[historyIndex];
     if(!historyRecord?.available||!message||api.context().chatMetadata!==historyMetadata||historyRecord.external&&
-      (String(message.swipe_id??0)!==historyRecord.variant||storyReference(message)!==historyRecord.reference||message.mes!==historyRecord.content||api.context().chatMetadata?.amin_os_story_storage_v2?.indexId!==historyRecord.indexId))
+      (String(message.swipe_id??0)!==historyRecord.variant||message.mes!==historyRecord.content))
       throw Error('该楼层记录已变化，请返回当前资料重新打开。');
     doc=historyRecord.state.doc;
    }

@@ -104,20 +104,19 @@ test('same-index swipe may consume a new candidate while keeping original branch
     const candidate=await t.api.collectReply(1);assert.ok(candidate);t.api.stageSuggestion(candidate.id);await t.api.confirm();
     t.ctx.chat[1]={name:'GM',is_user:false,mes:'旧候选',swipe_id:0};assert.equal(characters.read(t.ctx).characters.length,0);t.api.dispose();
 });
-test('LWB checkpoint and status change share one save while preserving all unrelated variable roots',async()=>{
+test('status change saves once without writing LittleWhiteBox checkpoints or unrelated variable roots',async()=>{
     const t=setup();t.ctx.extensionSettings={LittleWhiteBox:{variablesMode:'2.0'}};
     t.api.stage(batch(change('status','set','玩家.生命',{value:8})));await t.api.confirm();
-    const point=t.ctx.chatMetadata.extensions.LittleWhiteBox.stateCkptV2.points['0'];assert.equal(point.vars.unrelated,'preserved');
-    assert.equal(JSON.parse(point.vars.状态栏).项目.玩家.生命,8);assert.equal(t.saves,1);t.api.dispose();
+    assert.equal(t.ctx.chatMetadata.extensions?.LittleWhiteBox?.stateCkptV2,undefined);assert.equal(t.ctx.chatMetadata.variables.unrelated,'preserved');
+    assert.equal(status.read(t.ctx).项目.玩家.生命,8);assert.equal(t.saves,1);t.api.dispose();
 });
 
-test('unowned variable mirrors only block a preview that will snapshot all variables into State 2.0',async()=>{
-    for (const checkpoint of [false,true]) {
-        const t=setup();t.ctx.extensionSettings={LittleWhiteBox:{variablesMode:checkpoint?'2.0':'1.0'}};
+test('unrelated variable mirrors written after preview never block the confirmed status change',async()=>{
+    for (const mode of ['1.0','2.0']) {
+        const t=setup();t.ctx.extensionSettings={LittleWhiteBox:{variablesMode:mode}};
         t.api.stage(batch(change('status','set','玩家.生命',{value:8})));
         t.ctx.chatMetadata.variables.地图=JSON.stringify({来源:'动态地图插件',地图版本:2});
-        if(checkpoint) {await assert.rejects(t.api.confirm(),/变化/);assert.equal(t.saves,0);assert.equal(status.read(t.ctx).项目.玩家.生命,10);}
-        else {await t.api.confirm();assert.equal(t.saves,1);assert.equal(status.read(t.ctx).项目.玩家.生命,8);assert.equal(JSON.parse(t.ctx.chatMetadata.variables.地图).地图版本,2);}
+        await t.api.confirm();assert.equal(t.saves,1);assert.equal(status.read(t.ctx).项目.玩家.生命,8);assert.equal(JSON.parse(t.ctx.chatMetadata.variables.地图).地图版本,2);
         t.api.dispose();
     }
 });

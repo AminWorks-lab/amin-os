@@ -1,11 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectLinkedContext, DEFAULT_LINKED_SOURCES, LINKED_SOURCES } from '../apps/reply/linked-context.js';
-import { ROOTS, OWNED_VARIABLE_ROOTS, MIGRATION_KEY, BACKUP_KEY, MIGRATION_OWNER } from '../apps/state2/storage.js';
+import { collectLinkedContext as collectCurrent, DEFAULT_LINKED_SOURCES, LINKED_SOURCES } from '../apps/reply/linked-context.js';
+import { ROOTS } from '../apps/story-state/legacy-roots.js';
 import { STATE_KEY } from '../apps/story-state/access.js';
 import { emptyState } from '../apps/story-state/schema.js';
 
 const json = value => JSON.stringify(value);
+// The fixture keeps readable root-shaped records; reads go through the canonical
+// independent snapshot built from them (malformed roots become absent modules).
+function collectLinkedContext(ctx, settings) {
+    if (ctx.chatMetadata[STATE_KEY]) return collectCurrent(ctx, settings);
+    const state = emptyState({ updatedAt: '2026-09-24T00:00:00.000Z' });
+    for (const [module, root] of [...Object.entries(ROOTS), ['status', '状态栏']]) {
+        try { if (ctx.chatMetadata.variables?.[root] !== undefined) state.modules[module] = JSON.parse(ctx.chatMetadata.variables[root]); } catch { /* absent */ }
+    }
+    return collectCurrent({ ...ctx, chatMetadata: { ...ctx.chatMetadata, [STATE_KEY]: state } }, settings);
+}
 function fixture() {
     const chat = [{ name: 'Alice', is_user: true, mes: 'Alice asks Bob about the door.', swipe_id: 0 }];
     const source = { start: 0, end: 0, messages: [{ index: 0, text: chat[0].mes,
@@ -13,11 +23,8 @@ function fixture() {
     const ctx = {
         chatId: 'branch-a', name1: 'Alice', chat, replyState2Ready: true,
         getCurrentChatId() { return this.chatId; },
-        extensionSettings: { LittleWhiteBox: { variablesMode: '2.0' } },
+        extensionSettings: {},
         chatMetadata: {
-            [MIGRATION_KEY]: { version: 1, owner: MIGRATION_OWNER, roots: [...OWNED_VARIABLE_ROOTS], createdAt: '2026-09-24T00:00:00Z' },
-            [BACKUP_KEY]: { version: 1, roots: {}, source: {} },
-            extensions: { LittleWhiteBox: { stateLogV2: { version: 1, floors: { '-1': { signature: MIGRATION_OWNER, roots: [...OWNED_VARIABLE_ROOTS] } } } } },
             variables: {
                 [ROOTS.characters]: json({ version: 1, characters: [
                     { id: 'alice', name: 'Alice', kind: 'pc', notes: 'Keep a promise.', stats: [] },
@@ -52,7 +59,6 @@ test('independent linked context reads canonical records, respects exclusions, a
     const ctx = fixture(), state = emptyState();
     state.modules.characters = { version: 1, characters: [{ id: 'alice', name: 'Alice', kind: 'pc', notes: 'CURRENT_CANONICAL_NOTE', stats: [] }] };
     ctx.chatMetadata[STATE_KEY] = state;
-    delete ctx.extensionSettings.LittleWhiteBox;
     const before = structuredClone(ctx.chatMetadata);
     const result = collectLinkedContext(ctx, { linkedSources: ['characters'] });
     assert.match(result.selected.map(record => record.text).join('\n'), /CURRENT_CANONICAL_NOTE/);
@@ -66,7 +72,7 @@ test('independent linked context reads canonical records, respects exclusions, a
     assert.deepEqual(ctx.chatMetadata, before);
 });
 
-test('linked context reads selected current State2 records without modifying metadata', () => {
+test('linked context reads selected current records without modifying metadata', () => {
     const ctx = fixture(), before = structuredClone(ctx.chatMetadata);
     const result = collectLinkedContext(ctx, { linkedSources: [...DEFAULT_LINKED_SOURCES, 'effects', 'status'] });
     const selected = result.selected.map(record => record.text).join('\n');
@@ -92,7 +98,7 @@ test('source and record exclusions control generation input while leaving previe
     assert.deepEqual(LINKED_SOURCES.map(source => source.id).filter(id => DEFAULT_LINKED_SOURCES.includes(id)), [...DEFAULT_LINKED_SOURCES]);
 });
 
-test('old floor and unready or unowned variables cannot leak current native facts', () => {
+test('old floor, unready state and chats without Amin state cannot leak current facts', () => {
     const ctx = fixture();
     ctx.replyFloorIndex = 0; ctx.replyLiveChatLength = 3;
     assert.deepEqual(collectLinkedContext(ctx, {}).selected, []);
@@ -100,15 +106,15 @@ test('old floor and unready or unowned variables cannot leak current native fact
     ctx.replyState2Ready = false;
     assert.deepEqual(collectLinkedContext(ctx, {}).selected, []);
     ctx.replyState2Ready = true;
-    ctx.chatMetadata.extensions.LittleWhiteBox.stateLogV2.floors['-1'].signature = 'other';
-    assert.deepEqual(collectLinkedContext(ctx, {}).selected, []);
+    const plainChat = collectCurrent(ctx, {});
+    assert.deepEqual(plainChat.selected, []);
+    assert.ok(plainChat.warnings.some(message => message.includes('尚未导入')));
 });
 
 test('unusable roots and very large inventories stay bounded', () => {
     const ctx = fixture();
     ctx.chatMetadata.variables[ROOTS.characters] = '{bad';
     const malformed = collectLinkedContext(ctx, { linkedSources: ['characters', 'inventory'] });
-    assert.ok(malformed.warnings.some(message => message.includes(ROOTS.characters)));
     assert.equal(malformed.selected.some(record => record.module === 'characters'), false);
     ctx.chatMetadata.variables[ROOTS.characters] = fixture().chatMetadata.variables[ROOTS.characters];
     ctx.chatMetadata.variables[ROOTS.inventory] = json({ version: 1, items: Array.from({ length: 100 }, (_, index) => ({
