@@ -1,7 +1,6 @@
-/* Embedded legacy app adapters. Shared controls live in ui/standard.css. */
+/* Embedded legacy app adapters (map and status colour variables are aliases from theme-tokens.css).
+   Shared controls live in ui/standard.css. */
 #amin-os .amin-map-embedded {
-  --dm-bg:var(--amin-bg);--dm-surface:var(--amin-control);--dm-header:var(--amin-bg);
-  --dm-text:var(--amin-text);--dm-muted:var(--amin-muted);--dm-border:var(--amin-line);--dm-accent:var(--amin-accent);
   position:relative;inset:auto;z-index:auto;width:100%;max-width:none;height:100%;max-height:none;
   margin:0;border:0;border-radius:0;box-shadow:none;overflow:hidden;font-family:inherit;
 }
@@ -15,9 +14,7 @@
 #amin-os .amin-map-embedded .dm-savebar button {flex:1 1 auto}
 
 #amin-os .amin-status-embedded {
-  --wsh-bg:var(--amin-bg);--wsh-card:var(--amin-card);--wsh-control:var(--amin-control);
-  --wsh-line:var(--amin-line);--wsh-text:var(--amin-text);--wsh-muted:var(--amin-muted);
-  --wsh-accent:var(--amin-accent);--wsh-ink:var(--amin-ink);--wsh-font:inherit;
+  --wsh-font:inherit;
   position:relative;inset:auto;z-index:auto;width:100%;max-width:none;height:100%;max-height:none;
   margin:0;padding:var(--amin-gap);gap:8px;border:0;border-radius:0;box-shadow:none;background:var(--amin-bg);overflow:hidden;
 }

@@ -289,7 +289,8 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   addEventListener('message',e=>{if(e.source!==parent||e.data?.wsh!==token)return;const p=pending.get(e.data.id);if(!p)return;clearTimeout(p.timer);pending.delete(e.data.id);e.data.error?p.reject(Error(e.data.error)):p.resolve(e.data.value)});
   <\/script>`;
   html = html.replace('<html lang="zh-CN">', '<html lang="zh-CN" data-wsh-frame data-wsh-theme="nexus">');
-  html = html.replace('</head>', '<link rel="stylesheet" href="' + new URL('./themes.css', import.meta.url).href + '"></head>');
+  // The frame has no palette of its own: theme-tokens.css aliases --wsh-* to the --amin-* tokens that settings/appearance.js writes on the frame root.
+  html = html.replace('</head>', '<link rel="stylesheet" href="' + new URL('../../theme-tokens.css', import.meta.url).href + '"><link rel="stylesheet" href="' + new URL('./themes.css', import.meta.url).href + '"></head>');
   html=html.replace('</head>','<link rel="stylesheet" href="'+new URL('../../ui-status.css',import.meta.url).href+'"><link rel="stylesheet" href="'+new URL('../../settings/appearance-frame.css',import.meta.url).href+'"><link rel="stylesheet" href="'+new URL('../../ui/standard.css',import.meta.url).href+'"><link rel="stylesheet" href="'+new URL('./workbench-frame.css',import.meta.url).href+'"></head>');
   html = html.replace('<head>', '<head>' + bridge);
   const listener = async event => {

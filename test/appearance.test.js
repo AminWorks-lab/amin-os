@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAppearance,defaults,themeVariables,validate,resolveFloor,FLOOR_BUTTON_ORDER,normalizeFloorButtonOrder,mergeFloorToolbarDraft,defaultMoreButtons} from '../settings/appearance.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import {createAppearance,defaults,themeVariables,validate,resolveFloor,FLOOR_BUTTON_ORDER,normalizeFloorButtonOrder,mergeFloorToolbarDraft,defaultMoreButtons,PALETTES} from '../settings/appearance.js';
 import {drawerPlacement,clampPosition} from '../window-state.js';
 test('appearance follows global defaults while explicit app overrides persist across reloads',()=>{
  const ctx={extensionSettings:{other:{keep:true}},saveSettingsDebounced(){}};const service=createAppearance(()=>ctx);
@@ -21,7 +23,20 @@ test('configured wide desktop window stays inside desktop and mobile viewports',
 });
 test('unified palette drives map and status alongside shell font and surface settings',()=>{
  const vars=themeVariables({...defaults().global,theme:'paper',fontSize:17,radius:6,density:'compact'});
- assert.equal(vars['--amin-bg'],vars['--wsh-bg']);assert.equal(vars['--amin-bg'],vars['--dm-bg']);assert.equal(vars['--wsh-scheme'],'light');assert.equal(vars['--amin-font'],'17px');assert.equal(vars['--amin-gap'],'8px');assert.equal(vars['--wsh-radius'],'6px');
+ assert.equal(vars['--amin-scheme'],'light');assert.equal(vars['--amin-font'],'17px');assert.equal(vars['--amin-gap'],'8px');assert.equal(vars['--amin-radius'],'6px');
+ assert.deepEqual(Object.keys(vars).filter(k=>!k.startsWith('--amin-')),[],'status and map variables are CSS aliases, not a second palette');
+ for(const [id,p]of Object.entries(PALETTES))for(const key of ['danger','success','warning'])assert.match(p[key],/^#[0-9a-f]{6}$/i,`${id}.${key}`);
+ assert.equal(themeVariables({...defaults().global,theme:'rose'})['--amin-danger'],PALETTES.rose.danger);
+});
+test('every status and map colour variable is an alias of an --amin-* token',()=>{
+ const root=path.resolve(import.meta.dirname,'..'),tokens=fs.readFileSync(path.join(root,'theme-tokens.css'),'utf8');
+ const alias=new Map([...tokens.matchAll(/(--(?:wsh|dm)-[a-z-]+):([^;}]+)/g)].map(m=>[m[1],m[2].trim()]));
+ // Non-colour or decorative variables set elsewhere.
+ const own=new Set(['--wsh-font','--wsh-glass-opacity','--dm-viewport-width','--dm-viewport-height','--dm-road-water','--dm-road-portal','--dm-road-selected','--dm-selection']);
+ const css=['apps/map/style.css','apps/status/style.css','apps/status/themes.css','ui.css','ui-status.css','settings/appearance-frame.css','apps/status/workbench-frame.css'].map(f=>fs.readFileSync(path.join(root,f),'utf8')).join('\n');
+ for(const [,name]of css.matchAll(/var\((--(?:wsh|dm)-[a-z-]+)/g))if(!own.has(name))assert.ok(alias.has(name),`${name} has no alias`);
+ for(const [name,value]of alias)assert.match(value,/^var\(--amin-[a-z-]+\)$|^transparent$|^system-ui/,name);
+ assert.doesNotMatch(css,/--(?:wsh|dm)-(?:bg|card|text|accent):#/,'no independent palettes remain');
 });
 test('floor dimensions migrate, share defaults, and allow independent overrides',()=>{
  const state=validate({floor:{width:800,desktopHeight:60,mobileHeight:50}});

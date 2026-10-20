@@ -1,7 +1,24 @@
+/* Backdrop palettes override --amin-* tokens only while the start screen shows that
+   backdrop; the artwork colours below are decorative and independent of the theme.
+   Tile base colours come only from TILE_PALETTE in tile-colors.js (--amin-tile-base-color). */
+@layer amin-themes {
+  #amin-os {
+    --amin-fx-paper-grain:#946c3410;--amin-fx-paper-light:#fff5d9;--amin-fx-paper-dark:#b48b58;
+    --amin-fx-aurora-glow:#03aca875;--amin-fx-aurora-band:#103344;--amin-fx-aurora-deep:#031323;--amin-fx-aurora-mid:#143655;--amin-fx-aurora-night:#071525;
+    --amin-fx-image-shade:#0009;--amin-fx-image-fade:#0002;--amin-fx-tile-shadow:#0005;--amin-fx-tile-label:#fff;
+    --amin-fx-petal-light:#fff0f7;--amin-fx-petal-dark:#e992b7;--amin-fx-petal-glow:#ffbed970;
+  }
+  #amin-os .amin-home[data-backdrop=paper],
+  #amin-os .amin-drawer:has(.amin-home[data-backdrop=paper]:not([hidden])){--amin-text:#382619;--amin-muted:#533d28;--amin-card:#f5e7c9;--amin-control:#ead7b4;--amin-line:#76563380;--amin-accent:#634025;--amin-ink:#fff3d8;--amin-drawer-bg:#ddc69e}
+  #amin-os .amin-home[data-backdrop=aurora],
+  #amin-os .amin-drawer:has(.amin-home[data-backdrop=aurora]:not([hidden])){--amin-text:#f1f7ff;--amin-muted:#bacbdf;--amin-drawer-bg:var(--amin-fx-aurora-night)}
+  /* The Windows 10 start screen is dark (metro.css); the light window theme restores its palette. */
+  #amin-os[data-amin-theme=win10light] .amin-drawer:has(.amin-home[data-backdrop=none]:not([hidden])){--amin-bg:#f3f3f3;--amin-card:#fff;--amin-control:#e8e8e8;--amin-text:#202020;--amin-muted:#595959;--amin-line:#b6b6b6}
+}
 #amin-os .amin-home{position:relative;isolation:isolate}
 #amin-os .amin-desktop-backdrop{position:absolute;inset:0;z-index:-1;pointer-events:none;background-size:cover;background-position:center}
-#amin-os .amin-home[data-backdrop=paper] .amin-desktop-backdrop{background:repeating-linear-gradient(3deg,#946c3410 0 1px,transparent 1px 4px),radial-gradient(ellipse at 20% 15%,#fff5d9,#b48b58)}
-#amin-os .amin-home[data-backdrop=aurora] .amin-desktop-backdrop{background:radial-gradient(ellipse at 90% 10%,#03aca875,transparent 60%),linear-gradient(155deg,transparent 45%,#103344 45% 60%,transparent 60%),linear-gradient(30deg,#031323 30%,#143655 31%,#071525 70%)}
+#amin-os .amin-home[data-backdrop=paper] .amin-desktop-backdrop{background:repeating-linear-gradient(3deg,var(--amin-fx-paper-grain) 0 1px,transparent 1px 4px),radial-gradient(ellipse at 20% 15%,var(--amin-fx-paper-light),var(--amin-fx-paper-dark))}
+#amin-os .amin-home[data-backdrop=aurora] .amin-desktop-backdrop{background:radial-gradient(ellipse at 90% 10%,var(--amin-fx-aurora-glow),transparent 60%),linear-gradient(155deg,transparent 45%,var(--amin-fx-aurora-band) 45% 60%,transparent 60%),linear-gradient(30deg,var(--amin-fx-aurora-deep) 30%,var(--amin-fx-aurora-mid) 31%,var(--amin-fx-aurora-night) 70%)}
 #amin-os .amin-desktop-backdrop:after{content:'';position:absolute;inset:0;background:rgb(0 0 0 / var(--amin-wall-shade,0))}
 #amin-os .amin-home[data-backdrop=none] .amin-desktop-backdrop{display:none}
 #amin-os .amin-tile-stage{position:relative;isolation:isolate;flex-shrink:0;overflow:hidden}
@@ -10,37 +27,32 @@
 #amin-os .amin-desktop-fx video{width:100%;height:100%;object-fit:cover}
 #amin-os .amin-home-apps .amin-app-card .amin-app-icon,#amin-os .amin-home-apps .amin-app-card .amin-card-copy{position:relative;z-index:3}
 #amin-os .amin-home-apps .amin-app-card{isolation:auto}
-#amin-os .amin-home[data-tile-finish=layered] .amin-app-card{background:color-mix(in srgb,var(--amin-accent) var(--amin-tile-alpha),transparent)!important;border:var(--amin-tile-border) solid var(--amin-line)!important;box-shadow:0 3px var(--amin-tile-shadow) #0005!important;border-radius:var(--amin-radius)!important}
-#amin-os[data-desktop-style=win10] .amin-home[data-tile-finish=layered] .amin-app-card{background:color-mix(in srgb,var(--amin-win-color,#0078d4) var(--amin-tile-alpha),transparent)!important}
-#amin-os [data-target=map]{--amin-win-color:#007a78}#amin-os [data-target=status]{--amin-win-color:#8b42ae}#amin-os [data-target=reply]{--amin-win-color:#c04416}#amin-os [data-target=effects]{--amin-win-color:#b51d58}#amin-os [data-target=ai]{--amin-win-color:#355d99}#amin-os [data-target=settings]{--amin-win-color:#515151}
-#amin-os .amin-home-apps .amin-app-card[data-image=true]::before{content:'';position:absolute;inset:0;z-index:0;background-image:linear-gradient(0deg,#0009,#0002),var(--amin-tile-image);background-position:center;background-size:cover}
-#amin-os .amin-home-apps .amin-app-card[data-image=true]{color:#fff!important}
+#amin-os .amin-home[data-tile-finish=layered] .amin-app-card{border:var(--amin-tile-border) solid var(--amin-line)!important;box-shadow:0 3px var(--amin-tile-shadow) var(--amin-fx-tile-shadow)!important;border-radius:var(--amin-radius)!important}
+#amin-os .amin-home-apps .amin-app-card[data-image=true]::before{content:'';position:absolute;inset:0;z-index:0;background-image:linear-gradient(0deg,var(--amin-fx-image-shade),var(--amin-fx-image-fade)),var(--amin-tile-image);background-position:center;background-size:cover}
+#amin-os .amin-home-apps .amin-app-card[data-image=true]{color:var(--amin-fx-tile-label)!important}
 #amin-os .amin-home[data-tile-finish=layered] .amin-app-card:hover{opacity:1;filter:none}
 #amin-os .amin-media-status{font-size:12px;color:var(--amin-muted)}#amin-os .amin-media-status:empty{display:none}
-#amin-os .amin-petal{position:absolute;top:-24px;height:10px;border-radius:90% 0 90% 30%;background:linear-gradient(135deg,#fff0f7,#e992b7);box-shadow:0 0 3px #ffbed970;animation:amin-petal-fall var(--duration) var(--delay) linear infinite}
+#amin-os .amin-petal{position:absolute;top:-24px;height:10px;border-radius:90% 0 90% 30%;background:linear-gradient(135deg,var(--amin-fx-petal-light),var(--amin-fx-petal-dark));box-shadow:0 0 3px var(--amin-fx-petal-glow);animation:amin-petal-fall var(--duration) var(--delay) linear infinite}
 @keyframes amin-petal-fall{from{transform:translate(0,-20px) rotate(0)}to{transform:translate(var(--drift),calc(var(--fall-height,800px) + 40px)) rotate(500deg)}}
 #amin-os .amin-motion-paused .amin-petal{animation-play-state:paused}
 @media(prefers-reduced-motion:reduce){#amin-os .amin-petal{display:none}}
 
-#amin-os .amin-home[data-tile-finish=layered] .amin-app-card{color:var(--amin-ink)!important;filter:none;opacity:1}
-#amin-os[data-desktop-style=win10] .amin-home[data-tile-finish=layered] .amin-app-card{color:#fff!important}
-#amin-os .amin-home[data-tile-finish=layered] .amin-app-card[data-image=true]{color:#fff!important}
-#amin-os .amin-home[data-backdrop=paper]{--amin-text:#382619;--amin-muted:#533d28;--amin-card:#f5e7c9;--amin-control:#ead7b4;--amin-line:#76563380;--amin-accent:#634025;--amin-ink:#fff3d8}
-#amin-os .amin-home[data-backdrop=aurora]{--amin-text:#f1f7ff;--amin-muted:#bacbdf}
+#amin-os .amin-home[data-tile-finish=layered] .amin-app-card{filter:none;opacity:1}
+#amin-os .amin-home[data-tile-finish=layered] .amin-app-card[data-image=true]{color:var(--amin-fx-tile-label)!important}
 
-#amin-os .amin-drawer:has(.amin-home[data-backdrop=paper]:not([hidden])){--amin-text:#382619;--amin-muted:#533d28;--amin-card:#f5e7c9;--amin-control:#ead7b4;--amin-line:#76563380;--amin-accent:#634025;--amin-ink:#fff3d8;background:#ddc69e!important;color:#382619;color-scheme:light}
-#amin-os .amin-drawer:has(.amin-home[data-backdrop=aurora]:not([hidden])){--amin-text:#f1f7ff;--amin-muted:#bacbdf;background:#071525!important;color:#f1f7ff}
+#amin-os .amin-drawer:has(.amin-home[data-backdrop=paper]:not([hidden])){background:var(--amin-drawer-bg)!important;color:var(--amin-text);color-scheme:light}
+#amin-os .amin-drawer:has(.amin-home[data-backdrop=aurora]:not([hidden])){background:var(--amin-drawer-bg)!important;color:var(--amin-text)}
 
-#amin-os[data-amin-theme=win10light] .amin-drawer:has(.amin-home[data-backdrop=none]:not([hidden])){--amin-bg:#f3f3f3;--amin-card:#fff;--amin-control:#e8e8e8;--amin-text:#202020;--amin-muted:#595959;--amin-line:#b6b6b6;background:#f3f3f3!important;color:#202020;color-scheme:light}
+#amin-os[data-amin-theme=win10light] .amin-drawer:has(.amin-home[data-backdrop=none]:not([hidden])){background:var(--amin-bg)!important;color:var(--amin-text);color-scheme:light}
 #amin-os[data-amin-theme^=win10] :is(.amin-brand-icon,.amin-mark){color:var(--amin-text)!important}
 #amin-os[data-amin-theme=win10light] .amin-drawer{border-color:#b6b6b6}
 
 /* Per-tile colors apply consistently to classic/Win10 and flat/layered finishes. */
-#amin-os[data-amin-surface] .amin-home-apps .amin-app-card[data-tile-palette=true]{background:var(--amin-tile-base-color)!important;color:var(--amin-tile-custom-text,#fff)!important}
+#amin-os[data-amin-surface] .amin-home-apps .amin-app-card[data-tile-palette=true]{background:var(--amin-tile-base-color)!important;color:var(--amin-tile-custom-text,var(--amin-fx-tile-label))!important}
 #amin-os[data-amin-surface] .amin-home[data-tile-finish=layered] .amin-home-apps .amin-app-card[data-tile-palette=true]{background:color-mix(in srgb,var(--amin-tile-base-color) var(--amin-tile-alpha,100%),transparent)!important}
 #amin-os[data-amin-surface] .amin-home .amin-home-apps .amin-app-card[data-tile-palette=true][data-custom-background=true]{background:var(--amin-tile-custom-bg)!important}
-#amin-os[data-amin-surface] .amin-home .amin-home-apps .amin-app-card[data-tile-palette=true] .amin-app-icon{color:var(--amin-tile-custom-icon,var(--amin-tile-custom-text,#fff))!important}
-#amin-os[data-amin-surface] .amin-home .amin-home-apps .amin-app-card[data-tile-palette=true] .amin-card-copy{color:var(--amin-tile-custom-text,#fff)!important}
+#amin-os[data-amin-surface] .amin-home .amin-home-apps .amin-app-card[data-tile-palette=true] .amin-app-icon{color:var(--amin-tile-custom-icon,var(--amin-tile-custom-text,var(--amin-fx-tile-label)))!important}
+#amin-os[data-amin-surface] .amin-home .amin-home-apps .amin-app-card[data-tile-palette=true] .amin-card-copy{color:var(--amin-tile-custom-text,var(--amin-fx-tile-label))!important}
 #amin-os .amin-tile-colors{display:flex;flex-wrap:wrap;align-items:center;gap:10px;width:100%;min-width:0}
 #amin-os .amin-tile-color-row{display:flex;align-items:center;gap:8px;min-height:44px}
 #amin-os .amin-tile-color-row .amin-tile-field{display:flex;flex-direction:row;align-items:center;gap:6px}

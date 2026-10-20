@@ -13,7 +13,7 @@ export function installMessageButtons(createInlinePanel, preferences, root=docum
         b.addEventListener('click',()=>{if(panel)close();else{panel=createInlinePanel(host);dock.setOpen(true);b.setAttribute('aria-expanded','true');b.textContent='🗺 关闭地图';}});
         const dispose=()=>{close();dock.dispose();mounted.delete(element);};mounted.set(element,{host,dispose,close,dock});reflect();return dispose;
     }
-    function reflect(){const p=preferences.snapshot();for(const {host,close,dock}of mounted.values()){if(!p.messageButtons)close();dock.setVisible(p.messageButtons!==false);host.dataset.theme=p.theme;}}
+    function reflect(){const p=preferences.snapshot();for(const {host,close,dock}of mounted.values()){if(!p.messageButtons)close();dock.setVisible(p.messageButtons!==false);}}
     const managed=surface?.isManagedOwnershipRequired?.()===true;
     let unregister;
     if(managed){unregister=surface.registerParticipant({id:'dynamic-map/message-button',protocolVersion:surface.protocolVersion,didMount:({element})=>mount(element)});}

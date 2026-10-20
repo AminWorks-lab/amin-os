@@ -92,7 +92,6 @@ export function createPanel(store,persistence,preferences,options={}){
         const saved=prepareDocument(store.snapshot()),document=tab==='view'?saved:draft.snapshot();
         if(browseScope!==persistence.scope()){browseScope=persistence.scope();browsedMap=null;searchTerm='';navigationRevision++;}
         if(!document.maps[browsedMap]){browsedMap=document.activeMap;navigationRevision++;}const map=document.maps[browsedMap];
-        panel.dataset.theme=preferences.snapshot().theme;
         panel.querySelector('.dm-compact-location').textContent=locationPath(saved);
         for(const b of panel.querySelectorAll('[data-tab]')){const active=b.dataset.tab===tab;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;}
         page.setAttribute('aria-labelledby',panel.id+'-tab-'+tab);
