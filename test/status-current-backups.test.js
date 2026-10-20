@@ -92,7 +92,7 @@ async function application(f, runtime = { archiveStory: () => f.service.capture(
     mountWorldbookSources: () => ({ getValue: () => ({}), refresh() {}, dispose() {} }),
     sourceSettings: () => ({}), saveSourceSettings() {}, createMapLink: () => ({ element: new Element('div'), destroy() {} }),
     checkpointState() {}, compileRules: () => '', createRulesPage: () => new Element('section'),
-    installUpdateEntry() {}, boundWorldbook: () => 'book', createHistory: () => history,
+    createHistory: () => history,
     historyView: () => ({ element: new Element('section'), dispose() {} }), installFloorButtons: () => ({ refresh() {} }),
     ...backups, createTemplatesPage: options => { templateWrite = options.write; return new Element('section'); },
     copyPrompt() {}, buildUpdatePrompt() {}, generateStatus() {}, hostSetLocalVariable: f.setLocalVariable,

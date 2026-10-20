@@ -3,8 +3,6 @@ import {getAI} from '../../ai/service.js';
 import {getStore,chatIdentity} from './service.js';
 import {GROUPS,LABELS,FIELDS,LINKS,entity,uid,clone,deleteEntity,rankMetrics} from './model.js';
 import {generate,followPrompt} from './ai.js';
-import {syncWorldbook} from './lorebook.js';
-import {isIndependent} from '../story-state/access.js';
 const el=(tag,text='',cls='')=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e;};
 const show=v=>v===null||v===undefined||v===''?'未明确':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 const storyReference=m=>JSON.stringify([m?.extra?.amin_story_v2??null,m?.swipe_info?.[m.swipe_id??0]?.extra?.amin_story_v2??null]);
@@ -105,7 +103,7 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
   const doc=api.read(),e=doc[group][id],c=draftStart('锁定字段 · '+e.name),all=api.locks(),checks={};
   c.append(el('p','锁定后AI和日常变量更新不得修改这些字段。你仍可通过手动编辑明确修改。','amin-meta'));
   const fields=grid(c);for(const k of Object.keys(e))checks[k]=check(fields,FIELDS[group][k]??LINKS[group][k]??'指标',all.includes([group,id,k].join('.')));
-  const t=api.capture(),tools=toolbar(c);btn(tools,'保存锁定设置',async()=>{api.check(t);await api.setLocks([...all.filter(p=>!p.startsWith(group+'.'+id+'.')),...Object.entries(checks).filter(([,i])=>i.checked).map(([k])=>[group,id,k].join('.'))]);editing=false;render();say(isIndependent(api.context())?'锁定设置已保存；后续剧情更新会读取当前锁定规则。':'锁定设置已保存；日常提示词请重新同步世界书');},true);btn(tools,'取消',cancelEdit);
+  const t=api.capture(),tools=toolbar(c);btn(tools,'保存锁定设置',async()=>{api.check(t);await api.setLocks([...all.filter(p=>!p.startsWith(group+'.'+id+'.')),...Object.entries(checks).filter(([,i])=>i.checked).map(([k])=>[group,id,k].join('.'))]);editing=false;render();say('锁定设置已保存；后续剧情更新会读取当前锁定规则。');},true);btn(tools,'取消',cancelEdit);
  }
  function editEntity(group,id){
   const token=api.capture(),doc=token.doc,original=id?doc[group][id]:entity(group,''),f=draftStart((id?'编辑':'新增')+LABELS[group]),inputs={};
@@ -169,17 +167,12 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
    sources.append(el('p','仅使用已加载的聊天消息。世界书读取不判断关键词、概率等激活策略。','amin-meta'));
   const advanced=details(body,'高级生成规则'),policy=grid(advanced),allowInference=check(policy,'允许合理推演（必须标记）',cfg.allowInference),allowNew=check(policy,'剧情更新允许新增主体',cfg.allowNew);
   const rules={};for(const[k,label]of [['generation','生成／补充规则'],['update','剧情更新规则'],['assessment','评估规则']]){const c=card(label,advanced);rules[k+'Enabled']=check(c,'启用'+label,cfg[k+'Enabled']);rules[k+'Rules']=field(c,label+'要求',cfg[k+'Rules'],true);}
-  const independent=isIndependent(api.context()),follow=details(body,independent?'剧情更新协议':'日常变量联动与世界书同步'),followEnabled=independent?{checked:cfg.follow}:check(follow,'启用日常剧情变量更新（保存后需同步世界书）',cfg.follow);
-  if(independent){
-   follow.append(el('p','插件直接提供统一 amin_update 更新规则。是否允许势力更新由“联动更新”中的模块与读写权限控制；这里复制当前实际生效的规则。','amin-meta'),el('p','无需同步到世界书。原有小白规则条目由你自行管理，插件不会改写这些条目。','amin-meta'));
-  }else{
-   const mode=api.context()?.extensionSettings?.LittleWhiteBox?.variablesMode;follow.append(el('p','小白X变量管理2.0 · 当前模式：'+(mode??'未检测到')+'。按钮生成与手动编辑不依赖此联动开关。','amin-meta'));
-   follow.append(el('p','先保存本页设置，再手动同步已保存规则。同步仅修改本应用的世界书条目；关闭联动后再次同步会禁用该条目。锁定或规则修改后也需重新同步。','amin-meta'),el('p','多个角色共用世界书时会共用最后同步的规则，请使用独立世界书。','amin-meta'));
-  }
-  const followTools=toolbar(follow);btn(followTools,independent?'复制当前统一更新规则':'复制已保存的更新提示词',async()=>{const text=followPrompt(api.config(),api.locks(),api.context());if(globalThis.navigator?.clipboard?.writeText){await navigator.clipboard.writeText(text);say('已复制，不会自动发送');}else{field(follow,'手动复制',text,true);}});
-  if(!independent)btn(followTools,'同步已保存规则到世界书',async()=>{api.check(token);const r=await syncWorldbook(api);say(r.name+'：'+r.action+(r.warning?' · '+r.warning:''));});
+  // The legacy follow switch is kept in saved settings but no longer shown.
+  const follow=details(body,'剧情更新协议'),followEnabled={checked:cfg.follow};
+  follow.append(el('p','插件直接提供统一 amin_update 更新规则。是否允许势力更新由“联动更新”中的模块与读写权限控制；这里复制当前实际生效的规则。','amin-meta'),el('p','无需同步到世界书。原有小白规则条目由你自行管理，插件不会改写这些条目。','amin-meta'));
+  const followTools=toolbar(follow);btn(followTools,'复制当前统一更新规则',async()=>{const text=followPrompt(api.context());if(globalThis.navigator?.clipboard?.writeText){await navigator.clipboard.writeText(text);say('已复制，不会自动发送');}else{field(follow,'手动复制',text,true);}});
   const tools=toolbar(body);
-  btn(tools,'保存生成与规则设置',async()=>{api.check(token);if(readWorldbooks.checked&&!catalogReady)throw Error('世界书列表尚未成功加载，请刷新或关闭世界书读取');const next={...cfg,scope:scope.value,detail:detail.value,groups:GROUPS.filter(g=>groups[g].checked),includeCharacter:includeCharacter.checked,includeChat:includeChat.checked,readWorldbooks:readWorldbooks.checked,selectedBooks:[...selectedBooks],books:'',allowInference:allowInference.checked,allowNew:allowNew.checked,follow:followEnabled.checked};if(!next.groups.length)throw Error('至少选择一种资料类型');for(const[k,input]of Object.entries(rules))next[k]=k.endsWith('Enabled')?input.checked:input.value;await api.saveConfig(next);editing=false;selected='overview';render();say(independent?'规则已保存；后续剧情更新使用统一协议与当前权限。':'规则已保存；日常联动请另行同步世界书');},true);
+  btn(tools,'保存生成与规则设置',async()=>{api.check(token);if(readWorldbooks.checked&&!catalogReady)throw Error('世界书列表尚未成功加载，请刷新或关闭世界书读取');const next={...cfg,scope:scope.value,detail:detail.value,groups:GROUPS.filter(g=>groups[g].checked),includeCharacter:includeCharacter.checked,includeChat:includeChat.checked,readWorldbooks:readWorldbooks.checked,selectedBooks:[...selectedBooks],books:'',allowInference:allowInference.checked,allowNew:allowNew.checked,follow:followEnabled.checked};if(!next.groups.length)throw Error('至少选择一种资料类型');for(const[k,input]of Object.entries(rules))next[k]=k.endsWith('Enabled')?input.checked:input.value;await api.saveConfig(next);editing=false;selected='overview';render();say('规则已保存；后续剧情更新使用统一协议与当前权限。');},true);
   btn(tools,'取消',()=>{selected='overview';cancelEdit();});
  }
  function render(){

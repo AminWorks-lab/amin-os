@@ -66,13 +66,13 @@ export function compileRules(ctx, settingsKey, scope, expandNames = true) {
   return text;
 }
 
-export function createRulesPage({ context, settingsKey, node, check, syncWorldbook, isUnified = () => false }) {
+export function createRulesPage({ context, settingsKey, node, check, isUnified = () => false }) {
   const page = node('section', undefined, 'wsh-generation-page wsh-rules-page');
   const cardKey = ruleCardKey(context());
   let collection = 'character';
   let rules = readRules(context(), settingsKey);
   const initialNotice = () => isUnified() ? '修改自动保存；允许模型更新世界状态时，统一条目动态读取启用的更新规则。' : '修改自动保存；生成和更新会合并全体规则与当前角色规则。';
-  const savedNotice = () => isUnified() ? '已保存。生成和更新立即使用；统一联动会动态读取启用的更新规则，可到“联动更新”查看条目预览。' : '已保存。生成和更新立即使用；日常聊天需点击“同步到世界书”更新已写入的规则。';
+  const savedNotice = () => isUnified() ? '已保存。生成和更新立即使用；统一联动会动态读取启用的更新规则，可到“联动更新”查看条目预览。' : '已保存。生成和更新立即使用；世界状态加入统一联动后，Amin 更新规则会附带启用的更新规则。';
   let lastInitialNotice=initialNotice(),lastSavedNotice=savedNotice();
   const status = node('p', lastInitialNotice, 'wsh-quick-status'); status.setAttribute('role', 'status');
   const collectionLabel = node('label', '规则分类'), collectionPicker = node('select', undefined, 'text_pole');
@@ -100,8 +100,6 @@ export function createRulesPage({ context, settingsKey, node, check, syncWorldbo
     rules.push({ id, title: sample ? '好感度规则示例' : '新规则', content: sample ? AFFINITY_RULE : '', scope: 'both', enabled: true }); save(); render(id);
   }
   action('＋ 新建规则', () => add()); action('添加好感度示例', () => add(true));
-  const sync = action('同步到世界书', () => {});
-  sync.onclick = async () => { sync.disabled = true; try { check(); save(); status.textContent = await syncWorldbook(); } catch (e) { status.textContent = e.message; } finally { sync.disabled = false; } };
   function render(openId) {
     list.replaceChildren();
     if (!rules.length) list.append(node('p', '暂无规则。新建自己的规则，或添加示例后修改。', 'wsh-note'));

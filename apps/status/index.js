@@ -8,7 +8,6 @@ import {sourceSettings,saveSourceSettings} from '../worldbook-sources.js';
 import { createMapLink } from './map-link.js';
 import { checkpointState } from './state-checkpoint.js';
 import { compileRules, createRulesPage } from './rules.js';
-import { installUpdateEntry, boundWorldbook } from './lorebook.js';
 import { createHistory } from './history.js';
 import { historyView, installFloorButtons } from './history-ui.js';
 import { captureStoryBackup, recordStoryBackup, storyBackups, usesStoryStorage, usesCurrentStoryStorage } from './story-backups.js';
@@ -138,32 +137,8 @@ function createDisplaySettings() {
     ? '楼层记录由消息引用外置剧情状态，打开历史楼层时按需读取。'
     : '楼层记录随当前聊天自动保存。';
   label.append(input); page.append(node('h3', '显示与记录设置'), label, node('p', '最新楼层打开当前状态工作台，旧楼层打开只读记录。' + storageNote), node('p', historyNote));
-  const appearanceLink=node('button','打开设置 · 统一外观','menu_button');appearanceLink.type='button';appearanceLink.onclick=()=>globalThis.AminOS?.openApp('settings');page.append(appearanceLink,createLorebookControl());
+  const appearanceLink=node('button','打开设置 · 统一外观','menu_button');appearanceLink.type='button';appearanceLink.onclick=()=>globalThis.AminOS?.openApp('settings');page.append(appearanceLink);
   return page;
-}
-let writingLorebook = false;
-async function writeUpdateWorldbook() {
-  if (linkageEnabled()) throw Error('世界状态更新已由统一联动接管，请在“联动更新”中安装或更新统一世界书条目。将世界状态移出联动后可恢复旧入口。');
-  if (writingLorebook) throw Error('正在写入世界书，请稍候。');
-  const id = identity(); writingLorebook = true;
-  try {
-    const result = await installUpdateEntry({ context, check: () => checkIdentity(id), extraPrompt: compileRules(context(), KEY, 'update', false) });
-    const message = `世界书「${result.name}」：${result.action}“世界状态栏 · 变量更新规则”（UID ${result.uid}）。` + (result.warning || '已设为启用的常驻条目。自动处理模型更新需启用小白X变量管理 2.0。');
-    notify(message, !!result.warning); return message;
-  } finally { writingLorebook = false; }
-}
-function createLorebookControl() {
-  const section = node('section', undefined, 'wsh-lorebook-control');
-  const displayedIdentity = identity();
-  let name; try { name = boundWorldbook(context()); } catch { name = '未绑定，请先在角色卡中绑定主世界书'; }
-  const button = node('button', '写入世界书更新提示词', 'menu_button'); button.type = 'button'; button.dataset.legacyUpdateEntry='true';
-  const result = node('p', '', 'wsh-quick-status'); result.setAttribute('role', 'status');
-  button.onclick = async () => { button.disabled = true; try { checkIdentity(displayedIdentity); if (boundWorldbook(context()) !== name) throw Error('世界书绑定已改变，请重新打开窗口后再写入。'); result.textContent = '正在读取并写入绑定世界书…'; result.textContent = await writeUpdateWorldbook(); } catch (e) { result.textContent = e.message; } finally { button.disabled = false; } };
-  const managed = node('p', '', 'wsh-note'); managed.dataset.linkageOwnership='true';
-  const openLinkage=node('button','打开联动更新','menu_button');openLinkage.type='button';openLinkage.onclick=()=>selectHudPage?.('linkage');
-  section.append(node('h3', '变量更新提示词'), node('p', '当前主世界书：' + name), managed, button, openLinkage, result,
-    node('p', '添加常驻条目，动态读取当前“状态栏”变量。重复点击更新本插件条目。其他共用这本世界书的角色也会使用该规则。', 'wsh-note'));
-  return section;
 }
 function closeHud() {
   hudEpoch++;
@@ -233,8 +208,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   history.sync();
   const recordsView = historyView({ history, node });
   const historyPage = recordsView.element; historyPage.id = 'wsh-history-page';
-  const rulesPage = createRulesPage({ context, settingsKey: KEY, node, check: () => {checkIdentity(id);validate();}, syncWorldbook: writeUpdateWorldbook, isUnified:linkageEnabled }); rulesPage.id = 'wsh-rules-page';
-  for(const button of rulesPage.querySelectorAll('button'))if(button.textContent==='同步到世界书')button.dataset.legacyUpdateEntry='true';
+  const rulesPage = createRulesPage({ context, settingsKey: KEY, node, check: () => {checkIdentity(id);validate();}, isUnified:linkageEnabled }); rulesPage.id = 'wsh-rules-page';
   const displayPage = createDisplaySettings(); displayPage.id = 'wsh-display-page';
   const linkagePage=node('section',undefined,'wsh-generation-page wsh-linkage-page');linkagePage.id='wsh-linkage-page';
   const linkageApi=getLinkageService();
@@ -242,8 +216,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   function refreshLegacyControls(){
     const enabled=linkageEnabled();
     rulesPage.refreshLinkageMode?.();
-    for(const button of dialog.querySelectorAll('[data-legacy-update-entry]')){button.disabled=enabled;button.title=enabled?'已由联动更新接管；将世界状态移出联动后可使用此入口。':'';}
-    for(const message of dialog.querySelectorAll('[data-linkage-ownership]'))message.textContent=enabled?'世界状态已由统一联动接管。请在“联动更新”中管理规则与世界书条目。':'世界状态未加入统一联动，可使用原世界状态更新入口。';
+    for(const message of dialog.querySelectorAll('[data-linkage-ownership]'))message.textContent=enabled?'世界状态已由统一联动接管。请在“联动更新”中管理规则与世界书条目。':'世界状态未加入统一联动，聊天中不会自动更新；可用“按当前剧情更新值”手动更新。';
     for(const button of dialog.querySelectorAll('[data-linkage-quick-update]'))button.textContent='按现有剧情更新状态';
     for(const button of dialog.querySelectorAll('[data-linkage-quick-copy]'))button.textContent=isIndependent(context())?'复制 Amin 更新提示词':enabled?'查看统一更新提示词':'复制更新提示词';
   }
@@ -528,7 +501,6 @@ function mount() {
     }
   });
   action('恢复备份', restoreBackup);
-  const legacyWorldbook=action('写入世界书更新提示词', async () => { report.textContent = await writeUpdateWorldbook(); });legacyWorldbook.dataset.legacyUpdateEntry='true';legacyWorldbook.hidden=isIndependent(context());
   const linkageOwnership=node('p','','wsh-note');linkageOwnership.dataset.linkageOwnership='true';generationForm.append(linkageOwnership);
   generationForm.append(actions, report, node('p', '独立接口使用 Chat Completions 格式，需要允许浏览器跨域。生成与编辑共用当前聊天的状态栏资料。', 'wsh-note'));
   formHome.append(generationForm);
