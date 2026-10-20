@@ -4,6 +4,7 @@ import {launchTarget,waitForService,dispatchLaunch} from './launcher.js';
 import {isCloud,BASE_VOICE} from './cloud.js';
 import {getPlayer,scopedPlayer,settings,saveSettings,health} from './service.js';
 import {previewSections,profiles} from './dialogue.js';
+import {contextLine} from '../shared/context-line.js';
 
 export function mount(target,{readMessage=null,source='app'}={}){
  const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
@@ -13,7 +14,7 @@ export function mount(target,{readMessage=null,source='app'}={}){
  const card=(parent,title,description)=>{const box=el('section',null,'amin-card amin-stack');box.append(el('h3',title,'amin-section-heading'));if(description)box.append(el('p',description,'amin-meta'));parent.append(box);return box;};
  const grid=parent=>{const e=el('div',null,'amin-form-grid');parent.append(e);return e;};
  const button=(parent,title,fn)=>{const b=el('button',title);b.type='button';b.onclick=fn;parent.append(b);return b;};
- const root=el('div',null,'amin-page amin-app-page amin-tts'),heading=el('header',null,'amin-context');heading.append(el('h2','语音朗读'),el('p',readMessage?'本层正文 · 对话和旁白分别调整，按段生成和保存。':'输入文本，分别调整对话和旁白，并保存生成的语音。'));root.append(heading);
+ const root=el('div',null,'amin-page amin-app-page amin-tts'),heading=el('header',null,'amin-context');heading.append(el('p',contextLine(globalThis.SillyTavern?.getContext?.(),readMessage?'本层正文':'自由文本','对话与旁白分别调整，生成后可保存')));root.append(heading);
  const nav=el('nav',null,'amin-tabs');nav.setAttribute('aria-label','语音应用分类');root.append(nav);
  const status=el('p',null,'amin-result');status.setAttribute('role','status');status.setAttribute('aria-live','polite');root.append(status);
  const report=(text,state='success')=>{status.textContent=text;status.dataset.state=state;};

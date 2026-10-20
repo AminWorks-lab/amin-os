@@ -20,6 +20,7 @@ import { getSharedService as getLinkageService } from '../linkage/service.js';
 import { managesModule, mayWrite } from '../linkage/policy.js';
 import { buildDataPrompt, buildUpdateRules } from '../linkage/prompt.js';
 import { getState2Runtime } from '../state2/runtime.js';
+import { contextLine } from '../shared/context-line.js';
 
 const KEY = 'world_status_hud_v1';
 const context = () => SillyTavern.getContext();
@@ -39,7 +40,6 @@ async function openEmbedded(page = selectedPage){
   return showHud(page,{target:embeddedMount,embedded:true});
 }
 let running = null;
-let sessionKey = '';
 let hudPanel = null;
 let hudEpoch = 0;
 let generationForm, formHome, sourceHost, sourcePicker, sourceIdentity, restorePanel;
@@ -172,6 +172,9 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   const title=node('strong','世界状态 · 当前剧情');title.title=context().characters[context().characterId].name+' · 当前状态工作台';
   heading.append(title);
   if (!embedded) heading.append(close);
+  // In the OS window the window title already names the app; the context line carries chat and scope.
+  heading.hidden = embedded;
+  const contextNote = node('p', contextLine(context(), '当前剧情状态', '历史快照仅供浏览'), 'wsh-workbench-note amin-context');
   const tabs = node('div', undefined, 'wsh-tabs'); tabs.setAttribute('role', 'tablist');
   const stateTab = node('button', '状态栏', 'wsh-tab');
   const generateTab = node('button', '生成设置', 'wsh-tab');
@@ -230,6 +233,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   historyTab.onclick = () => selectPage('history'); displayTab.onclick = () => selectPage('display');
   linkageTab.onclick=()=>selectPage('linkage');
   function selectPage(value) {
+    contextNote.textContent = contextLine(context(), '当前剧情状态', '历史快照仅供浏览');
     if (value === undefined) value = selectedPage;
     selectedPage = ['generate', 'templates', 'history', 'display', 'rules', 'linkage'].includes(value) ? value : 'state';
     if (selectedPage === 'state' && readyHtml && !frameLoaded) { frame.srcdoc = readyHtml; frameLoaded = true; }
@@ -330,7 +334,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   };
   quickActions.append(update, copy);
   const mapLink=createMapLink({check:()=>{checkIdentity(id);validate();}});
-  dialog.append(heading,node('p','编辑将更新当前剧情状态，历史快照仅供浏览。','wsh-workbench-note'), tabs, quickActions, quickStatus, body);
+  dialog.append(heading, contextNote, tabs, quickActions, quickStatus, body);
   displayPage.append(mapLink.element);
   if(embedded)target.replaceChildren();
   target.append(dialog);
@@ -419,7 +423,6 @@ function mount() {
   function save() {
     const s = {};
     for (const [k,input] of Object.entries(fields)) {
-      if (k === 'apiKey') { sessionKey = input.value; continue; }
       s[k] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value;
     }
     if(!sourcePicker)throw Error('请先打开单角色聊天');const sources=sourcePicker.getValue();saveSourceSettings(context(),'status',sources);
@@ -441,7 +444,7 @@ function mount() {
     running = new AbortController(); report.textContent = '正在读取设定并请求模型…';
     generateButton.disabled = replaceButton.disabled = saveButton.disabled = true;
     try {
-      const result = await generateStatus({ api: { baseUrl: s.baseUrl, apiKey: sessionKey, model: s.model, timeoutMs: 120000, maxTokens: s.maxTokens }, mode,
+      const result = await generateStatus({ api: { timeoutMs: 120000, maxTokens: s.maxTokens }, mode,
         includePersona:s.includePersona===true,includeCharacter:s.includeCharacter,readWorldbooks:s.readWorldbooks,selectedBooks:s.selectedBooks,legacyBindings:true,includeGlobalBooks:s.includeGlobalBooks,extraBooks:s.extraBooks,
         allowTypeChange:s.allowTypeChange===true, updateNote: s.updateNote || '', instructions: s.instructions || '根据世界观设计简洁实用的状态栏。', statusRules: compileRules(context(), KEY, mode === 'update' ? 'update' : 'generate') }, running.signal);
       report.textContent = result.ok ? (result.changed ? '操作完成，可打开状态栏查看。' : '没有需要修改的内容。') +

@@ -87,12 +87,14 @@ https://github.com/agentgeleven-lab/sillytavern-dynamic-map
 
 ## 检查
 
+在 Amin os 仓库根目录运行：
+
 ```sh
 npm run check
 npm test
 ```
 
-浏览器交互回归使用可选开发工具 Playwright 和 Edge：安装 Playwright 后运行 npm run test:browser；也可设置 DM_PLAYWRIGHT_PATH 指向其 index.mjs，DM_BROWSER_CHANNEL 默认 msedge。此测试启动独立无头浏览器和本地服务器，使用模拟角色、世界书与模型，不发送真实模型请求。
+浏览器交互回归使用可选开发工具 Playwright 和 Edge：安装 Playwright 后运行 node apps/map/scripts/browser-smoke.mjs；也可设置 DM_PLAYWRIGHT_PATH 指向其 index.mjs，DM_BROWSER_CHANNEL 默认 msedge。此测试启动独立无头浏览器和本地服务器，使用模拟角色、世界书与模型，不发送真实模型请求。
 
 独立演示：在插件目录运行 python -m http.server 8765 --bind 127.0.0.1，再打开 http://127.0.0.1:8765/demo.html。演示页模拟聊天保存；验证范围见 [VALIDATION.md](../VALIDATION.md)。
 

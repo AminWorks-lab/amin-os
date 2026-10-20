@@ -1,5 +1,6 @@
 import { KEY, readStore, readInventory, change as applyInventory } from '../../inventory/model.js';
 import { KEY as CHARACTERS_KEY, readCharacters, validId } from '../../characters/model.js';
+import { renderContract } from '../contract.js';
 
 const fields = {
     'create-item': ['name', 'ownerId', 'quantity', 'equipped', 'notes', 'wear', 'condition'],
@@ -12,9 +13,27 @@ const fields = {
 };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+const spec = {
+    notes: 'target=物品或余额ID。wear={slot:""|head|face|neck|torso|hands|waist|legs|feet|back|accessory,layer:base|middle|outer,description?}；condition={wetness?,dirt?,damage?:0..100 int,notes?}；金额≤10亿、≤6位小数。有部位的衣物逐件登记(quantity≤1)；同人同部位同层仅一件装备，换装先卸后穿。',
+    actions: [
+        { name: 'create-item', args: 'name,ownerId,quantity:int≥0,equipped?:bool,notes?,wear?,condition?' },
+        { name: 'save-item', args: 'name?,quantity?,equipped?,notes?,wear?,condition?' },
+        { name: 'consume-item', args: 'quantity:int>0' },
+        { name: 'transfer-item', args: 'quantity:int>0,toOwnerId,newId?', note: '普通物品需 newId；衣物保留原ID不给 newId' },
+        { name: 'equip-item', args: 'equipped:bool' },
+        { name: 'set-condition', args: 'condition' },
+        { name: 'delete-item', note: '仅数量为0', advanced: true },
+        { name: 'create-balance', args: 'name,ownerId,amount:num≥0,unit?,notes?' },
+        { name: 'save-balance', args: 'name?,amount?,unit?,notes?', advanced: true },
+        { name: 'adjust-balance', args: 'delta:num≠0' },
+        { name: 'transfer-balance', args: 'amount:num>0,toOwnerId,newId?', note: '对方无该资源账户时需 newId' },
+        { name: 'delete-balance', note: '仅余额为0', advanced: true },
+    ],
+};
+
 export const adapter = {
     id: 'inventory', label: '背包、穿戴与账本', paths: [[KEY], [CHARACTERS_KEY]],
-    contract: 'target=稳定物品/资源ID。create-item: data={name,ownerId,quantity:非负整数,equipped?:boolean,notes?,wear?:{slot:""|"head"|"face"|"neck"|"torso"|"hands"|"waist"|"legs"|"feet"|"back"|"accessory",layer:"base"|"middle"|"outer",description?},condition?:{wetness:0..100整数,dirt:0..100整数,damage:0..100整数,notes?}}；save-item: 同上可选字段，不得修改ownerId；consume-item: {quantity:正整数}；transfer-item: {quantity,toOwnerId,newId?}；equip-item: {equipped:boolean}；set-condition: {condition:{wetness?,dirt?,damage?,notes?}}；delete-item: {}仅零数量。create-balance: {name,ownerId,amount:非负数,unit?,notes?}；save-balance: 同上可选字段，不得修改ownerId；adjust-balance: {delta:非零收支数字}；transfer-balance: {amount:正数,toOwnerId,newId?}；delete-balance: {}仅零余额。金额最多六位小数且0..1000000000。创建target/newId必须显式安全ID，转交普通物品或创建目标资源账户需要newId。指定部位衣物须逐件登记(quantity<=1)，转交保留原itemID；同人物同部位同层次仅一件装备，换装先卸下后穿上。状态不得凭空生成，依据已发生剧情。',
+    spec, contract: renderContract(spec),
     read: ctx => readInventory(ctx),
     apply(ctx, change, { operationId, now }) {
         const allowed = fields[change.action], data = change.data;

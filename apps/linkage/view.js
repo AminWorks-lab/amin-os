@@ -3,6 +3,7 @@ import { getSharedService } from './service.js';
 import { installUnifiedWorldbook, inspectUnifiedWorldbook } from './lorebook.js';
 import { uuid } from '../../uuid.js';
 import { renderContextBudgetControls, renderContextBudgetReport } from './context-budget-view.js';
+import {contextLine} from '../shared/context-line.js';
 
 const mounted = new WeakMap();
 const clone = value => structuredClone(value);
@@ -116,6 +117,8 @@ export function mount(target, options = {}) {
             control.addEventListener('change', () => { draft.mode = control.value; markDraft(); }); inputNodes.push(control);
             row.append(make('span', '模型更新方式'), control, make('small', '自动模式也会校验整组变更；发生错误时保留原资料。')); settingsPanel.append(row);
         }
+        const advanced = checkbox('发送高级动作说明', draft.advancedActions === true, value => { draft.advancedActions = value; }); inputNodes.push(advanced.input);
+        settingsPanel.append(advanced.row, make('p', '默认只发送常用动作以节省上下文；开启后附带阈值规则、日程、属性绑定、周期结算、编年史草稿等不常用动作的说明。关闭时模型输出的这些动作仍会照常校验。', 'amin-meta'));
         const sourceRow = make('label', '', 'amin-field'), sourceControl = make('select'); sourceControl.setAttribute('aria-label', '资料发送来源');
         for (const [value, label] of [['amin', 'Amin 插入消息上下文'], ['external', '预设／世界书自行提供']]) { const option = make('option', label); option.value = value; sourceControl.append(option); }
         sourceControl.value = draft.dataSource === 'external' ? 'external' : 'amin';
@@ -384,7 +387,7 @@ export function mount(target, options = {}) {
             if (!saved || (changed && !settingsDirty)) { saved = clone(current); draft = clone(current); draft.modules ??= {}; settingsDirty = false; renderSettings(); }
             else if (changed) { saved = clone(current); markDraft(); }
             else if(modulesChanged)renderSettings();
-            context.textContent = `统一联动 · 当前聊天 · ${current.enabled ? independent() ? 'Amin 独立剧情资料' : '小白变量 2.0' : '尚未启用'} · 已选 ${moduleRows.filter(row => row.enabled).length} 个模块`;
+            context.textContent = contextLine(getContext(), current.enabled ? independent() ? 'Amin 独立剧情资料' : '小白变量 2.0' : '联动尚未启用', `已选 ${moduleRows.filter(row => row.enabled).length} 个模块`);
             renderNativeState2(); renderDiagnostics(); refreshPrompt(); refreshData(savedDataReport); renderReview(); renderSuggestions(); renderReferences(); retryPanel.replaceChildren();retryPanel.hidden=!api.dirty();
             budgetReportPanel.replaceChildren(); budgetReportPanel.hidden = typeof api.dataPromptReport !== 'function';
             if (!budgetReportPanel.hidden) renderContextBudgetReport(budgetReportPanel, savedDataReport, { document });
@@ -393,7 +396,7 @@ export function mount(target, options = {}) {
             if(serviceStatus!==lastServiceStatus){lastServiceStatus=serviceStatus;if(!localBusy){message='';failed=false;}}
             if (!message) { notice.textContent = serviceStatus; notice.dataset.state = busy() ? 'busy' : ''; }
             else say(message, failed);
-        } catch (error) { unavailable = true; context.textContent = '统一联动 · 当前聊天不可用'; say(error?.message ?? String(error), true); }
+        } catch (error) { unavailable = true; context.textContent = contextLine(getContext(), '联动不可用'); say(error?.message ?? String(error), true); }
         updateLocks();
         for (const element of page.querySelectorAll?.('[data-linkage-invalid]') ?? []) element.disabled = true;
     }

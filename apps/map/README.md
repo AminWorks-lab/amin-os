@@ -102,6 +102,8 @@ https://github.com/agentgeleven-lab/sillytavern-dynamic-map
 | [地图生成规范](docs/地图生成规范.md) | AI 输出结构与生成约束 |
 | [验证记录](VALIDATION.md) | 自动检查范围与运行验证限制 |
 
+在 Amin os 仓库根目录运行：
+
 ```sh
 npm run check
 npm test
@@ -120,7 +122,7 @@ python -m http.server 8765 --bind 127.0.0.1
 
 打开 `http://127.0.0.1:8765/demo.html`。演示使用模拟聊天保存，不调用真实模型。
 
-可选浏览器回归使用 Playwright：`npm run test:browser`。运行条件见[使用指南](docs/USAGE.md#检查)。
+可选浏览器回归使用 Playwright：`node apps/map/scripts/browser-smoke.mjs`。运行条件见[使用指南](docs/USAGE.md#检查)。
 
 </details>
 

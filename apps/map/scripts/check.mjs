@@ -18,6 +18,5 @@ async function walk(dir) {
     }
 }
 await walk(root);
-const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
-await access(join(root, manifest.js)); await access(join(root, manifest.css));
-console.log(`PASS: ${count} JS modules syntax, relative imports, JSON and manifest entry points`);
+await access(join(root, 'index.js')); await access(join(root, 'style.css'));
+console.log(`PASS: ${count} JS modules syntax, relative imports, JSON and entry points`);

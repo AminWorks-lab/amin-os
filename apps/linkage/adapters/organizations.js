@@ -1,6 +1,7 @@
 import { ROOT, GROUPS, FIELDS, LINKS, entity, read, validate, enforceLocks, diff } from '../../organizations/model.js';
 import '../../organizations/story-state.js';
 import { isIndependent, readStoryRoot, storyRootPath, legacyModule } from '../../story-state/access.js';
+import { renderContract } from '../contract.js';
 
 const META = 'amin_os_organizations_v1', HISTORY = 'amin_os_organizations_history_v1';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -25,10 +26,18 @@ function historyPatch(ctx, doc, assessment, timestamp) {
     return [{ path: [HISTORY], value: next }];
 }
 
+const spec = {
+    notes: 'target=主体ID；group:organizations|alliances|regions；metrics=[{key,label,unit,source,kind:number|range|text|unknown,value}]；relations/members/controllers=[{organization:组织ID,role,note}]；地区 parent=地区ID|null。locked 路径不可改，不删除或整体替换。',
+    actions: [
+        { name: 'create', args: 'group,fields:{name,...}' },
+        { name: 'update', args: 'group,fields:{待改字段}', note: '仅既有主体，不换ID或group' },
+    ],
+};
+
 export const adapter = {
     id: 'organizations', label: '势力资料',
     paths: [['variables', ROOT], [META], [HISTORY]],
-    contract: 'create/update: target=全局唯一主体 ID, data={group:"organizations"|"alliances"|"regions",fields:{待建立/修改字段}}。create 必须含 fields.name；update 仅修改既有主体，不更换 ID/group。文本字段沿用当前主体，metrics 使用 {key,label,unit,source,kind:"number"|"range"|"text"|"unknown",value}；relations/members/controllers 使用 {organization:已有组织ID,role,note} 数组，地区 parent 为已有地区ID或null。所有 locked 路径禁止修改。禁止删除和整体替换资料。',
+    spec, contract: renderContract(spec),
     read(ctx) { const { doc, locks } = source(ctx); return { version: 1, doc, locks }; },
     apply(ctx, change, { now } = {}) {
         if (change?.module !== 'organizations' || !['create', 'update'].includes(change.action)) throw Error('不支持的势力联动操作。');

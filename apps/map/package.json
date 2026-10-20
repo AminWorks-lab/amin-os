@@ -1,8 +1,0 @@
-{
-  "name": "sillytavern-dynamic-map",
-  "version": "0.15.0",
-  "private": true,
-  "type": "module",
-  "scripts": { "test": "node --test", "check": "node scripts/check.mjs", "test:browser": "node scripts/browser-smoke.mjs" },
-  "engines": { "node": ">=18" }
-}

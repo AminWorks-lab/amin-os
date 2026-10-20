@@ -45,8 +45,8 @@ test('independent status copy invokes the real clipboard action with typed curre
   try {
     await button.click();assert.equal(button.copied.length,1);assert.deepEqual(button.navigated,[]);
     const text=button.copied[0];assert.equal(text,[buildDataPrompt(f.ctx),buildUpdateRules(f.ctx)].join('\n\n'));
-    assert.match(text,/<amin_update>/);assert.match(text,/module:status/);assert.match(text,/"生命": 10/);
-    assert.doesNotMatch(text,/"生命": 999|module:inventory|状态栏\.项目\.|标签名为 state/);
+    assert.match(text,/<amin_update>/);assert.match(text,/module:status/);assert.match(text,/"生命":10/);
+    assert.doesNotMatch(text,/"生命":999|module:inventory|状态栏\.项目\.|标签名为 state/);
     assert.match(button.quickStatus.textContent,/amin_update/);assert.deepEqual(f.ctx.chatMetadata,before);assert.equal(f.saves,0);
     // The copied typed contract describes the same validated operation used
     // by a real response; copying does not bypass permissions or mutate state.

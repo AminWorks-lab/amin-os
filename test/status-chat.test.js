@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readStatusChat,requireStatusChat} from '../apps/status/chat-context.js';
-import {compilePreset,defaultPreset} from '../apps/map/src/core/generation-presets.js';
+import {compilePreset,defaultPreset} from '../ai/presets.js';
 test('status conversation reads latest named messages, excludes system and keeps recent twenty',()=>{
  const ctx={name1:'旅人',name2:'守卫',chat:[...Array.from({length:25},(_,i)=>({is_user:i%2===0,mes:String(i)})),{is_system:true,mes:'不读取'}, {mes:' '}]};
  const history=readStatusChat(ctx);assert.equal(history.length,20);assert.equal(history[0].内容,'5');assert.equal(history.at(-1).内容,'24');assert.equal(history.at(-1).角色,'旅人');

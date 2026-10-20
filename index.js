@@ -6,7 +6,9 @@ import {installExtraFloorButtons} from './apps/extra-floor-ui.js';
 import {installReplyFloorButtons} from './apps/reply/floor-ui.js';
 import {initializeAppearance,installAppearance} from './settings/appearance.js';
 import {initializeAI} from './ai/service.js';
+import {installTabScroll} from './ui/tabs.js';
 import { createShell } from './shell.js';
+import { views } from './apps/views.js';
 import { getSharedService as getLinkageService } from './apps/linkage/service.js';
 import { createLinkageHost } from './apps/linkage/host.js';
 import { buildUpdateRules, buildDataPrompt } from './apps/linkage/prompt.js';
@@ -35,6 +37,7 @@ export function initialize() {
     initializeAppearance(()=>globalThis.SillyTavern?.getContext?.());
     const shell=createShell();
     installAppearance(document);
+    installTabScroll(document);
     instance=shell;
     if(existing.length){
         shell.setBlocked(`检测到旧插件：${existing.join('、')}。请在扩展管理中停用这三个旧插件，然后刷新页面，再使用 Amin os。已有数据会保留。`);
@@ -58,35 +61,37 @@ export function initialize() {
         report: linkage.reportHost,
     });
     linkage.reportHost(linkageHost.status().message);
-    const apps={
-        characters:()=>import('./apps/characters/view.js').then(m=>m.mount(shell.panes.characters)),
-        inventory:()=>import('./apps/inventory/view.js').then(m=>m.mount(shell.panes.inventory)),
-        relationships:()=>import('./apps/relationships/view.js').then(m=>m.mount(shell.panes.relationships)),
-        saves:()=>import('./apps/saves/view.js').then(m=>m.mount(shell.panes.saves)),
-        scene:()=>import('./apps/scene/view.js').then(m=>m.mount(shell.panes.scene)),
-        journal:()=>import('./apps/journal/view.js').then(m=>m.mount(shell.panes.journal)),
-        dice:()=>import('./apps/dice/view.js').then(m=>m.mount(shell.panes.dice)),
-        tts:()=>import('./apps/tts/view.js').then(m=>m.mount(shell.panes.tts)),
-        worldbooks:()=>import('./apps/worldbooks/view.js').then(m=>m.mount(shell.panes.worldbooks)),
-        information:()=>import('./apps/information/view.js').then(m=>m.mount(shell.panes.information)),
-        effects:()=>import('./apps/effects/view.js').then(m=>m.mount(shell.panes.effects)),
-        organizations:()=>import('./apps/organizations/view.js').then(m=>m.mount(shell.panes.organizations)),
-        settings:()=>import('./settings/view.js').then(m=>m.mount(shell.panes.settings)),
-        ai:()=>import('./ai/view.js').then(m=>m.mount(shell.panes.ai)),
+    // Background: services that listen to chat events, inject prompts, keep checkpoints or register floor surfaces.
+    // They start now, even while the shell is collapsed. Each app's window view loads when it first opens.
+    const background={
+        characters:()=>import('./apps/characters/service.js').then(m=>m.getSharedCharactersService()),
+        inventory:()=>import('./apps/inventory/service.js').then(m=>m.getSharedInventoryService()),
+        relationships:()=>import('./apps/relationships/service.js').then(m=>m.getSharedRelationshipsService()),
+        saves:()=>import('./apps/saves/service.js').then(m=>m.getSharedSavesService()),
+        scene:()=>Promise.all([import('./apps/scene/service.js'),import('./apps/map/travel.js')]).then(([scene,travel])=>{scene.getSharedSceneService();travel.getSharedTravelService();}),
+        journal:()=>import('./apps/journal/service.js').then(m=>m.getSharedService()),
+        dice:()=>import('./apps/dice/service.js').then(m=>m.getSharedDiceService()),
+        worldbooks:()=>import('./apps/worldbooks/runtime.js').then(m=>m.getManager()),
+        information:()=>import('./apps/information/service.js').then(m=>m.getSharedService()),
+        effects:()=>import('./apps/effects/service.js').then(m=>m.getSharedService()),
+        organizations:()=>import('./apps/organizations/service.js').then(m=>m.getStore()),
         map:()=>import('./apps/map/index.js').then(m=>m.initialize({mount:shell.panes.map,onOpen:()=>shell.showApp('map')})),
         status:()=>import('./apps/status/index.js').then(m=>m.initialize({mount:shell.panes.status})),
-        reply:()=>import('./apps/reply/workspace.js').then(m=>m.mount(shell.panes.reply)),
-        stylewriter:()=>import('./apps/reply/workspace.js').then(m=>({open:()=>m.mount(shell.panes.reply).open('settings')})),
     };
-    const ready={};
-    for(const id of Object.keys(apps)){
-        // Initialize background listeners once, even while the shell is collapsed.
-        ready[id]=apps[id]().then(value=>({value}),error=>({error}));
+    const settle=promise=>promise.then(value=>({value}),error=>({error}));
+    const ready={},mounted={};
+    for(const id of new Set([...Object.keys(background),...Object.keys(views)])){
+        if(background[id])ready[id]=settle(background[id]());
         shell.register(id,async()=>{
-            let result=await ready[id];
-            if(result.error){ready[id]=apps[id]().then(value=>({value}),error=>({error}));result=await ready[id];}
-            if(result.error)throw result.error;
-            await result.value?.open?.();
+            if(ready[id]){
+                let result=await ready[id];
+                if(result.error){ready[id]=settle(background[id]());result=await ready[id];}
+                if(result.error)throw result.error;
+                if(!views[id])return await result.value?.open?.();
+            }
+            // Mount once; a failed load or mount is retried on the next open.
+            mounted[id]??=views[id]().then(m=>m.mount(shell.panes[id])).catch(error=>{mounted[id]=null;throw error;});
+            await (await mounted[id])?.open?.();
         });
     }
     surfaceLoads = [ready.map, ready.status];
@@ -94,7 +99,7 @@ export function initialize() {
     for(const id of ['characters','inventory','relationships','saves','dice','scene','journal','organizations','effects','information','worldbooks','tts'])installExtraFloorButtons(id);
     const ev=ctx.eventTypes??ctx.event_types??{};
     if(ev.CHAT_CHANGED)ctx.eventSource?.on(ev.CHAT_CHANGED,()=>queueMicrotask(()=>shell.refreshActive()));
-    globalThis.AminOS=Object.freeze({version:'0.18.1',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
+    globalThis.AminOS=Object.freeze({version:'0.19.0',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
     return shell;
 }
 

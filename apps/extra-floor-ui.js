@@ -1,25 +1,16 @@
-import {mount as mountOrganizations} from './organizations/view.js';
 import {readRenderedMessage} from './tts/rendered-text.js';
-import {mount as mountTTS} from './tts/view.js';
-import {mount as mountInformation} from './information/view.js';
-import {mount as mountEffects} from './effects/view.js';
-import {mount as mountWorldbooks} from './worldbooks/view.js';
 import {mountFloorControl} from '../settings/floor-layout.js';
-import {mount as mountScene} from './scene/view.js';
-import {mount as mountJournal} from './journal/view.js';
-import {mount as mountDice} from './dice/view.js';
-import {mount as mountCharacters} from './characters/view.js';
-import {mount as mountInventory} from './inventory/view.js';
-import {mount as mountRelationships} from './relationships/view.js';
-import {mount as mountSaves} from './saves/view.js';
 import {observeChatFloors} from './floor-scheduler.js';
 import {messageVersion,persistAudioMessageId,audioMessageSource} from './floor-message.js';
+import {floorLoading} from './lazy-view.js';
+import {views} from './views.js';
+import {STORY_APPS,renderStoryGate} from './shared/story-readiness.js';
 
 export function installExtraFloorButtons(id){
  const getContext=()=>globalThis.SillyTavern?.getContext?.(),mounted=new Map(),owned=new Set();
- const apps={scene:{title:'场景与时间',icon:'◷ ',mount:mountScene},journal:{title:'剧情档案',icon:'▤ ',mount:mountJournal},dice:{title:'骰子',icon:'⚄ ',mount:mountDice},organizations:{title:'势力概览',icon:'◎ ',mount:mountOrganizations},tts:{title:'语音朗读',icon:'▷ ',mount:mountTTS},effects:{title:'能力面板',icon:'✦ ',mount:mountEffects},information:{title:'信息面板',icon:'▤ ',mount:mountInformation},worldbooks:{title:'世界书管理',icon:'▥ ',mount:mountWorldbooks}};
- Object.assign(apps,{characters:{title:'人物卡',icon:'♙ ',mount:mountCharacters},inventory:{title:'背包与账本',icon:'▣ ',mount:mountInventory},relationships:{title:'人物关系',icon:'♧ ',mount:mountRelationships},saves:{title:'跨应用存档',icon:'▤ ',mount:mountSaves}});
- const app=apps[id];if(!app)throw Error('未知楼层应用：'+id);const titleText=app.title,mountApp=app.mount;
+ const apps={scene:{title:'场景与时间',icon:'◷ '},journal:{title:'剧情档案',icon:'▤ '},dice:{title:'骰子',icon:'⚄ '},organizations:{title:'势力概览',icon:'◎ '},tts:{title:'语音朗读',icon:'▷ '},effects:{title:'能力面板',icon:'✦ '},information:{title:'信息面板',icon:'▤ '},worldbooks:{title:'世界书管理',icon:'▥ '}};
+ Object.assign(apps,{characters:{title:'人物卡',icon:'♙ '},inventory:{title:'背包与账本',icon:'▣ '},relationships:{title:'人物关系',icon:'♧ '},saves:{title:'跨应用存档',icon:'▤ '}});
+ const app=apps[id];if(!app)throw Error('未知楼层应用：'+id);const titleText=app.title,loadView=views[id];
  const key=ctx=>JSON.stringify([ctx?.getCurrentChatId?.()??ctx?.chatId,ctx?.characterId,ctx?.groupId]);
  const node=(tag,cls,text)=>{const e=document.createElement(tag);e.className=cls;if(text)e.textContent=text;return e;};
  function attach(element){
@@ -34,20 +25,28 @@ export function installExtraFloorButtons(id){
    if(windowElement){close();return;}
    windowElement=node('section','amin-reply-floor-window amin-extra-floor-window');windowElement.setAttribute('aria-label','第 '+(index+1)+' 楼'+titleText);
    const bar=node('header','amin-reply-floor-header'),title=node('strong','',titleText+' · 第 '+(index+1)+' 楼'),collapse=node('button','','收起');collapse.type='button';collapse.onclick=close;bar.append(title,collapse);
-   const body=node('div','amin-reply-floor-body amin-ui');windowElement.append(bar,body);host.append(windowElement);
+   const body=node('div','amin-reply-floor-body amin-ui');windowElement.append(bar);
+   if(STORY_APPS.includes(id)){const gate=node('div','amin-story-gate amin-ui');gate.setAttribute('role','status');try{renderStoryGate(gate,getContext(),document);}catch{gate.hidden=true;}windowElement.append(gate);}
+   windowElement.append(body);host.append(windowElement);
    if(id!=='tts')body.append(node('p','amin-reply-floor-note','显示当前聊天的数据，操作与 OS 内应用共享；此入口不是历史楼层快照。'));
    const run=++epoch;
-   try{const mount=async()=>{
-    let options;
-    if(id==='tts'){
-     await persistAudioMessageId(ctx,message);
-     const source=await audioMessageSource(chatKey,message);
-     const current=getContext();if(run!==epoch||!element.isConnected||current?.chatMetadata!==metadata||key(current)!==chatKey||current?.chat?.[index]!==message||messageVersion(message)!==revision)return null;
-     options={readMessage:()=>readRenderedMessage(element),source};
-    }
-    return mountApp(body,options);
-   };const mountedView=id==='tts'?mount():mountApp(body);if(mountedView?.then)mountedView.then(value=>{if(run!==epoch){value?.dispose?.();return;}view=value;},error=>{if(run===epoch)body.append(node('p','',error.message));});else view=mountedView;}
-   catch(error){body.append(node('p','',error.message));}
+   const start=()=>{
+    const loading=floorLoading(body);let loaded=false;
+    (async()=>{
+     const {mount:mountApp}=await loadView();loaded=true;
+     if(run!==epoch)return null;
+     let options;
+     if(id==='tts'){
+      await persistAudioMessageId(ctx,message);
+      const source=await audioMessageSource(chatKey,message);
+      const current=getContext();if(run!==epoch||!element.isConnected||current?.chatMetadata!==metadata||key(current)!==chatKey||current?.chat?.[index]!==message||messageVersion(message)!==revision)return null;
+      options={readMessage:()=>readRenderedMessage(element),source};
+     }
+     loading.done();
+     return mountApp(body,options);
+    })().then(value=>{loading.done();if(run!==epoch){value?.dispose?.();return;}view=value;},error=>{if(run!==epoch)return;if(loaded){loading.done();body.append(node('p','',error.message));}else loading.fail(error,start);});
+   };
+   start();
    button.setAttribute('aria-expanded','true');dock.setOpen(true);
   };
   const dispose=()=>{close();dock.dispose();mounted.delete(element);};mounted.set(element,{dispose,index,message,chatKey,metadata,revision});return dispose;

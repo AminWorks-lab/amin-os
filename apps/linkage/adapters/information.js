@@ -1,4 +1,5 @@
 import { KEY, empty, read, current, validateRecord, fieldKey, path, diff } from '../../information/model.js';
+import { renderContract } from '../contract.js';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
@@ -48,10 +49,20 @@ function append(source, chat, record, reason, operationId, at) {
     return next;
 }
 
+const spec = {
+    notes: 'target=面板ID。field={id,category,label,value:文本,status?:known|inferred|unknown}；不改已有字段的编号、分类、名称或面板类型。',
+    actions: [
+        { name: 'create', args: 'name,kind:person|thing|world,fields:[field]' },
+        { name: 'add_field', args: 'field' },
+        { name: 'set_field', args: 'fieldId,value?,status?', note: '至少一项' },
+        { name: 'remove_field', args: 'fieldId' },
+    ],
+};
+
 export const adapter = {
     id: 'information', label: '信息面板',
     paths: [[KEY]],
-    contract: 'target=面板稳定 ID。create: data={name,kind:"person"|"thing"|"world",fields:[{id,category,label,value,status?:"known"|"inferred"|"unknown"}]}，新面板使用 forward 模式；add_field: data={field:{id,category,label,value,status?}}；set_field: data={fieldId,value?,status?}（至少一项）；remove_field: data={fieldId}。value 必须是文本；已有字段只按 fieldId 修改，不改编号、分类、名称、面板类型或用户选择的改写方式。新增编号用字母数字下划线连字符且≤100字符。不修改全局资料库、提示开关或历史记录。',
+    spec, contract: renderContract(spec),
     read(ctx) { const source = store(ctx); return { version: 1, enabled: source.enabled, records: current(source, ctx?.chat) }; },
     readForPrompt(ctx) {
         const source = store(ctx);

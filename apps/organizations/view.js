@@ -5,13 +5,14 @@ import {GROUPS,LABELS,FIELDS,LINKS,entity,uid,clone,deleteEntity,rankMetrics} fr
 import {generate,followPrompt} from './ai.js';
 import {syncWorldbook} from './lorebook.js';
 import {isIndependent} from '../story-state/access.js';
+import {contextLine} from '../shared/context-line.js';
 const el=(tag,text='',cls='')=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e;};
 const show=v=>v===null||v===undefined||v===''?'未明确':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 const tabsMap={overview:'总览',organizations:'组织',alliances:'联盟／阵营',regions:'地区',assessment:'评估排行',settings:'生成与规则'};
 const mounted=new WeakMap();
 export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
  mounted.get(target)?.dispose();const api=provided??await getStore();mounted.get(target)?.dispose();
- const page=el('div','','amin-page amin-app-page amin-organizations'),header=el('header','','amin-context amin-stack'),tabs=el('div','','amin-tabs'),actions=el('div','','amin-stack'),notice=el('div','','amin-notice'),body=el('section','','amin-stack'),viewId='amin-organizations-'+uid();
+ const page=el('div','','amin-page amin-app-page amin-organizations'),header=el('header','','amin-context'),tabs=el('div','','amin-tabs'),actions=el('div','','amin-stack'),notice=el('div','','amin-notice'),body=el('section','','amin-stack'),viewId='amin-organizations-'+uid();
  notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','势力资料页面');body.id=viewId+'-panel';body.setAttribute('role','tabpanel');body.tabIndex=0;page.append(header,tabs,actions,notice,body);target.append(page);
  let selected='overview',chosen={},search='',editing=false,disposed=false,historyIndex=null,historyRecord=null,historyMetadata=null,historyRequest=0,lastIdentity='',requesting=false;
  const say=t=>{notice.textContent=t;};
@@ -34,18 +35,15 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
   finally{requesting=false;if(!disposed)drawActions();}
  }
  function drawHeader(){
-  header.replaceChildren();header.append(el('h2','势力概览','amin-section-heading'),el('p','整理组织、联盟与地区，查看关系、资源和当前局势。生成后的变更由你预览确认。','amin-meta'));
-  if(historyIndex!==null)header.append(el('p','正在只读浏览第 '+(historyIndex+1)+' 楼资料。','amin-result'));
+  header.replaceChildren();header.append(el('p',contextLine(api.context(),...(historyIndex!==null?['只读浏览第 '+(historyIndex+1)+' 楼资料']:['当前分支的组织、联盟与地区','变更预览后确认']))));
  }
  function drawActions(){
   actions.replaceChildren();const busy=requesting||api.busy();body.setAttribute('aria-busy',String(!!busy));
   if(historyIndex!==null){btn(toolbar(actions),'返回当前资料',()=>{historyRequest++;historyIndex=null;historyRecord=null;historyMetadata=null;render();},true);return;}
-  const main=toolbar(actions);btn(main,'生成／补充',()=>run('fill'),true).disabled=busy;btn(main,'按当前剧情更新',()=>run('update')).disabled=busy;
+  // Generation lives in the “生成与规则” tab; this row only links there.
+  const main=toolbar(actions);if(selected!=='settings')btn(main,'生成／补充',()=>{navigate('settings');},true);btn(main,'按当前剧情更新',()=>run('update')).disabled=busy;
   if(busy){main.append(el('span','正在处理请求…','amin-meta'));btn(main,'取消请求',()=>{api.cancel();say('已取消请求');});}
-  const advanced=details(actions,'更多操作'),tools=toolbar(advanced);
-  btn(tools,'重新生成整套',()=>run('replace')).disabled=busy;
-  btn(tools,'重试保存',async()=>{await api.retrySave();say('聊天保存已完成');}).disabled=busy;
-  advanced.append(el('p','重新生成会先提供整套变更预览。聊天保存失败时，可使用重试保存。','amin-meta'));
+  if(api.error?.())btn(main,'重试保存',async()=>{await api.retrySave();say('聊天保存已完成');}).disabled=busy;
  }
  function drawPreview(p){
   const c=card(p.kind==='assessment'?'评估预览 · 仅供user':'资料变更预览');
@@ -146,6 +144,8 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
   btn(toolbar(rank),'查看数值排行',()=>{result.replaceChildren();const r=rankMetrics(doc,{group:g.value,key:key.value,unit:unit.value,ascending:ascending.checked});for(const row of r.included)result.append(el('p',row.rank+' · '+row.name+'：'+row.value+' '+unit.value,'amin-result'));if(!r.included.length)result.append(el('p','没有同标识、同单位的明确数值，未生成排行。','amin-empty'));if(r.excluded.length){const excluded=details(result,'未参与排行 · '+r.excluded.length+' 项');for(const row of r.excluded)excluded.append(el('p',row.name+'：'+row.reason,'amin-meta'));}});rank.append(result);
  }
  function settingsPage(){
+  const busy=requesting||api.busy(),launch=card('生成／补充');launch.append(el('p','按已保存的范围与规则生成；修改设置后请先保存。重新生成会先提供整套变更预览。','amin-meta'));
+  const launchTools=toolbar(launch);const launchRun=mode=>{editing=false;return run(mode);};btn(launchTools,'生成／补充',()=>launchRun('fill'),true).disabled=busy;btn(launchTools,'重新生成整套',()=>launchRun('replace')).disabled=busy;
   editing=true;const token=api.capture(),cfg=api.config(),f=card('生成范围');
   f.append(el('p','选项按角色保存，聊天资料彼此隔离。修改后先保存，再生成或更新资料。','amin-meta'));
   const scopeFields=grid(f),scope=field(scopeFields,'整理范围',cfg.scope,true,true),detail=select(scopeFields,'详细程度',[['简略','简略'],['标准','标准'],['详细','详细']],cfg.detail),groups={},groupFields=grid(f);

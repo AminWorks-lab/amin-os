@@ -27,7 +27,7 @@ export function canPlaceTile(tiles,id,x,y,size,columns=TILE_COLUMNS){
 export function normalizeTiles(value,columns=TILE_COLUMNS){
  columns=gridColumns(columns);
  if(!Array.isArray(value))value=tileDefaults();
- const known=new Set([...tileDefaults().map(t=>t.target),'stylewriter']),seen=new Set();
+ const known=new Set(tileDefaults().map(t=>t.target)),seen=new Set();
  const cleaned=value.flatMap(t=>{
   if(typeof t?.id!=='string'||!t.id||seen.has(t.id)||!known.has(t.target))return [];
   seen.add(t.id);let image='';try{image=mediaURL(t.image);}catch{}
@@ -45,7 +45,7 @@ export function normalizeTiles(value,columns=TILE_COLUMNS){
 }
 export function migrateTiles(value){
  const defaults=tileDefaults(),seen=new Set(),result=[];
- for(const t of Array.isArray(value)?value:[]){const d=defaults.find(d=>d.id===t?.id)??(t?.id==='stylewriter'?{id:'stylewriter',target:'stylewriter',label:'',size:'medium'}:null);if(!d||seen.has(t.id))continue;seen.add(t.id);result.push({...d,size:Object.hasOwn(TILE_SPANS,t.size)?t.size:d.size});}
+ for(const t of Array.isArray(value)?value:[]){const d=defaults.find(d=>d.id===t?.id);if(!d||seen.has(t.id))continue;seen.add(t.id);result.push({...d,size:Object.hasOwn(TILE_SPANS,t.size)?t.size:d.size});}
  return normalizeTiles(result.concat(defaults.filter(t=>!seen.has(t.id))));
 }
 function readSaved(storage,key){try{const raw=storage.getItem(key);if(raw===null)return null;const data=JSON.parse(raw);return (data?.version===2||data?.version===3)&&Array.isArray(data.tiles)?data:null;}catch{return null;}}

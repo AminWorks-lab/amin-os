@@ -1,5 +1,6 @@
 import { KEY, validId, readRelationships, readStore, transition, appendSnapshot, evaluateThresholds, sourceReferences, validateEvidence } from './model.js';
 import { readCharacters } from '../characters/model.js';
+import { renderContract } from '../linkage/contract.js';
 
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 function fields(value, allowed, label) {
@@ -9,15 +10,18 @@ export function validateEndpoints(ctx, before, relationship) {
     const previous = before.relationships.find(value => value.id === relationship.id), ids = new Set(readCharacters(ctx).characters.map(value => value.id));
     for (const key of ['fromId', 'toId']) if (previous?.[key] !== relationship[key] && !ids.has(relationship[key])) throw Error('新增或更换的关系端点必须选择当前人物；请先在角色卡中建立人物。');
 }
-export const UPDATE_CONTRACT = [
-    '所有操作必须有 module="relationships"、action、target（安全稳定 ID）、data 对象和非空 reason。',
-    'save: target=关系 ID，data={fromId:现有人物 ID,toId:不同的现有人物 ID,type:关系类型,label?:标签,notes?:备注,strength?:有限数字,sources?:来源楼层索引数组}；保存完整关系。未提供 strength 表示不记录强度，禁止自行猜测量表。',
-    'delete: target=现有关系 ID，data={sources?:来源楼层索引数组}；删除当前关系，不删除历史。',
-    'save-rule: target=阈值规则 ID，data={relationshipId:现有关系 ID,operator:"gte"|"lte",value:有限数字,message:提醒文本,enabled:布尔,repeat:"once"|"crossing",sources?:来源楼层索引数组}。仅在用户要求调整规则时使用。规则只产生提示，不能宣称剧情事件已经发生。',
-    'delete-rule: target=现有阈值规则 ID，data={sources?:来源楼层索引数组}。',
-    'acknowledge-alert: target=现有提醒 ID，data={sources?:来源楼层索引数组}。',
-    'sources 为从 0 开始的当前聊天楼层索引。来源必须是确实支持变更的已发生剧情；人物名称不作为 ID。'
-].join('\n');
+export const UPDATE_SPEC = Object.freeze({
+    notes: 'target=关系ID。关系有方向，反向关系单独保存。',
+    actions: [
+        { name: 'save', args: 'fromId,toId:不同人物ID,type,label?,notes?,strength?:num', note: '保存完整关系；无明确量表不填 strength' },
+        { name: 'delete', note: '删除当前关系，保留历史' },
+        { name: 'save-rule', args: 'relationshipId,operator:gte|lte,value:num,message,enabled:bool,repeat:once|crossing', note: '阈值规则仅在用户要求时调整；只产生提示，不代表剧情已发生', advanced: true },
+        { name: 'delete-rule', note: 'target=阈值规则ID', advanced: true },
+        { name: 'acknowledge-alert', note: 'target=提醒ID', advanced: true },
+    ],
+    sources: '各动作 data 另可含 sources?:[int]（从0起的当前聊天楼层索引，须确实支持该变更）。',
+});
+export const UPDATE_CONTRACT = renderContract(UPDATE_SPEC);
 
 // Shared by the unified transaction adapter and the explicit relationship AI preview.
 // All mutations are applied to validated clones and returned as one metadata patch.

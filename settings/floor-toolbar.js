@@ -19,7 +19,7 @@ export function createFloorToolbar(row,document){
  edit.className='amin-floor-toolbar-edit';edit.textContent='调整排列';edit.setAttribute('aria-pressed','false');
  overflow.className='amin-floor-toolbar-overflow';overflow.setAttribute('role','group');overflow.setAttribute('aria-label','更多楼层应用');overflow.hidden=true;
  hint.className='amin-floor-toolbar-hint';hint.setAttribute('role','status');hint.hidden=true;
- toolbar.append(more,edit,overflow,hint);
+ toolbar.append(more,overflow,hint);overflow.append(edit);
  let editing=false,expanded=false,gesture=null,suppressClick=false,suppressTimer=null,keyOff=null;
  const gestureOff=[];
  const listeners=[];
@@ -30,9 +30,11 @@ export function createFloorToolbar(row,document){
  function render(){
   const prefs=state(),ids=order(),hidden=new Set(prefs.moreButtons??[]),items=[...row.items].sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id));
   if(toolbar.dataset.toolbarAlignment!==(prefs.toolbarAlignment??'left'))toolbar.dataset.toolbarAlignment=prefs.toolbarAlignment??'left';if(toolbar.dataset.editing!==String(editing))toolbar.dataset.editing=String(editing);
+  // “调整排列” lives at the end of the expanded overflow; while editing it stays in the row as “完成排列”.
+  if(editing){if(edit.parentNode!==toolbar||edit.nextSibling!==hint)toolbar.insertBefore(edit,hint);}else if(edit.parentNode!==overflow||edit.nextSibling)overflow.append(edit);
   placeFloorButtons(toolbar,items.filter(item=>editing||!hidden.has(item.id)).map(item=>item.button),more);
-  placeFloorButtons(overflow,items.filter(item=>!editing&&hidden.has(item.id)).map(item=>item.button));
-  const hasMore=items.some(x=>hidden.has(x.id)&&(x.shown??x.visible));more.hidden=editing||!hasMore;overflow.hidden=editing||!hasMore||!expanded;
+  placeFloorButtons(overflow,items.filter(item=>!editing&&hidden.has(item.id)).map(item=>item.button),editing?null:edit);
+  const hasMore=items.some(x=>hidden.has(x.id)&&(x.shown??x.visible));more.hidden=editing;overflow.hidden=editing||!expanded;const moreLabel=hasMore?'更多':'⋯';if(more.textContent!==moreLabel){more.textContent=moreLabel;more.title=hasMore?'更多楼层应用与排列':'调整排列';}
   if(more.getAttribute('aria-expanded')!==String(!overflow.hidden))more.setAttribute('aria-expanded',String(!overflow.hidden));if(edit.getAttribute('aria-pressed')!==String(editing))edit.setAttribute('aria-pressed',String(editing));const label=editing?'完成排列':'调整排列';if(edit.textContent!==label)edit.textContent=label;hint.hidden=!editing;
   if(editing&&!hint.textContent)hint.textContent='拖动按钮调整顺序；也可聚焦按钮后按 Alt + 方向键。';
  }

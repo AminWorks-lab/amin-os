@@ -1,4 +1,5 @@
 import { MODULES, plain, validateJSON } from './policy.js';
+import { parseModelJSON } from '../../ai/json.js';
 
 export const OPEN = '<amin_update>', CLOSE = '</amin_update>';
 // Accept Markdown escaping of delimiters only. Never unescape the JSON payload.
@@ -17,7 +18,8 @@ export function parseUpdate(input) {
             if (markers.length !== 2 || markers[0].closing || !markers[1].closing) throw Error('每条消息必须只有一个完整的 amin_update 更新块。');
             raw = input.slice(markers[0].index + markers[0].length, markers[1].index);
         }
-        try { raw = JSON.parse(raw); } catch { throw Error('联动更新不是有效 JSON，请检查模型输出。'); }
+        // Tolerates a Markdown code fence or a sentence around the payload; the JSON itself is never repaired.
+        raw = parseModelJSON(raw, { label: '联动更新' });
     }
     validateJSON(raw);
     if (!plain(raw) || raw.version !== 1 || Object.keys(raw).some(k => !['version','changes'].includes(k)) || !Array.isArray(raw.changes) || raw.changes.length > 64) throw Error('联动更新必须使用 version:1 和最多 64 项 changes。');

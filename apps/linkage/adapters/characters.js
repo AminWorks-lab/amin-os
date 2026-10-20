@@ -1,4 +1,5 @@
 import { KEY, STATUS_PATH, readCharacters, readStore, appendSnapshot, validateCharacter, validateStat, validateAppearance, validId, bindings } from '../../characters/model.js';
+import { renderContract } from '../contract.js';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fields(data, allowed) {
@@ -15,10 +16,23 @@ function checkBindings(ctx, previous, next) {
     for (const stat of changed) if (!available.some(field => field.binding === stat.binding && field.component === stat.component)) throw Error(`人物绑定不存在或类型不匹配：${stat.binding}。请先建立世界状态字段。`);
 }
 
+const spec = {
+    notes: 'target=人物ID。属性数值改 status，穿戴改 inventory。',
+    advancedNotes: 'stat={id,label,binding:"项目名.字段名",component:value|current|max,check:none|d20|coc}，binding 须为已有世界状态字段。',
+    actions: [
+        { name: 'create-character', args: 'name,kind:pc|npc,notes?,appearance?:{description,hairstyle,features}', advancedArgs: ',stats?:[stat]' },
+        { name: 'save-character', args: '同上，按需' },
+        { name: 'set-appearance', args: 'description?,hairstyle?,features?' },
+        { name: 'save-stat', args: 'id,label,binding,component,check', advanced: true },
+        { name: 'delete-stat', args: 'statId', advanced: true },
+        { name: 'delete-character', note: '其他应用保留原ID引用', advanced: true },
+    ],
+};
+
 export const adapter = {
     id: 'characters', label: '人物卡与外观',
     paths: [[KEY], [...STATUS_PATH]],
-    contract: 'target=稳定人物ID。create-character: data={name,kind:"pc"|"npc",notes?,stats?:[{id,label,binding:"项目名.字段名",component:"value"|"current"|"max",check:"none"|"d20"|"coc"}],appearance?:{description,hairstyle,features}}；save-character: 同上字段按需更新现有人物；delete-character: data={}，保留其他应用的原ID引用；save-stat: data={id,label,binding,component,check}；delete-stat: data={statId}；set-appearance: data={description?,hairstyle?,features?}。新增ID须为1–100位字母数字下划线连字符。属性只存世界状态绑定，数值由status模块更新；穿戴引用inventory的ownerId+equipped，不得复制衣物记录或更新骰点。',
+    spec, contract: renderContract(spec),
     read: ctx => readCharacters(ctx),
     apply(ctx, change, { operationId, now }) {
         const state = readCharacters(ctx), previous = state.characters.find(person => person.id === change.target), data = change.data;

@@ -1,12 +1,12 @@
 import { uuid } from '../uuid.js';
 import {resolveHostConnection} from './host-connection.js';
-import {waitForSignal} from '../apps/map/src/core/generation-job.js';
+import {waitForSignal} from './signal.js';
 import {currentPrompt} from '../apps/effects/model.js';
 import {currentPrompt as currentJournalPrompt} from '../apps/journal/model.js';
 import {currentPrompt as currentScenePrompt} from '../apps/scene/model.js';
-import { createApiSettings, createApiProfiles, generateMapText } from '../apps/map/src/adapters/generation.js';
-import { createPresetLibrary, compilePreset } from '../apps/map/src/core/generation-presets.js';
-import { parseRequestBody } from '../apps/map/src/adapters/request-body.js';
+import { createApiSettings, createApiProfiles, generateText } from './transport.js';
+import { createPresetLibrary, compilePreset } from './presets.js';
+import { parseRequestBody } from './request-body.js';
 import {createHostRoutes} from './host-settings.js';
 import {getHostRouteOptions, captureHostRoute, observeHostGeneration, runHostGeneration} from './host-generation.js';
 import { managesModule } from '../apps/linkage/policy.js';
@@ -63,6 +63,16 @@ function previewText(captured, request, messages) {
 }
 let shared;
 export const getAI = () => shared;
+// Only used when the shared layer was never initialized (index.js always initializes it
+// before any app runs; unit tests and directly loaded modules may not). It still goes
+// through the shared transport: with default, disabled independent-API settings
+// generateText sends the request unchanged to the host's current connection
+// (ctx.generateRaw), the same path an Amin route without an enabled API takes.
+const HOST_AI = Object.freeze({
+    capture: () => null,
+    generate: (app, ctx, request, { signal } = {}) => generateText(ctx, {}, request, { signal }),
+});
+export const getAIOrHost = () => shared ?? HOST_AI;
 export function initializeAI(storage, namespace, options) {
     return shared ??= createAI(storage, namespace, options);
 }
@@ -142,7 +152,7 @@ export function createAI(storage, namespace, {resolveConnection=resolveHostConne
                 const timer=setTimeout(()=>controller.abort(new Error('读取 API 配置超时，未应用生成结果')),captured.config.timeoutSeconds*1000);
                 let connection;
                 try {connection=await waitForSignal(()=>connections.get(captured),controller.signal);}finally{clearTimeout(timer);}
-                const text = await generateMapText(ctx, connection, {...request, messages, responseLength:captured.config.maxTokens}, {signal:controller.signal, targetKey:scope, fetchImpl});
+                const text = await generateText(ctx, connection, {...request, messages, responseLength:captured.config.maxTokens}, {signal:controller.signal, targetKey:scope, fetchImpl});
                 task.state = '完成'; return text;
             } catch(error) { task.state = controller.signal.aborted ? '已取消' : '失败'; throw error; }
             finally { signal?.removeEventListener('abort', abort); notify(); }

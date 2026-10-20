@@ -45,14 +45,14 @@ test('portrait tiles retain footprint through persistence, copies and reordering
 });
 
 
-test('merged writing app has one default tile but preserves old rewrite aliases and labels',()=>{
+test('retired rewrite alias tiles are dropped from saved and migrated layouts without errors',()=>{
  assert.equal(defaultTiles().some(t=>t.target==='stylewriter'),false);
- const old=[{id:'my-rewrite',target:'stylewriter',label:'我的润色',size:'tall'}];
- assert.deepEqual(normalizeTiles(normalizeTiles(old)),normalizeTiles(old));
+ const old=[{id:'my-rewrite',target:'stylewriter',label:'我的润色',size:'tall'},{id:'reply',target:'reply',size:'medium'}];
+ assert.deepEqual(normalizeTiles(old).map(t=>t.id),['reply']);
  const data=new Map(),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
- saveTiles(storage,old);assert.deepEqual(loadTiles(storage),normalizeTiles(old));
- const migrated=migrateTiles([{id:'stylewriter',size:'wide'}]);
- assert.equal(migrated[0].target,'stylewriter');assert.equal(migrated[0].size,'wide');
+ saveTiles(storage,old);assert.equal(loadTiles(storage).some(t=>t.target==='stylewriter'),false);
+ const migrated=migrateTiles([{id:'stylewriter',size:'wide'},{id:'map',size:'medium'}]);
+ assert.equal(migrated.some(t=>t.id==='stylewriter'),false);assert.equal(migrated[0].id,'map');
 });
 
 
@@ -75,7 +75,7 @@ test('packing reserves explicit coordinates and deterministically repairs overla
  assert.deepEqual(normalizeTiles(layout),layout);for(const tile of layout)assert.equal(canPlaceTile(layout,tile.id,tile.x,tile.y),true);
 });
 test('version2 migrates custom identities images colors and order without changing old storage',()=>{
- const tiles=[{id:'mine',target:'stylewriter',label:'自定义',size:'wide',image:'https://example.com/pic.png',backgroundColor:'#12abEF',textColor:'#ffffff',iconColor:'#ffeedd'},{id:'other',target:'dice',size:'compactTall',backgroundColor:'red',textColor:'url(bad)',iconColor:'#abc'}];
+ const tiles=[{id:'mine',target:'reply',label:'自定义',size:'wide',image:'https://example.com/pic.png',backgroundColor:'#12abEF',textColor:'#ffffff',iconColor:'#ffeedd'},{id:'other',target:'dice',size:'compactTall',backgroundColor:'red',textColor:'url(bad)',iconColor:'#abc'}];
  const old=JSON.stringify({version:2,knownTargets:defaultTiles().map(t=>t.target),tiles});const data=new Map([[PREVIOUS_TILE_KEY,old]]),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
  const layout=loadTiles(storage);assert.deepEqual(layout.map(t=>t.id),['mine','other']);assert.equal(layout[0].backgroundColor,'#12abEF');assert.equal(layout[0].image,tiles[0].image);assert.equal(layout[1].backgroundColor,undefined);assert.equal(layout[1].textColor,undefined);assert.equal(layout[1].iconColor,undefined);assert.equal(data.get(PREVIOUS_TILE_KEY),old);assert.equal(JSON.parse(data.get(TILE_KEY)).version,3);assert.deepEqual(loadTiles(storage),layout);
  data.set(TILE_KEY,'broken');assert.deepEqual(loadTiles(storage),layout);

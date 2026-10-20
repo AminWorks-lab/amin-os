@@ -1,5 +1,6 @@
 import { normalizeConfig, LIMITS } from './engine.js';
 import { getSharedDiceService } from './service.js';
+import {contextLine} from '../shared/context-line.js';
 const mounted = new WeakMap();
 const make = (tag, text = '', cls = '') => { const e = document.createElement(tag); e.textContent = text; if (cls) e.className = cls; return e; };
 const modeNames = { generic: '通用骰', dnd: 'D&D', coc: 'CoC 7', history: '记录', presets: '预设' };
@@ -126,7 +127,7 @@ export function mount(target, { api: provided, getContext } = {}) {
     }
     function reflectBusy() { for (const b of page.querySelectorAll('button:not([role="tab"])')) b.disabled = ownAction || api.busy() || b.dataset.needsSelection && !checked.size || b.dataset.needsUndo && !api.canUndo(); }
     function renderBody() { if (disposed) return; body.replaceChildren(); if (selected === 'history') drawHistory(); else if (selected === 'presets') drawPresets(); else drawForm(); drawFooter(); reflectBusy(); }
-    function render() { if (disposed) return; const c = api.context(); context.textContent = `当前聊天：${c?.getCurrentChatId?.() ?? c?.chatId ?? '尚未打开'} · 本地骰点`; drawTabs(); renderBody(); }
+    function render() { if (disposed) return; const c = api.context(); context.textContent = contextLine(c, '本地骰点'); drawTabs(); renderBody(); }
     let chatMetadata = api.context()?.chatMetadata;
     const unsubscribe = api.subscribe(() => { if (disposed) return; if (chatMetadata !== api.context()?.chatMetadata) { chatMetadata = api.context()?.chatMetadata; selectedRoll = null; checked.clear(); } say(api.status()); render(); });
     say(api.status()); render();
