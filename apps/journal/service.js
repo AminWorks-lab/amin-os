@@ -7,6 +7,7 @@ import { getAI } from '../../ai/service.js';
 import { acquireMetadataWrite, chatIdentity, subscribeStateChanges } from '../shared/operations.js';
 import { managesModule } from '../linkage/policy.js';
 import { prepareState2ManualWrite } from '../state2/runtime.js';
+import { promptInjectors } from '../linkage/injectors.js';
 
 export const PROMPT_KEY = 'amin-os-journal';
 
@@ -16,7 +17,8 @@ export function createJournal(getContext, { ai = getAI } = {}) {
     const identity = ctx => JSON.stringify([ctx?.groupId ?? null, ctx?.characterId ?? null, ctx?.getCurrentChatId?.() ?? null]);
     const stamp = ctx => JSON.stringify(isIndependent(ctx) ? snapshotJournal(readStore(ctx), ctx.chat) : readStore(ctx));
     const notify = event => { for (const callback of listeners) { try { callback(event); } catch { /* A view must not interrupt persistence. */ } } };
-    const clear = () => getContext()?.setExtensionPrompt?.(PROMPT_KEY, '', 1, 0, false);
+    let injector = null;
+    const clear = () => injector.clear();
 
     function capture() {
         const ctx = getContext();
@@ -110,33 +112,40 @@ export function createJournal(getContext, { ai = getAI } = {}) {
         });
     }
 
-    function start(type = 'normal', options = {}, dryRun = false) {
-        clear();
+    // The shared injector clears the prompt first; this gate also records
+    // whether the generation may start an automatic chronicle when it ends.
+    function enabled(type = 'normal', options = {}, dryRun = false) {
         normalGeneration = !disposed && !dryRun && ['normal', 'regenerate', 'swipe', 'continue'].includes(type) && !options?.signal?.aborted;
-        if (disposed || dryRun || !['normal', 'regenerate', 'swipe', 'continue'].includes(type) || options?.signal?.aborted) return;
+        return normalGeneration;
+    }
+    function build(type = 'normal') {
+        let prompt = null;
         try {
             if (busy) throw Error('剧情档案正在保存，本轮未附加引用');
             const ctx = getContext(); let chat = ctx.chat ?? [];
             if (['regenerate', 'swipe'].includes(type) && chat.length && !chat.at(-1).is_user) chat = chat.slice(0, -1);
-            const prompt = managesModule(ctx, 'journal') ? '' : compile(readStore(ctx), chat);
-            ctx.setExtensionPrompt(PROMPT_KEY, prompt, 1, 0, false);
+            prompt = managesModule(ctx, 'journal') ? '' : compile(readStore(ctx), chat);
             message = prompt ? `已附加 ${prompt.length} 字符剧情档案引用` : '当前分支没有启用引用的有效条目';
-        } catch (error) { message = error.message; }
+        } catch (error) { prompt = null; message = error.message; }
         notify({ type: 'prompt' });
+        return prompt;
     }
 
-    function invalidate(type) {
+    function invalidate(type, clearPrompt = true) {
         epoch++; normalGeneration = false;
         for (const controller of pending) controller.abort(new Error('聊天或来源已变化'));
-        clear(); message = type === 'chat' ? '已切换聊天，未保存的档案编辑已关闭。' : '楼层或来源已变化，请重新核对档案来源。';
+        if (clearPrompt) clear();
+        message = type === 'chat' ? '已切换聊天，未保存的档案编辑已关闭。' : '楼层或来源已变化，请重新核对档案来源。';
         notify({ type });
     }
 
     const initial = getContext(), events = initial?.eventTypes ?? initial?.event_types ?? {}, source = initial?.eventSource;
-    const supported = !!(initial?.setExtensionPrompt && source?.on && events.GENERATION_AFTER_COMMANDS && events.CHAT_CHANGED);
-    const handlers = { GENERATION_AFTER_COMMANDS: start, CHAT_CHANGED: () => invalidate('chat'), GENERATION_ENDED: ended, GENERATION_STOPPED: () => { normalGeneration = false; clear(); },
+    injector = promptInjectors(getContext).register(PROMPT_KEY, { build, enabled, onError: error => { message = error.message; notify({ type: 'prompt' }); } });
+    const supported = injector.supported;
+    // Without host prompt support the chat switch still invalidates editors and clears the prompt here.
+    const handlers = { CHAT_CHANGED: () => invalidate('chat', !supported), GENERATION_ENDED: ended, GENERATION_STOPPED: () => { normalGeneration = false; clear(); },
         MESSAGE_DELETED: () => invalidate('source'), MESSAGE_SWIPED: () => invalidate('source'), MESSAGE_UPDATED: () => invalidate('source') };
-    if (source?.on) for (const [event, callback] of Object.entries(handlers)) if (events[event] && (event !== 'GENERATION_AFTER_COMMANDS' || supported)) source.on(events[event], callback);
+    if (source?.on) for (const [event, callback] of Object.entries(handlers)) if (events[event]) source.on(events[event], callback);
     const unsubscribeState = subscribeStateChanges((detail, metadata) => {
         const ctx = getContext();
         if (disposed || detail?.phase !== 'applied' || detail.identity !== chatIdentity(ctx) || (metadata && metadata !== ctx?.chatMetadata) || !detail.paths?.some(path => path[0] === KEY)) return;
@@ -146,7 +155,7 @@ export function createJournal(getContext, { ai = getAI } = {}) {
 
     return { capture, check, save, generateDraft, generateAutoDraft, autoBusy: () => autoRunning, supported, context: getContext, read: () => readStore(getContext()), status: () => message, busy: () => busy,
         subscribe(callback) { listeners.add(callback); return () => listeners.delete(callback); },
-        dispose() { if (disposed) return; disposed = true; epoch++; for (const controller of pending) controller.abort(); pending.clear(); clear();
+        dispose() { if (disposed) return; disposed = true; epoch++; for (const controller of pending) controller.abort(); pending.clear(); injector.dispose();
             unsubscribeState();
             for (const [event, callback] of Object.entries(handlers)) if (events[event]) (source?.removeListener ?? source?.off)?.call(source, events[event], callback);
             listeners.clear();

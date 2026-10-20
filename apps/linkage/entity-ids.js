@@ -1,20 +1,14 @@
 import { parseUpdate } from './protocol.js';
+import { adapters } from './registry.js';
 import { uuid } from '../../uuid.js';
 
 const ALIAS = /^@new:[A-Za-z][A-Za-z0-9_-]{0,59}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const createActions = {
-    characters: { 'create-character': 'person' },
-    inventory: { 'create-item': 'item', 'create-balance': 'balance' },
-    effects: { create: 'effect' }, map: { add_node: 'node', add_edge: 'edge' },
-    organizations: { create: 'entity' }, information: { create: 'record' },
-    journal: { draft_chronicle: 'entry' },
-};
-const upsertActions = {
-    relationships: { save: 'relation', 'save-rule': 'rule' },
-    scene: { 'save-scene': 'scene', 'save-schedule': 'schedule' },
-    journal: { set_fact: 'fact', set_knowledge: 'entry', set_hook: 'entry', set_task: 'task', set_clue: 'entry' },
-};
+// Each adapter spec declares which actions define an entity (creates/upserts
+// with its kind); parseUpdate has already mapped legacy action names.
+const kinds = key => Object.fromEntries(adapters.map(adapter => [adapter.id,
+    Object.fromEntries((adapter.spec?.actions ?? []).filter(action => action[key]).map(action => [action.name, action[key]]))]));
+const createActions = kinds('creates'), upsertActions = kinds('upserts');
 const aliasLike = value => typeof value === 'string' && value.startsWith('@new:');
 const actionKind = (table, module, action) => Object.hasOwn(table[module] ?? {}, action) ? table[module][action] : undefined;
 
@@ -41,12 +35,12 @@ export function allocateUpdateEntityIds(parsed, { createId = uuid, existingIds =
         if (create || upsert && aliasLike(target)) declare(change, 'target', module, create ?? upsert);
         else if (upsert && !known.has(`${module}:${target}`)) throw Error(`新 ${module} 实体不能指定持久编号，请使用 @new:名称。`);
         if (module === 'inventory' && ['transfer-item', 'transfer-balance'].includes(action) && data.newId !== undefined) declare(data, 'newId', module, action === 'transfer-item' ? 'item' : 'balance');
-        if (module === 'characters' && ['create-character', 'save-character'].includes(action) && Array.isArray(data.stats)) {
+        if (module === 'characters' && ['create-character', 'update-character'].includes(action) && Array.isArray(data.stats)) {
             for (const stat of data.stats) if (!known.has(`characters:${target}/stats/${stat?.id}`)) declare(stat, 'id', module, 'stat');
         }
         if (module === 'characters' && action === 'save-stat' && !known.has(`characters:${target}/stats/${data.id}`)) declare(data, 'id', module, 'stat');
-        if (module === 'information' && action === 'create' && Array.isArray(data.fields)) for (const field of data.fields) declare(field, 'id', module, 'field');
-        if (module === 'information' && action === 'add_field') declare(data.field, 'id', module, 'field');
+        if (module === 'information' && action === 'create-panel' && Array.isArray(data.fields)) for (const field of data.fields) declare(field, 'id', module, 'field');
+        if (module === 'information' && action === 'create-field') declare(data.field, 'id', module, 'field');
     }
     const mapping = {};
     for (const [alias, definition] of definitions) {

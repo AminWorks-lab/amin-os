@@ -13,6 +13,11 @@
 .ro-panel [hidden],.amin-writing-workspace [hidden],.amin-stylewriter [hidden] {display:none!important}
 .ro-panel .ro-controls {display:flex;flex-wrap:wrap;gap:8px;margin:var(--amin-gap,10px) 0}
 .ro-panel .ro-status {font-size:inherit;overflow-wrap:anywhere}
+.ro-panel .ro-style-tags {display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:var(--amin-gap,10px)}
+.ro-panel .ro-style-tags-label {flex-basis:100%;color:var(--amin-muted);font-size:max(11px,calc(var(--amin-font,13px) - 1px))}
+.ro-panel .ro-style-tag {min-height:32px;padding:4px 14px;border-radius:999px!important}
+.ro-panel .ro-style-tag[data-style-kind=writing]::before {content:'✎ ';opacity:.7}
+.ro-panel .ro-controls>.ro-generate {flex:1 1 100%;min-height:52px;font-size:calc(var(--amin-font,13px) + 3px)}
 .ro-panel .ro-options {display:grid;gap:var(--amin-gap,10px);min-width:0}
 .ro-panel:not(.amin-reply-embedded) .ro-options {max-height:min(38vh,320px);overflow:auto}
 .ro-panel .ro-card {

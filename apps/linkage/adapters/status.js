@@ -2,7 +2,7 @@ import { validateTemplate, valueType, mergeUpdates } from '../../status/state-to
 import { bindingParts } from '../../characters/model.js';
 import '../../status/story-state.js';
 import { isIndependent, readStoryRoot, storyRootPath } from '../../story-state/access.js';
-import { renderContract } from '../contract.js';
+import { renderContract, canonicalChange } from '../contract.js';
 
 const ROOT = '状态栏', HISTORY = 'world_status_hud_history_v1';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -42,8 +42,8 @@ function historyPatch(ctx, value, now) {
 const spec = {
     notes: 'target="项目名.字段名"。只改已有字段，不增删、改名或改类型；current/max 仅用于进度，保持 0≤当前≤最大、最大>0。',
     actions: [
-        { name: 'set', args: 'value:同现有类型,component?:value|current|max' },
-        { name: 'adjust', args: 'delta:num,component?', note: '仅数字或进度' },
+        { name: 'set-field', aliases: ['set'], args: 'value:同现有类型,component?:value|current|max' },
+        { name: 'adjust-field', aliases: ['adjust'], args: 'delta:num,component?', note: '仅数字或进度' },
     ],
 };
 
@@ -52,10 +52,11 @@ export const adapter = {
     paths: [['variables', ROOT], [HISTORY]],
     spec, contract: renderContract(spec),
     read: state,
-    apply(ctx, change, { now } = {}) {
-        if (change?.module !== 'status' || !['set', 'adjust'].includes(change.action)) throw Error('不支持的世界状态联动操作。');
+    apply(ctx, input, { now } = {}) {
+        const change = canonicalChange(spec, input);
+        if (change?.module !== 'status' || !['set-field', 'adjust-field'].includes(change.action)) throw Error('不支持的世界状态联动操作。');
         if (typeof change.reason !== 'string' || !change.reason.trim() || change.reason.length > 4000) throw Error('世界状态更新需要明确依据。');
-        exact(change.data, change.action === 'set' ? ['value', 'component'] : ['delta', 'component']);
+        exact(change.data, change.action === 'set-field' ? ['value', 'component'] : ['delta', 'component']);
         const current = state(ctx), [project, field] = bindingParts(change.target);
         if (!Object.hasOwn(current.项目, project) || !Object.hasOwn(current.项目[project], field)) throw Error('世界状态目标字段不存在：' + change.target);
         const before = current.项目[project][field], component = change.data.component ?? 'value';
@@ -64,8 +65,8 @@ export const adapter = {
         if (component !== 'value') {
             if (valueType(before) !== '进度') throw Error('只有进度字段可以更新当前值或最大值。');
             const key = component === 'current' ? '当前' : '最大';
-            value[key] = numeric(change.action === 'set' ? change.data.value : numeric(before[key]) + numeric(change.data.delta));
-        } else if (change.action === 'adjust') {
+            value[key] = numeric(change.action === 'set-field' ? change.data.value : numeric(before[key]) + numeric(change.data.delta));
+        } else if (change.action === 'adjust-field') {
             if (valueType(before) !== '数字') throw Error('增减操作仅适用于数字字段或进度的数值部分。');
             value = numeric(before + numeric(change.data.delta));
         } else {

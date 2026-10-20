@@ -435,6 +435,14 @@ export function mount(target, options = {}) {
         if(disposed)return;render();
         if(section==='prompt'){promptPanel.open=true;revealWithinPanel(promptPanel);promptPanel.querySelectorAll?.('summary')?.[0]?.focus?.({preventScroll:true});}
         else if(section==='updates')revealWithinPanel(api.preview()?reviewPanel:nativePanel);
+        else if(section==='joint'){
+            generationView.open();const element=generationView.element;element.querySelector?.('summary')?.focus?.({preventScroll:true});
+            // Scroll only the nearest scrolling pane (the OS window), never the host page.
+            // Sections above may still grow while they load, so align once more shortly after.
+            const reveal=()=>{if(disposed||!element.getBoundingClientRect)return;let pane=target;while(pane&&pane.parentElement&&!(pane.scrollHeight>pane.clientHeight&&/auto|scroll/.test(globalThis.getComputedStyle?.(pane)?.overflowY??'')))pane=pane.parentElement;
+                if(pane?.getBoundingClientRect&&pane!==document.documentElement&&pane!==document.body)pane.scrollTop+=element.getBoundingClientRect().top-pane.getBoundingClientRect().top;};
+            reveal();globalThis.setTimeout?.(reveal,300);
+        }
     }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); unsubscribe?.(); page.remove(); mounted.delete(target); } };
     mounted.set(target, view); return view;
 }

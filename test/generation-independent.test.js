@@ -11,7 +11,7 @@ const changes = [
     change('characters', 'create-character', '@new:alice', { name: '艾琳', kind: 'npc', notes: '名字写作 @new:alice', stats: [] }),
     change('characters', 'create-character', '@new:bob', { name: '鲍勃', kind: 'npc', stats: [] }),
     change('inventory', 'create-item', '@new:potion', { name: '药水', ownerId: '@new:alice', quantity: 2, notes: '' }),
-    change('relationships', 'save', '@new:relation', { fromId: '@new:alice', toId: '@new:bob', type: '朋友', notes: '', sources: [0] }),
+    change('relationships', 'save-relationship', '@new:relation', { fromId: '@new:alice', toId: '@new:bob', type: '朋友', notes: '', sources: [0] }),
     change('scene', 'save-scene', '@new:room', { name: '小屋', participantIds: ['@new:alice', '@new:bob'], activate: true }),
 ];
 const options = { modules: ['characters','inventory','relationships','scene'], mode: 'create', sources: { includeChat: true, start: 0, end: 0 } };

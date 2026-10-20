@@ -61,7 +61,7 @@ test('upsert creates need aliases; stable targets must belong to the same module
 });
 
 test('existing ordinary updates remain unchanged, including strings inside arbitrary status values', () => {
-    const source = batch(change('characters', 'save-character', 'alice', { name: '@new:alice' }), change('status', 'set', '人物.档案', { value: { ownerId: '@new:alice', nested: ['@new:alice'] } }), change('scene', 'advance-time', undefined, { minutes: 1 }));
+    const source = batch(change('characters', 'update-character', 'alice', { name: '@new:alice' }), change('status', 'set-field', '人物.档案', { value: { ownerId: '@new:alice', nested: ['@new:alice'] } }), change('scene', 'advance-time', undefined, { minutes: 1 }));
     const { update, mapping } = resolve(source);
     assert.deepEqual(update, source);
     assert.deepEqual(mapping, {});

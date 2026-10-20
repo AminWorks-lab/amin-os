@@ -4,7 +4,7 @@ import { uuid } from '../../uuid.js';
 import { createInventoryService, getSharedInventoryService } from './service.js';
 import { WEAR_SLOTS, WEAR_LAYERS } from './model.js';
 import {contextLine} from '../shared/context-line.js';
-import {linkedEmpty} from '../shared/open-app.js';
+import {linkedEmpty,takeAppRequest} from '../shared/open-app.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
@@ -336,6 +336,13 @@ export function mount(target, options = {}) {
         filters.owner = event.detail.characterId; filters.query = ''; selected = 'wear'; render();
     };
     doc.addEventListener?.('amin:select-character', selectCharacter);
-    const view = { open() { render(); }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); doc.removeEventListener?.('amin:select-character', selectCharacter); unsubscribe?.(); if (ownService) api.dispose(); page.remove(); mounted.delete(target); } };
+    // Home search opens an entry: switch to its tab and filter by its name.
+    function takeRequest() {
+        const request = takeAppRequest('inventory');
+        if (!request || busy() || form) return;
+        if (Object.hasOwn(TABS, request.tab)) selected = request.tab;
+        filters.owner = ''; filters.query = String(request.query ?? '').slice(0, 200);
+    }
+    const view = { open() { takeRequest(); render(); }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); doc.removeEventListener?.('amin:select-character', selectCharacter); unsubscribe?.(); if (ownService) api.dispose(); page.remove(); mounted.delete(target); } };
     mounted.set(target, view); render(); return view;
 }

@@ -2,8 +2,8 @@
 // Kept free of host access so the floor row, the linkage page and tests share them.
 
 const NOUNS = { characters: '人物', inventory: '物品', relationships: '关系', scene: '场景', journal: '档案', effects: '效果', map: '地点', organizations: '势力', information: '资料', status: '状态' };
-const CREATE = new Set(['create', 'create-character', 'create-item', 'create-balance', 'add_node', 'add_edge', 'add_field']);
-const REMOVE = new Set(['delete', 'delete-character', 'delete-item', 'delete-balance', 'delete-stat', 'delete-schedule', 'forget', 'end', 'remove_field']);
+// Canonical action names (create-*, delete-*, end-effect …) plus legacy spellings.
+const CREATE = /^(?:create|add)(?:$|[-_])/u, REMOVE = /^(?:delete|remove|forget|end)(?:$|[-_])/u;
 const short = (value, limit = 24) => { const text = String(value ?? '').replace(/\s+/gu, ' ').trim(); return text.length > limit ? text.slice(0, limit - 1) + '…' : text; };
 // A status value as plain text: progress fields {当前, 最大} show the part that changed.
 function plainValue(raw, part) {
@@ -29,13 +29,13 @@ export function summarizeChanges(changes = [], descriptions = []) {
             pieces.push(`${short(name, 12)} ${short(before, 10)}→${short(after, 10)}`); return;
         }
         items.push(description || `${NOUNS[change.module] ?? change.module} · ${change.action}`);
-        if (change.module === 'scene' && ['advance-time', 'activity'].includes(change.action)) {
-            const minutes = change.action === 'advance-time' ? change.data?.minutes : change.before?.timeRules?.[change.data?.activity];
+        if (change.module === 'scene' && ['advance-time', 'log-activity', 'activity'].includes(change.action)) {
+            const minutes = change.action === 'advance-time' ? change.data?.minutes : change.before?.timeRules?.[change.data?.activity] * (change.data?.count ?? 1);
             pieces.push(Number.isFinite(minutes) ? `时间 +${minutes >= 60 && minutes % 60 === 0 ? minutes / 60 + ' 小时' : minutes + ' 分钟'}` : '时间推进');
             return;
         }
-        if (CREATE.has(change.action)) bump('+', change.module);
-        else if (REMOVE.has(change.action)) bump('−', change.module);
+        if (CREATE.test(change.action)) bump('+', change.module);
+        else if (REMOVE.test(change.action)) bump('−', change.module);
         else bump('', change.module);
     });
     const counted = [...counts].map(([key, count]) => /^[+−]/u.test(key) ? `${key[0]}${count} ${key.slice(1)}` : `${key}${count > 1 ? ' ×' + count : ''}`);

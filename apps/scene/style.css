@@ -1,0 +1,11 @@
+/* 场景与时间: compact start-time row (date + time, or a custom calendar's fields side by side). */
+.amin-ui .amin-scene-clock-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.amin-ui .amin-scene-clock-row>input[type=date]{flex:2 1 160px;width:auto}
+.amin-ui .amin-scene-clock-row>input[type=time]{flex:1 1 110px;width:auto}
+.amin-ui .amin-scene-clock-part{display:flex;align-items:center;gap:4px;flex:1 1 64px;min-width:0;margin:0;color:var(--amin-muted)}
+.amin-ui .amin-scene-clock-part>input{flex:1 1 auto;width:100%;min-width:0;padding-inline:8px}
+.amin-ui .amin-scene-clock-part>span{flex:0 0 auto}
+.amin-ui .amin-scene-clock-part:first-child{flex:1.6 1 80px}
+.amin-ui .amin-scene-clock-part>input{appearance:textfield;-moz-appearance:textfield}
+.amin-ui .amin-scene-clock-part>input::-webkit-inner-spin-button,.amin-ui .amin-scene-clock-part>input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.amin-ui .amin-scene-clock>.amin-toolbar{margin-top:2px}

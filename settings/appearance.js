@@ -1,13 +1,16 @@
 import {effectsDefaults,validateEffects} from '../desktop-effects-model.js';
+// The only colour source for every surface: themeVariables() turns a palette into --amin-*
+// tokens; status (--wsh-*) and map (--dm-*) variables are CSS aliases of these (theme-tokens.css).
+// danger/success/warning are semantic colours for errors, valid states and highlights.
 export const PALETTES = {
- win10light:{name:'Windows 10 浅色',bg:'#f3f3f3',card:'#ffffff',control:'#e8e8e8',text:'#202020',muted:'#595959',line:'#b6b6b6',accent:'#0078d4',ink:'#ffffff',scheme:'light'},
- win10:{name:'Windows 10 深色',bg:'#202020',card:'#2b2b2b',control:'#383838',text:'#ffffff',muted:'#c2c2c2',line:'#626262',accent:'#0078d4',ink:'#ffffff',scheme:'dark'},
- mint:{name:'薄荷夜色',bg:'#12191d',card:'#1b252b',control:'#202d33',text:'#edf3ef',muted:'#a2b2b7',line:'#adc7be38',accent:'#b9dfce',ink:'#19382d',scheme:'dark'},
- midnight:{name:'深海蓝',bg:'#141928',card:'#202a40',control:'#28344b',text:'#e5ebff',muted:'#a8b7da',line:'#56689580',accent:'#b4c6ff',ink:'#202c48',scheme:'dark'},
- paper:{name:'旅人纸页',bg:'#f1e5ce',card:'#fbf3e2',control:'#e8d8ba',text:'#493824',muted:'#766046',line:'#baa37b90',accent:'#775029',ink:'#fff8e9',scheme:'light'},
- rose:{name:'樱花物语',bg:'#fff6f8',card:'#fffcfd',control:'#f7e6ed',text:'#4e3042',muted:'#805a70',line:'#dcb6c7aa',accent:'#a63967',ink:'#ffffff',scheme:'light'},
- violet:{name:'夜色紫晶',bg:'#171529',card:'#242039',control:'#322b4d',text:'#efeafb',muted:'#b6acd0',line:'#51466eaa',accent:'#c5a9ff',ink:'#251737',scheme:'dark'},
- mono:{name:'极简墨白',bg:'#f4f5f6',card:'#ffffff',control:'#e9ecef',text:'#202b37',muted:'#586674',line:'#c7cdd4',accent:'#304d66',ink:'#ffffff',scheme:'light'},
+ win10light:{name:'Windows 10 浅色',bg:'#f3f3f3',card:'#ffffff',control:'#e8e8e8',text:'#202020',muted:'#595959',line:'#b6b6b6',accent:'#0078d4',ink:'#ffffff',danger:'#c42b1c',success:'#0f7b0f',warning:'#9d5d00',scheme:'light'},
+ win10:{name:'Windows 10 深色',bg:'#202020',card:'#2b2b2b',control:'#383838',text:'#ffffff',muted:'#c2c2c2',line:'#626262',accent:'#0078d4',ink:'#ffffff',danger:'#ff99a4',success:'#6ccb5f',warning:'#fce100',scheme:'dark'},
+ mint:{name:'薄荷夜色',bg:'#12191d',card:'#1b252b',control:'#202d33',text:'#edf3ef',muted:'#a2b2b7',line:'#adc7be38',accent:'#b9dfce',ink:'#19382d',danger:'#f1aaaa',success:'#9fd8b4',warning:'#efc98c',scheme:'dark'},
+ midnight:{name:'深海蓝',bg:'#141928',card:'#202a40',control:'#28344b',text:'#e5ebff',muted:'#a8b7da',line:'#56689580',accent:'#b4c6ff',ink:'#202c48',danger:'#ffaaaa',success:'#9fd8c0',warning:'#efc98c',scheme:'dark'},
+ paper:{name:'旅人纸页',bg:'#f1e5ce',card:'#fbf3e2',control:'#e8d8ba',text:'#493824',muted:'#766046',line:'#baa37b90',accent:'#775029',ink:'#fff8e9',danger:'#a3392d',success:'#4f6b2a',warning:'#8a571a',scheme:'light'},
+ rose:{name:'樱花物语',bg:'#fff6f8',card:'#fffcfd',control:'#f7e6ed',text:'#4e3042',muted:'#805a70',line:'#dcb6c7aa',accent:'#a63967',ink:'#ffffff',danger:'#b82e4d',success:'#3f7a4f',warning:'#976018',scheme:'light'},
+ violet:{name:'夜色紫晶',bg:'#171529',card:'#242039',control:'#322b4d',text:'#efeafb',muted:'#b6acd0',line:'#51466eaa',accent:'#c5a9ff',ink:'#251737',danger:'#ffabba',success:'#a8dcc0',warning:'#edc5eb',scheme:'dark'},
+ mono:{name:'极简墨白',bg:'#f4f5f6',card:'#ffffff',control:'#e9ecef',text:'#202b37',muted:'#586674',line:'#c7cdd4',accent:'#304d66',ink:'#ffffff',danger:'#b93640',success:'#2f6f4a',warning:'#8a5a12',scheme:'light'},
 };
 export const APP_NAMES={characters:'人物卡',inventory:'背包与账本',relationships:'人物关系',saves:'跨应用存档',scene:'场景与时间',journal:'剧情档案',dice:'骰子',tts:'语音朗读',worldbooks:'世界书管理',information:'信息面板',effects:'能力面板',map:'地图',status:'世界状态',linkage:'联动更新',organizations:'势力概览',reply:'回复选项',ai:'AI 设置'};
 export const FLOOR_BUTTON_ORDER=Object.freeze(['map','status','characters','inventory','relationships','saves','dice','scene','journal','organizations','reply','effects','information','worldbooks','tts']);
@@ -42,8 +45,7 @@ export function initializeAppearance(getContext){return shared??=createAppearanc
 export function themeVariables(config){const p=PALETTES[config.theme];return {
  '--amin-accent-text':config.theme.startsWith('win10')?p.text:p.accent,'--amin-bg':p.bg,'--amin-card':p.card,'--amin-control':p.control,'--amin-text':p.text,'--amin-muted':p.muted,'--amin-line':p.line,'--amin-accent':p.accent,'--amin-ink':p.ink,
  '--amin-font':config.fontSize+'px','--amin-radius':config.radius+'px','--amin-gap':config.density==='compact'?'8px':'14px','--amin-opacity':config.opacity+'%','--amin-blur':config.blur+'px',
- '--dm-bg':p.bg,'--dm-surface':p.control,'--dm-header':p.bg,'--dm-text':p.text,'--dm-muted':p.muted,'--dm-border':p.line,'--dm-accent':p.accent,'--dm-map':p.card,'--dm-map-center':p.control,
- '--wsh-bg':p.bg,'--wsh-card':p.card,'--wsh-control':p.control,'--wsh-text':p.text,'--wsh-muted':p.muted,'--wsh-line':p.line,'--wsh-accent':p.accent,'--wsh-ink':p.ink,'--wsh-glow':'transparent','--wsh-radius':config.radius+'px','--wsh-scheme':p.scheme,
+ '--amin-danger':p.danger,'--amin-success':p.success,'--amin-warning':p.warning,'--amin-scheme':p.scheme,
  };
 }
 export function installAppearance(document){

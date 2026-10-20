@@ -3,8 +3,15 @@ export function parseRequestBody(value=''){
  if(!result||typeof result!=='object'||Array.isArray(result))throw Error('自定义请求参数必须是 JSON 对象，例如 {"temperature": 0.8}');
  const inspect=value=>{if(value&&typeof value==='object')for(const [key,child]of Object.entries(value)){if(['__proto__','constructor','prototype'].includes(key))throw Error('自定义请求参数包含不允许的字段：'+key);inspect(child);}};inspect(result);return result;
 }
+/** OpenAI-compatible json_schema response format; strict:false keeps optional fields optional. */
+export function responseFormat({name,schema}){
+ if(typeof name!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(name)||!schema||typeof schema!=='object')throw Error('结构化输出需要有效的 schema 名称与 JSON Schema');
+ return {type:'json_schema',json_schema:{name,schema,strict:false}};
+}
 export function buildRequestBody(config,request){
  const body={model:config.model,messages:request.messages??[{role:'system',content:request.systemPrompt},{role:'user',content:request.prompt}],max_tokens:config.maxTokens,stream:config.stream};
+ // Structured output is opt-in per channel; the custom requestBody below may still override or delete it.
+ if(request.schema&&config.structuredOutput)body.response_format=responseFormat(request.schema);
  for(const [key,value]of Object.entries(parseRequestBody(config.requestBody))){if(value===null)delete body[key];else body[key]=value;}
  if(typeof body.model!=='string'||!body.model.trim())throw Error('最终请求体需要有效的 model');
  if(!Array.isArray(body.messages)||!body.messages.length)throw Error('最终请求体需要非空 messages 数组');

@@ -5,7 +5,9 @@ import { createOperationService, subscribeStateChanges, chatIdentity } from '../
 import { getAI } from '../../ai/service.js';
 import { managesModule } from '../linkage/policy.js';
 import { KEY, readStore, readRelationships, resolveRelationships, visibleEvents, transition, appendSnapshot, currentPrompt, evaluateThresholds, validateEvidence, sourceReferences } from './model.js';
-import { validateEndpoints, applyRelationshipChange } from './updates.js';
+import { validateEndpoints, applyRelationshipChange, UPDATE_SPEC } from './updates.js';
+import { canonicalAction } from '../linkage/contract.js';
+import { promptInjectors } from '../linkage/injectors.js';
 import { draftRelationships } from './draft.js';
 
 export const PROMPT_KEY = 'amin-os-person-relationships';
@@ -14,7 +16,8 @@ export function createRelationshipsService(getContext = () => globalThis.SillyTa
     const operation = createOperationService(getContext), listeners = new Set(), removers = [];
     let pending = null, disposed = false, last = null, hostMessage = '', draftController = null;
     const notify = () => { for (const callback of [...listeners]) { try { callback(); } catch { /* A view cannot break a committed change. */ } } };
-    function clearPrompt() { try { getContext()?.setExtensionPrompt?.(PROMPT_KEY, '', 1, 0, false); } catch { /* Host may be switching chats. */ } }
+    let injector = null;
+    const clearPrompt = () => injector.clear();
     function ensureOpen() { if (disposed) throw Error('人物关系服务已关闭。'); }
     const capture = () => { ensureOpen(); return operation.capture([[KEY], [CHARACTERS_KEY]]); };
     const check = token => { ensureOpen(); return operation.check(token); };
@@ -60,7 +63,7 @@ export function createRelationshipsService(getContext = () => globalThis.SillyTa
         if (new Set(changes.map(change => change?.target)).size !== changes.length) throw Error('同一关系出现多份建议，请只保留最终变更。');
         const shadow = { ...ctx, chatMetadata: copy(ctx.chatMetadata) }, summaries = [];
         for (const change of changes) {
-            if (!['save', 'delete'].includes(change?.action)) throw Error('关系 AI 建议只能更新关系，不可改写规则。');
+            if (!['save-relationship', 'delete-relationship'].includes(canonicalAction(UPDATE_SPEC, change?.action))) throw Error('关系 AI 建议只能更新关系，不可改写规则。');
             const result = applyRelationshipChange(shadow, copy(change), { operationId: createId(), now: now(), origin: 'ai', allowedSources: sources });
             shadow.chatMetadata[KEY] = result.patches[0].value; summaries.push(result.summary);
         }
@@ -106,29 +109,31 @@ export function createRelationshipsService(getContext = () => globalThis.SillyTa
     }
     async function confirm() { ensureOpen(); const result = await operation.confirm(); pending = null; sync(); return result; }
     async function retrySave() { ensureOpen(); const result = await operation.retrySave(); sync(); return result; }
-    function start(type = 'normal', options = {}, dryRun = false) {
-        clearPrompt();
-        if (disposed || dryRun || options?.signal?.aborted || !['normal', 'regenerate', 'swipe', 'continue'].includes(type)) return;
+    const enabled = (type = 'normal', options = {}, dryRun = false) => !(disposed || dryRun || options?.signal?.aborted || !['normal', 'regenerate', 'swipe', 'continue'].includes(type));
+    function build(type = 'normal') {
+        let prompt = null;
         try {
             if (operation.busy()) throw Error('当前聊天正在保存，本轮未附加人物关系。');
             const ctx = getContext();
-            if (!ctx?.chatMetadata || (ctx.getCurrentChatId?.() ?? ctx.chatId) == null) return;
-            if (managesModule(ctx, 'relationships')) { hostMessage = '人物关系由统一联动条目管理。'; return; }
+            if (!ctx?.chatMetadata || (ctx.getCurrentChatId?.() ?? ctx.chatId) == null) return null;
+            if (managesModule(ctx, 'relationships')) { hostMessage = '人物关系由统一联动条目管理。'; return null; }
             let chat = ctx.chat ?? [];
             if (['regenerate', 'swipe'].includes(type) && chat.length && !chat.at(-1).is_user) chat = chat.slice(0, -1);
-            const prompt = currentPrompt({ ...ctx, chat });
-            ctx.setExtensionPrompt?.(PROMPT_KEY, prompt, 1, 0, false);
+            prompt = currentPrompt({ ...ctx, chat });
             hostMessage = prompt ? `已附加 ${prompt.length} 字符已确认人物关系。` : '当前分支未开启人物关系读取，或暂无人物引用完整的关系。';
-        } catch (error) { hostMessage = error.message; }
+        } catch (error) { prompt = null; hostMessage = error.message; }
         notify();
+        return prompt;
     }
     removers.push(operation.subscribe(() => { hostMessage = ''; notify(); }));
     removers.push(subscribeStateChanges(detail => { if (detail.paths.some(path => path[0] === KEY || path[0] === CHARACTERS_KEY || path[0] === 'amin_os_linkage_v1')) sync(); }));
     const initial = getContext(), source = initial?.eventSource, types = initial?.eventTypes ?? initial?.event_types ?? {};
-    const supported = !!(initial?.setExtensionPrompt && source?.on && types.GENERATION_AFTER_COMMANDS && types.CHAT_CHANGED);
+    injector = promptInjectors(getContext).register(PROMPT_KEY, { build, enabled, onError: error => { hostMessage = error.message; notify(); } });
+    const supported = injector.supported;
     const clearAndSync = () => { clearPrompt(); sync(); };
     const handlers = Object.fromEntries(['CHAT_CHANGED', 'MESSAGE_SENT', 'MESSAGE_RECEIVED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'GENERATION_ENDED', 'GENERATION_STOPPED'].map(name => [name, clearAndSync]));
-    if (supported) handlers.GENERATION_AFTER_COMMANDS = start;
+    // With host prompt support the shared injector clears on chat switches.
+    if (supported) handlers.CHAT_CHANGED = () => sync();
     for (const [name, callback] of Object.entries(handlers)) if (source?.on && types[name]) {
         source.on(types[name], callback); removers.push(() => source.removeListener ? source.removeListener(types[name], callback) : source.off?.(types[name], callback));
     }
@@ -144,7 +149,7 @@ export function createRelationshipsService(getContext = () => globalThis.SillyTa
         discard() { pending = null; hostMessage = ''; operation.discard(); },
         status: () => hostMessage || operation.status(), busy: () => !!draftController || operation.busy(), dirty: () => operation.dirty(),
         subscribe(callback) { ensureOpen(); listeners.add(callback); return () => listeners.delete(callback); },
-        dispose() { if (disposed) return; disposed = true; draftController?.abort(Error('人物关系窗口已关闭。')); pending = null; clearPrompt(); clearInterval(timer); for (const remove of removers) remove(); operation.dispose(); listeners.clear(); },
+        dispose() { if (disposed) return; disposed = true; draftController?.abort(Error('人物关系窗口已关闭。')); pending = null; injector.dispose(); clearInterval(timer); for (const remove of removers) remove(); operation.dispose(); listeners.clear(); },
     };
 }
 let shared;

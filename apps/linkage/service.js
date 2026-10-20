@@ -46,18 +46,20 @@ const sourceEqual = (a,b) => a.identity === b.identity && a.index === b.index &&
     && (a.textHash ?? hash(a.text)) === (b.textHash ?? hash(b.text)) && (a.pathHash ?? hash(a.path)) === (b.pathHash ?? hash(b.path));
 const changesEqual = (record, changes) => record.changesHash ? record.changesHash === hash(changes) : same(record.changes, changes);
 const failWith = (category, text) => Object.assign(Error(text), { linkageCategory: category });
-function parse(raw) {
-    try { return parseUpdate(raw); }
+function parse(raw, options) {
+    try { return parseUpdate(raw, options); }
     catch (error) { error.linkageCategory ??= 'format'; throw error; }
 }
 const REJECTION_LIMIT = 10, TURN_LIMIT = 20, HINT_KEY = 'amin-os-regenerate-hint-v1';
+// One notice per chat: the storage key carries the chat identity. Storage is
+// best effort (private windows may refuse it); the in-memory set still applies.
+const hintKey = identity => `${HINT_KEY}:${hash(identity).slice(7, 39)}`;
 function rememberHint(identity, storage) {
-    // One notice per chat; storage is best effort (private windows may refuse it).
     try {
-        const key = hash(identity), seen = JSON.parse(storage?.getItem?.(HINT_KEY) ?? '[]');
-        if (Array.isArray(seen) && seen.includes(key)) return false;
-        storage?.setItem?.(HINT_KEY, JSON.stringify([...(Array.isArray(seen) ? seen : []), key].slice(-200)));
-    } catch { /* The in-memory set still limits the notice to once per run. */ }
+        const key = hintKey(identity);
+        if (storage?.getItem?.(key)) return false;
+        storage?.setItem?.(key, '1');
+    } catch { /* Fall back to the in-memory set. */ }
     return true;
 }
 
@@ -107,7 +109,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const ctx = options.candidate ? ensureGeneration(options.candidate) : context();
         const settings = readLinkageState(ctx);
         if (!settings.enabled && !manualScope) throw Error('请先启用统一联动更新。');
-        const input = parse(raw), independent = isIndependent(ctx);
+        const input = parse(raw), literal = parse(raw, { canonical: false }), independent = isIndependent(ctx);
         const currentData = independent ? rawData(ctx) : null;
         const existingIds = independent ? [...buildReferenceIndex(currentData).entities.map(entity => entity.id),
             ...(currentData.relationships?.thresholdRules ?? []).map(rule => `relationships:${rule.id}`)] : [];
@@ -115,12 +117,12 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const parsed = allocated?.update ?? input;
         if (!parsed.changes.length) throw Error('本次没有需要更新的内容。');
         const source = options.candidate?.source ?? sourceFor(ctx);
-        if (settings.applied.some(record => !record.archived && sourceEqual(record.source, source) && (options.candidate || changesEqual(record, input.changes)))) throw Error('这次来源的更新已经应用，不会重复执行。');
+        if (settings.applied.some(record => !record.archived && sourceEqual(record.source, source) && (options.candidate || changesEqual(record, input.changes) || changesEqual(record, literal.changes)))) throw Error('这次来源的更新已经应用，不会重复执行。');
         const token = operation.capture(independent ? [...paths, [STATE_KEY]] : paths);
         const operationId = createId(), at = now(), sandbox = independent ? toLegacyContext(ctx) : { ...ctx, chatMetadata: clone(ctx.chatMetadata) };
         const touched = [], descriptions = [], changes = [], beforeData = rawData(sandbox);
         for (const [index, change] of parsed.changes.entries()) try {
-            if (manualScope && change.module === 'status' && change.action !== 'set') throw failWith('permission', '手动状态更新仅允许设置已有字段的最终值。');
+            if (manualScope && change.module === 'status' && change.action !== 'set-field') throw failWith('permission', '手动状态更新仅允许设置已有字段的最终值。');
             if (!canWrite(ctx,change.module)) throw failWith('permission', `${MODULES[change.module][0]} 未在本次操作的更新范围内。`);
             const adapter = adapters.find(a => a.id === change.module);
             if (!adapter?.apply) throw failWith('permission', '这个模块目前只支持读取。');

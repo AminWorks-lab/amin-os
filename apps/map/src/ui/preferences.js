@@ -1,3 +1,5 @@
+// Legacy map palettes. The map follows the global --amin-* theme since 0.19.0; a saved
+// `theme` is still read and written back unchanged so older settings load without error.
 export const THEMES = [{id:'forest',name:'青绿'}, {id:'midnight',name:'深蓝'}, {id:'paper',name:'浅色'}];
 export function createPreferences(getContext, storage, namespace) {
     const key='dynamicMapPreferences', fallback=`dynamic-map.preferences:${namespace}`, listeners=new Set();

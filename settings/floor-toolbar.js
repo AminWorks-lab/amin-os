@@ -19,7 +19,9 @@ export function createFloorToolbar(row,document){
  edit.className='amin-floor-toolbar-edit';edit.textContent='调整排列';edit.setAttribute('aria-pressed','false');
  overflow.className='amin-floor-toolbar-overflow';overflow.setAttribute('role','group');overflow.setAttribute('aria-label','更多楼层应用');overflow.hidden=true;
  hint.className='amin-floor-toolbar-hint';hint.setAttribute('role','status');hint.hidden=true;
- toolbar.append(more,overflow,hint);overflow.append(edit);
+ // 快捷动作 stays last in the overflow; its menu loads on first use.
+ const quick=document.createElement('button');quick.type='button';quick.className='amin-floor-toolbar-quick';quick.textContent='快捷动作';quick.setAttribute('aria-haspopup','menu');quick.setAttribute('aria-expanded','false');
+ toolbar.append(more,overflow,hint);overflow.append(edit,quick);
  let editing=false,expanded=false,gesture=null,suppressClick=false,suppressTimer=null,keyOff=null;
  const gestureOff=[];
  const listeners=[];
@@ -31,7 +33,7 @@ export function createFloorToolbar(row,document){
   const prefs=state(),ids=order(),hidden=new Set(prefs.moreButtons??[]),items=[...row.items].sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id));
   if(toolbar.dataset.toolbarAlignment!==(prefs.toolbarAlignment??'left'))toolbar.dataset.toolbarAlignment=prefs.toolbarAlignment??'left';if(toolbar.dataset.editing!==String(editing))toolbar.dataset.editing=String(editing);
   // “调整排列” lives at the end of the expanded overflow; while editing it stays in the row as “完成排列”.
-  if(editing){if(edit.parentNode!==toolbar||edit.nextSibling!==hint)toolbar.insertBefore(edit,hint);}else if(edit.parentNode!==overflow||edit.nextSibling)overflow.append(edit);
+  if(editing){if(edit.parentNode!==toolbar||edit.nextSibling!==hint)toolbar.insertBefore(edit,hint);}else if(edit.parentNode!==overflow||edit.nextSibling!==quick)overflow.insertBefore(edit,quick);
   placeFloorButtons(toolbar,items.filter(item=>editing||!hidden.has(item.id)).map(item=>item.button),more);
   placeFloorButtons(overflow,items.filter(item=>!editing&&hidden.has(item.id)).map(item=>item.button),editing?null:edit);
   const hasMore=items.some(x=>hidden.has(x.id)&&(x.shown??x.visible));more.hidden=editing;overflow.hidden=editing||!expanded;const moreLabel=hasMore?'更多':'⋯';if(more.textContent!==moreLabel){more.textContent=moreLabel;more.title=hasMore?'更多楼层应用与排列':'调整排列';}
@@ -43,7 +45,7 @@ export function createFloorToolbar(row,document){
  function save(next){const appearance=getAppearance();if(!appearance)return;const fresh=appearance.snapshot();fresh.floor.buttonOrder=next;appearance.save(fresh);}
  function saveMove(id,target,after){try{save(moveFloorButton(order(),id,target,after));render();hint.textContent='排列已保存，所有楼层同步。';}catch(error){hint.hidden=false;hint.textContent=`保存失败：${error.message}`;}}
  function suppress(){suppressClick=true;clearTimeout(suppressTimer);suppressTimer=setTimeout(()=>{suppressClick=false;},500);}
- listen(more,'click',()=>{expanded=!expanded;render();});listen(edit,'click',()=>setEditing(!editing));
+ listen(more,'click',()=>{expanded=!expanded;render();});listen(quick,'click',()=>{import(/* view */ '../apps/home/quick-menu.js').then(m=>m.toggleQuickMenu(quick,{document}),error=>{hint.hidden=false;hint.textContent=`快捷动作加载失败：${error.message}`;});});listen(edit,'click',()=>setEditing(!editing));
  listen(toolbar,'click',event=>{if(event.isTrusted&&appButton(event.target)&&(editing||suppressClick)){event.preventDefault();event.stopImmediatePropagation();}},true);
  listen(toolbar,'keydown',event=>{
   if(event.key==='Escape'){setEditing(false);return;}
@@ -71,5 +73,5 @@ export function createFloorToolbar(row,document){
  bind('pointerup',event=>{const current=gesture;if(!current||event.pointerId!==current.pointerId)return;if(current.dragging){suppress();if(current.target)saveMove(current.id,current.target,current.after);}cancel();});
  bind('pointercancel',()=>cancel());
  }
- return {render,dispose(){cancel();keyOff?.();clearTimeout(suppressTimer);listeners.forEach(off=>off());more.remove();edit.remove();overflow.remove();hint.remove();}};
+ return {render,dispose(){cancel();keyOff?.();clearTimeout(suppressTimer);listeners.forEach(off=>off());more.remove();edit.remove();quick.remove();overflow.remove();hint.remove();}};
 }

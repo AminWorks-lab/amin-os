@@ -108,7 +108,7 @@ function mountIndependentStoryStorage(target, report, getRuntime) {
   for (const [value, label] of [['app', '当前应用中的旧资料'], ['native', '小白变量 2.0 中的旧资料']]) {
     const option = make('option', label); option.value = value; source.append(option);
   }
-  source.value = 'app'; importToolbar.append(source);
+  source.value = 'app'; importToolbar.append(source); source.setAttribute?.('data-story-import', 'true');
   const legacy = button('预览导入旧资料', () => void run(async (runtime, token) => {
     const value = await runtime.previewLegacy({ source: source.value }); check(token);
     showPreview(value, token); report(value.valid === false ? '旧资料存在错误，请先核对预览。' : '旧资料已读取，请核对预览后确认导入。');

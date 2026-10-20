@@ -36,7 +36,7 @@ function fixture({ modules = ['characters', 'inventory', 'status'], backups, not
         await api.collectReply(ctx.chat.length - 1);
         ctx.chat.push({ is_user: true, mes: '继续' });
     }
-    return { ctx, api, runtime, reply, notices, dispose() { api.dispose(); runtime.destroy(); } };
+    return { ctx, api, runtime, reply, notices, memory, dispose() { api.dispose(); runtime.destroy(); } };
 }
 
 test('an automatic batch records a floor summary whose undo restores the state from before the batch', async () => {
@@ -113,6 +113,10 @@ test('regenerating a reply that already applied updates notices once per chat', 
         assert.deepEqual(f.notices, ['上一版回复的更新不会自动撤回，可在楼层小结中撤回。']);
         f.api.captureGeneration('regenerate'); f.api.captureGeneration('swipe');
         assert.equal(f.notices.length, 1);
+        const keys = [...f.memory.keys()];
+        assert.equal(keys.length, 1); assert.match(keys[0], /^amin-os-regenerate-hint-v1:[0-9a-f]{32}$/u, 'the storage key names the chat');
+        const later = createLinkageService(() => f.ctx, { adapters: [characters, inventory, status], hintStorage: { getItem: key => f.memory.get(key) ?? null, setItem: (key, value) => f.memory.set(key, value) }, notifyRegenerate: text => f.notices.push(text) });
+        try { later.captureGeneration('regenerate'); assert.equal(f.notices.length, 1, 'a reload does not repeat the notice for the same chat'); } finally { later.dispose(); }
     } finally { f.dispose(); }
 });
 

@@ -8,7 +8,7 @@ import { readCurrentScene, formatGameTime } from '../scene/model.js';
 import { readInventory } from '../inventory/model.js';
 import { readCharacters } from '../characters/model.js';
 import {contextLine} from '../shared/context-line.js';
-import {linkedEmpty} from '../shared/open-app.js';
+import {linkedEmpty,takeAppRequest} from '../shared/open-app.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
 import { collapseTabs } from '../../ui/tabs.js';
 import { infoNote } from '../../ui/forms.js';
@@ -499,6 +499,6 @@ export function mount(target, options = {}) {
         go(() => { selected = 'memory'; memoryCharacterId = event.detail.characterId; render(); });
     }
     doc.addEventListener?.('amin:select-character', selectCharacter);
-    const view = { open(options = {}) { if (!form) { if (options.tab && Object.hasOwn(tabNames, options.tab)) selected = options.tab; if (options.characterId) { selected = 'memory'; memoryCharacterId = options.characterId; } render(); } }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); stop(); unsubscribe(); overflow.dispose(); doc.removeEventListener?.('amin:select-character', selectCharacter); if (ownService) api.dispose(); page.remove(); mounted.delete(target); } };
+    const view = { open(options = takeAppRequest('journal') ?? {}) { if (!form) { if (options.tab && Object.hasOwn(tabNames, options.tab)) selected = options.tab; if (typeof options.query === 'string') { filters.query = options.query.slice(0, 200); filters.status = ''; filters.scope = 'current'; } if (options.characterId) { selected = 'memory'; memoryCharacterId = options.characterId; } render(); } }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); stop(); unsubscribe(); overflow.dispose(); doc.removeEventListener?.('amin:select-character', selectCharacter); if (ownService) api.dispose(); page.remove(); mounted.delete(target); } };
     mounted.set(target, view); render(); say(api.status()); return view;
 }

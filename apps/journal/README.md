@@ -6,7 +6,7 @@
 
 - **任务**：目标、待开始／进行中／已完成／已放弃、0–100 进度、期限和奖励说明。可选择现有人物、地点、物品建立关联，也可填写稳定编号。进度 100 不会自动改为已完成；奖励仅是说明，不会写入背包或账本。
 - **线索**：来源、可信程度、待验证／已确认、关联任务及人物／地点／物品。可信程度 100 不会自动确认或完成任务；关联任务删除后显示缺失，保留原编号。
-- 两类记录复用档案事件、外置剧情快照和变量 2.0 的 `AminOS剧情.entries`，不新增独立存储。`set_task` / `set_clue` 走现有 AI 生成建议与审核流程。导入时同时导出的任务／线索会重映射任务编号，引用默认关闭。
+- 两类记录复用档案事件、外置剧情快照和变量 2.0 的 `AminOS剧情.entries`，不新增独立存储。`save-task` / `save-clue` 走现有 AI 生成建议与审核流程。导入时同时导出的任务／线索会重映射任务编号，引用默认关闭。
 
 - **伏笔**：标题、内容、关联人物、待回收／已回收／已放弃、来源楼层、可选剧情时间。可设置经过多少个后续楼层后在列表显示提醒；提醒不会自行给模型发送内容或推进剧情。
 - **编年史**：手工整理或选择已加载的真实楼层范围，让 AI 起草。AI 的结果先出现在可编辑预览中，点击“采用草稿到正文”后仍须明确保存。
@@ -29,7 +29,7 @@
 ## 跨应用接口
 
 - `readCharacterMemories(ctx, characterId)` 返回当前分支该人物的记忆、关联事实和缺失引用提示。人物卡打开 `journal` 后派发 `amin:select-character`，事件内容为 `{characterId, app:'journal'}`，切换到事实与记忆页并按 ID 筛选。也可使用 `mount(...).open({tab:'memory', characterId})`。
-- `apps/linkage/adapters/journal.js` 提供只读数据与纯函数更新：`set_fact`、`set_knowledge`、`forget`、`set_hook`、`draft_chronicle`、`delete`。不让模型改引用开关、自动整理设置或前作来源。编年史更新只写入待确认草稿。协调器负责整批校验和统一保存，适配器不自己写元数据或调用 AI。
+- `apps/linkage/adapters/journal.js` 提供只读数据与纯函数更新：`save-fact`、`save-knowledge`、`forget-knowledge`、`save-hook`、`save-task`、`save-clue`、`draft-chronicle`、`delete-entry`（旧名 `set_fact` 等仍作为别名接受）。不让模型改引用开关、自动整理设置或前作来源。编年史更新只写入待确认草稿。协调器负责整批校验和统一保存，适配器不自己写元数据或调用 AI。
 - `readForPrompt(ctx)` 与用于校验的完整 `read(ctx)` 分开：提示只提供已明确启用且来源有效的条目，前作还需确认来源；未启用条目只暴露 ID、类型及不可引用标志。提示不包含前作保存的原文，也不从人物应用旁路解析姓名。关闭事实引用后，不会通过记忆附加该事实正文。
 - 统一联动启用本模块后，旧 journal 临时提示停止附加；由统一条目提供允许读取的内容。
 - `snapshotJournal`、`validateJournalSnapshot`、`restoreJournal` 供跨应用存档复用。快照保持兼容 `{version,limit,entries}`，新增可选 `autoChronicle`、`drafts`。恢复在当前分支追加事件，不覆盖旧历史；失效来源关闭引用并保留正文，失效草稿保留为忽略状态，旧快照恢复自动整理为关闭。

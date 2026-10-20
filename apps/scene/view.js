@@ -5,6 +5,7 @@ import { contextExpiryPreview } from '../effects/model.js';
 import { periodicPreview } from '../effects/settlement.js';
 import { mountTravel, appendExpiryPreview } from './travel-view.js';
 import {contextLine} from '../shared/context-line.js';
+import { extractStoryTime } from './extract-time.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
 import { collapseTabs } from '../../ui/tabs.js';
 import { infoNote } from '../../ui/forms.js';
@@ -137,6 +138,53 @@ export function mount(target, { service = getSharedSceneService(), travelService
         }
         const actions = node('div', null, 'amin-toolbar'); actions.append(button('确认应用一次', () => api.confirm(), true), button('取消', () => api.discard())); panel.append(actions); review.append(panel);
     }
+    // One compact row: a date and a time input; a custom calendar keeps number fields side by side.
+    function clockFields() {
+        const wrap = node('div', null, 'amin-field amin-span-full amin-scene-clock'), row = node('div', null, 'amin-scene-clock-row');
+        const pad = (value, size = 2) => Number.isInteger(value) && value >= 0 ? String(value).padStart(size, '0') : '';
+        wrap.append(node('span', '日期与时间'), row);
+        if (!customCalendar) {
+            const date = node('input'), time = node('input');
+            date.type = 'date'; date.min = '0001-01-01'; date.max = '9999-12-31'; date.setAttribute('aria-label', '日期（年-月-日）');
+            time.type = 'time'; time.setAttribute('aria-label', '时间（时:分）');
+            const { year, month, day, hour, minute } = clockDraft;
+            date.value = pad(year, 4) && pad(month) && pad(day) ? `${pad(year, 4)}-${pad(month)}-${pad(day)}` : '';
+            time.value = pad(hour) && pad(minute) ? `${pad(hour)}:${pad(minute)}` : '';
+            date.addEventListener('input', () => { const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.value); Object.assign(clockDraft, parts ? { year: +parts[1], month: +parts[2], day: +parts[3] } : { year: NaN }); });
+            time.addEventListener('input', () => { const parts = /^(\d{2}):(\d{2})/.exec(time.value); Object.assign(clockDraft, parts ? { hour: +parts[1], minute: +parts[2] } : { hour: NaN }); });
+            row.append(date, time);
+        } else {
+            for (const [key, label, min, max] of [['year', '年', 1, 9999], ['month', '月', 1, 24], ['day', '日', 1, 100], ['hour', '时', 0, 23], ['minute', '分', 0, 59]]) {
+                const part = node('label', null, 'amin-scene-clock-part'), input = node('input');
+                input.type = 'number'; input.min = min; input.max = max; input.value = clockDraft[key] ?? ''; input.setAttribute('aria-label', label);
+                input.addEventListener('input', () => { clockDraft[key] = input.value === '' ? NaN : Number(input.value); });
+                part.append(input, node('span', label)); row.append(part);
+            }
+        }
+        const extract = button('从剧情提取时间', () => extractTime(extract)); extract.classList.add('amin-scene-extract');
+        const tools = node('div', null, 'amin-toolbar'); tools.append(extract);
+        wrap.append(tools, node('small', 'AI 读取最近聊天推断当前时间，只填入表单；仍需预览并确认后才保存。'));
+        return wrap;
+    }
+    let extracting = null;
+    async function extractTime(control) {
+        if (extracting) return;
+        const before = api.capture(), controller = new AbortController(); extracting = controller;
+        const same = () => { const now = api.capture(); if (disposed || now.identity !== before.identity || now.metadata !== before.metadata || now.path !== before.path) throw Error('聊天或消息已变化，未填入提取结果。'); };
+        let calendar = null;
+        if (customCalendar) { try { calendar = validateCalendar({ monthLengths: calendarLengths.split(/[,，]/).map(part => Number(part.trim())), monthNames: calendarNames.trim() ? calendarNames.split(/[,，]/).map(part => part.trim()) : undefined, weekDays: calendarWeek.split(/[,，]/).map(part => part.trim()), epochWeekday: calendarEpoch }); } catch { calendar = null; } }
+        control.disabled = true; control.textContent = '正在提取…'; say('正在让 AI 从最近聊天中提取时间…');
+        try {
+            const result = await extractStoryTime({ ctx: api.context(), calendar, current: { year: clockDraft.year, month: clockDraft.month, day: clockDraft.day, hour: clockDraft.hour, minute: clockDraft.minute }, signal: controller.signal, check: same });
+            same();
+            if (!result.found) { say(result.note || '最近聊天中没有找到明确的时间，表单未修改。'); return; }
+            Object.assign(clockDraft, result.clock);
+            timeReason = ('从剧情提取' + (result.evidence ? '：' + result.evidence : '')).slice(0, 200);
+            render();
+            const kept = result.missing.map(key => ({ year: '年', month: '月', day: '日', hour: '时', minute: '分' })[key]).join('、');
+            say(`已从剧情提取时间并填入表单${kept ? `（原文未提到${kept}，保留表单原值）` : ''}${result.note ? '。' + result.note : ''}。请核对后点击“预览时间设置”，确认前不会保存。`);
+        } finally { if (extracting === controller) extracting = null; if (control.isConnected) { control.disabled = false; control.textContent = '从剧情提取时间'; } }
+    }
     function sceneSummary(scene, periods) {
         const result = node('div', null, 'amin-stack'); result.append(node('strong', scene.name));
         for (const [key, label] of Object.entries({ participants: '在场人物', weather: '天气与环境', objects: '场景物件', notes: '已确认资料' })) if (scene[key]) result.append(node('p', label + '：' + scene[key]));
@@ -169,7 +217,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
                 field('星期名称', calendarWeek, value => { calendarWeek = value; }, { full: true, help: '逗号分隔，支持每周 1–14 天。' }),
                 field('元年首日星期序号', calendarEpoch + 1, value => { calendarEpoch = value - 1; }, { type: 'number', min: 1, max: 14, help: '从 1 开始，对应上面星期名称的顺序。' }));
         }
-        for (const [key, label, min, max] of [['year', '年', 1, 9999], ['month', '月', 1, customCalendar ? 24 : 12], ['day', '日', 1, customCalendar ? 100 : 31], ['hour', '时', 0, 23], ['minute', '分', 0, 59]]) grid.append(field(label, clockDraft[key], value => { clockDraft[key] = value; }, { type: 'number', min, max }));
+        grid.append(clockFields());
         grid.append(field('设置原因', timeReason, value => { timeReason = value; }, { full: true }));
         editor.append(grid, infoNote(document, '历法随时间记录一起保存。', '中途换历法后，旧记录保持原日期；离场周期遇到不同历法时需重新确认起算时间。', 'amin-meta'), button('预览时间设置', () => {
             const clock = { ...clockDraft }; delete clock.calendar;
@@ -297,7 +345,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
     const unsubscribe = api.subscribe(render); render();
     const view = {
         open() { if (disposed) return; api.sync(); render(); },
-        dispose() { if (disposed) return; disposed = true; generationView.dispose(); unsubscribe(); overflow.dispose(); document.removeEventListener?.('amin:select-character', selectCharacter); travelView.dispose(); page.remove(); if (mountedViews.get(target) === view) mountedViews.delete(target); },
+        dispose() { if (disposed) return; disposed = true; extracting?.abort(); generationView.dispose(); unsubscribe(); overflow.dispose(); document.removeEventListener?.('amin:select-character', selectCharacter); travelView.dispose(); page.remove(); if (mountedViews.get(target) === view) mountedViews.delete(target); },
     };
     mountedViews.set(target, view); return view;
 }

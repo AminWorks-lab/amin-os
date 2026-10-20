@@ -1,5 +1,6 @@
 import { chatIdentity } from '../adapters/chat.js';
 import { managesModule } from '../../../linkage/policy.js';
+import { promptInjectors } from '../../../linkage/injectors.js';
 
 export const TEXT_PROMPT = `当前使用动态地图正文更新模式，不调用 dynamic_map_query 或 dynamic_map_update，也不写地图移动请求变量。
 只有本轮收到“本轮地图数据”并且剧情明确发生地图变化时，在回复最末尾追加且只追加一个 <map_update>严格 JSON 对象</map_update>，不要使用 Markdown 代码围栏。没有变化则不输出此块。
@@ -26,28 +27,32 @@ export function createTextUpdates({ tools, getContext, report = () => {} }) {
     const ctx = getContext(), events = ctx.eventTypes ?? ctx.event_types ?? {}, source = ctx.eventSource;
     const promptKey = 'dynamic-map-text-update';
     let run = null, timer = null, message = '正文模式尚未收到更新', disposed = false;
-    const supported = typeof ctx.setExtensionPrompt === 'function' && !!source?.on && ['GENERATION_AFTER_COMMANDS','MESSAGE_RECEIVED','GENERATION_ENDED','GENERATION_STOPPED','CHAT_CHANGED'].every(k=>events[k]);
+    const injectors = promptInjectors(getContext);
+    const supported = injectors.supported && ['MESSAGE_RECEIVED','GENERATION_ENDED','GENERATION_STOPPED'].every(k=>events[k]);
     const say = value => { message = value; report(value); };
-    function clearPrompt() { try { getContext()?.setExtensionPrompt?.(promptKey, '', 1, 0, false); } catch { /* Optional host adapter must not interrupt chat events. */ } }
-    function cancel() { clearTimeout(timer); timer=null;run=null;clearPrompt();tools.invalidate(); }
-    function start(type = 'normal', params = {}, dryRun = false) {
-        if (dryRun) return;
-        cancel();
-        if (managesModule(getContext(), 'map')) return;
-        if (disposed || !tools.status().enabled || !tools.status().textMode) return;
-        if (!supported) { say('当前酒馆缺少正文模式所需的生成事件或提示词接口'); return; }
+    let injector = null;
+    const clearPrompt = () => injector.clear();
+    function reset() { clearTimeout(timer); timer=null;run=null;tools.invalidate(); }
+    function cancel() { reset(); clearPrompt(); }
+    // The shared injector has already cleared the prompt (except on dry runs).
+    function enabled(type = 'normal', params = {}, dryRun = false) {
+        if (dryRun) return false;
+        reset();
+        if (managesModule(getContext(), 'map')) return false;
+        if (disposed || !tools.status().enabled || !tools.status().textMode) return false;
         // Continuations may already contain an old block; don't reinterpret it.
-        if (!['normal','regenerate','swipe'].includes(type || 'normal')) return;
+        return ['normal','regenerate','swipe'].includes(type || 'normal') && !params?.signal?.aborted;
+    }
+    function build(type = 'normal', params = {}) {
         try {
-            if(params?.signal?.aborted)return;
             const current = getContext(), data = tools.queryText();
             const payload = JSON.stringify(data);
             if(payload.length>50000)throw Error('当前地图资料超过 50000 字符，请切换到较小的层级地图');
             run = { identity:chatIdentity(current), metadata:current.chatMetadata, signal:params?.signal,
                 before:(current.chat??[]).map(m=>({ref:m,text:m.mes,swipe:m.swipe_id})), ended:false, candidate:null };
-            current.setExtensionPrompt(promptKey, TEXT_PROMPT+'\n本轮允许删除：'+tools.status().allowDelete+'\n本轮地图数据：\n'+payload, 1, 0, false);
             say('已附加本轮地图资料，等待完整回复');
-        } catch(e) { cancel();say(e.message); }
+            return TEXT_PROMPT+'\n本轮允许删除：'+tools.status().allowDelete+'\n本轮地图数据：\n'+payload;
+        } catch(e) { cancel();say(e.message);return null; }
     }
     function schedule() {
         if(!run?.ended || run.candidate===null)return;
@@ -71,7 +76,10 @@ export function createTextUpdates({ tools, getContext, report = () => {} }) {
         finally { tools.invalidate(); }
     }
     function stopped(){cancel();if(tools.status().textMode)say('生成已停止，未应用正文地图更新');}
-    const handlers={GENERATION_AFTER_COMMANDS:start,MESSAGE_RECEIVED:received,GENERATION_ENDED:ended,GENERATION_STOPPED:stopped,CHAT_CHANGED:cancel};
+    // The shared injector builds on generation start and clears on chat switches.
+    const handlers={MESSAGE_RECEIVED:received,GENERATION_ENDED:ended,GENERATION_STOPPED:stopped,CHAT_CHANGED:reset};
+    injector = supported ? injectors.register(promptKey, { build, enabled, keepOnDryRun: true, onError: e => { cancel(); say(e.message); } })
+        : { clear() { try { getContext()?.setExtensionPrompt?.(promptKey, '', 1, 0, false); } catch { /* Optional host adapter must not interrupt chat events. */ } }, dispose() { this.clear(); } };
     if(supported)for(const [key,fn] of Object.entries(handlers))source.on(events[key],fn);
-    return {status:()=>({supported,message}),reset:cancel,destroy(){disposed=true;cancel();if(supported)for(const [key,fn] of Object.entries(handlers))source.removeListener?.(events[key],fn);}};
+    return {status:()=>({supported,message}),reset:cancel,destroy(){disposed=true;reset();injector.dispose();if(supported)for(const [key,fn] of Object.entries(handlers))source.removeListener?.(events[key],fn);}};
 }

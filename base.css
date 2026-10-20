@@ -2,21 +2,30 @@
 @import url('./apps/status/style.css');
 @import url('./apps/reply/style.css');
 
-/* Shell defaults. Appearance settings replace these on each surface. */
+/* Shell defaults (the mint palette). Appearance settings replace these inline on each
+   surface from PALETTES in settings/appearance.js; themes never add their own palettes. */
+@layer amin-tokens {
+  #amin-os {
+    --amin-bg:#12191d;
+    --amin-card:#1b252b;
+    --amin-control:#202d33;
+    --amin-text:#edf3ef;
+    --amin-muted:#a2b2b7;
+    --amin-line:#adc7be24;
+    --amin-accent:#b9dfce;
+    --amin-ink:#19382d;
+    /* Semantic colours: errors/destructive, valid/confirmed, highlights/warnings. */
+    --amin-danger:#f1aaaa;
+    --amin-success:#9fd8b4;
+    --amin-warning:#efc98c;
+    --amin-scheme:dark;
+    --amin-radius:14px;
+    --amin-gap:14px;
+    --amin-font:13px;
+    --amin-shadow:0 20px 64px #0006;
+  }
+}
 #amin-os {
-  --amin-bg:#12191d;
-  --amin-card:#1b252b;
-  --amin-control:#202d33;
-  --amin-text:#edf3ef;
-  --amin-muted:#a2b2b7;
-  --amin-line:#adc7be24;
-  --amin-accent:#b9dfce;
-  --amin-ink:#19382d;
-  --amin-danger:#f1aaaa;
-  --amin-radius:14px;
-  --amin-gap:14px;
-  --amin-font:13px;
-  --amin-shadow:0 20px 64px #0006;
   font:var(--amin-font)/1.6 'Segoe UI','Microsoft YaHei',sans-serif;
   color:var(--amin-text);
   color-scheme:dark;

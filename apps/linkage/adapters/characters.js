@@ -1,5 +1,5 @@
 import { KEY, STATUS_PATH, readCharacters, readStore, appendSnapshot, validateCharacter, validateStat, validateAppearance, validId, bindings } from '../../characters/model.js';
-import { renderContract } from '../contract.js';
+import { renderContract, canonicalChange } from '../contract.js';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fields(data, allowed) {
@@ -20,9 +20,9 @@ const spec = {
     notes: 'target=人物ID。属性数值改 status，穿戴改 inventory。',
     advancedNotes: 'stat={id,label,binding:"项目名.字段名",component:value|current|max,check:none|d20|coc}，binding 须为已有世界状态字段。',
     actions: [
-        { name: 'create-character', args: 'name,kind:pc|npc,notes?,appearance?:{description,hairstyle,features}', advancedArgs: ',stats?:[stat]' },
-        { name: 'save-character', args: '同上，按需' },
-        { name: 'set-appearance', args: 'description?,hairstyle?,features?' },
+        { name: 'create-character', creates: 'person', args: 'name,kind:pc|npc,notes?,appearance?:{description,hairstyle,features}', advancedArgs: ',stats?:[stat]' },
+        { name: 'update-character', aliases: ['save-character'], args: '同上，按需' },
+        { name: 'update-appearance', aliases: ['set-appearance'], args: 'description?,hairstyle?,features?' },
         { name: 'save-stat', args: 'id,label,binding,component,check', advanced: true },
         { name: 'delete-stat', args: 'statId', advanced: true },
         { name: 'delete-character', note: '其他应用保留原ID引用', advanced: true },
@@ -34,19 +34,20 @@ export const adapter = {
     paths: [[KEY], [...STATUS_PATH]],
     spec, contract: renderContract(spec),
     read: ctx => readCharacters(ctx),
-    apply(ctx, change, { operationId, now }) {
+    apply(ctx, input, { operationId, now }) {
+        const change = canonicalChange(spec, input);
         const state = readCharacters(ctx), previous = state.characters.find(person => person.id === change.target), data = change.data;
         if (typeof change.reason !== 'string' || !change.reason.trim()) throw Error('人物更新需要剧情原因。');
         if (change.action !== 'create-character' && !previous) throw Error('人物已不存在于当前剧情分支。');
         let next = previous;
-        if (['create-character', 'save-character'].includes(change.action)) {
+        if (['create-character', 'update-character'].includes(change.action)) {
             fields(data, ['name', 'kind', 'notes', 'stats', 'appearance']);
             if (change.action === 'create-character' && (!validId(change.target) || previous)) throw Error('新增人物编号无效或已存在。');
             next = validateCharacter({ ...(previous ?? { kind: 'npc', notes: '', stats: [] }), ...data, id: change.target, ...(data.stats === undefined ? {} : { stats: stats(data.stats) }) });
             checkBindings(ctx, previous, next);
         } else if (change.action === 'delete-character') {
             fields(data, []); state.characters = state.characters.filter(person => person.id !== change.target); next = null;
-        } else if (change.action === 'set-appearance') {
+        } else if (change.action === 'update-appearance') {
             fields(data, ['description', 'hairstyle', 'features']);
             next = validateCharacter({ ...previous, appearance: validateAppearance({ ...previous.appearance, ...data }) });
         } else if (change.action === 'save-stat') {
