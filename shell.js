@@ -2,6 +2,7 @@ import {createTileDesktop} from './tile-desktop.js';
 import {createBrandMark,createCollapseMark} from './brand.js';
 import {getAppearance} from './settings/appearance.js';
 import { clampPosition, drawerPlacement, resizedHeight } from './window-state.js';
+import { STORY_APPS, renderStoryGate } from './apps/shared/story-readiness.js';
 
 const APPS=[
     {id:'characters',name:'人物卡',sub:'人物档案、状态绑定与属性检定',icon:'♙',color:'mint'},
@@ -53,7 +54,9 @@ export function createShell(){
     }
     const notice=el('div','amin-notice');notice.hidden=true;notice.setAttribute('role','status');
     const message=el('p'),retry=el('button','amin-retry','重试');retry.type='button';retry.addEventListener('click',()=>showApp(active));notice.append(message,retry);
-    area.append(home,...Object.values(panes),notice);drawer.append(head,nav,area);
+    area.append(home,...Object.values(panes),notice);
+    // Story-backed apps share one setup prompt while the current chat has no Amin story state.
+    const storyGate=el('div','amin-story-gate amin-ui');storyGate.hidden=true;storyGate.setAttribute('role','status');drawer.append(head,nav,storyGate,area);
     const resizeGrip=el('div','amin-height-grip');resizeGrip.tabIndex=0;resizeGrip.setAttribute('role','slider');resizeGrip.setAttribute('aria-label','调整窗口高度');resizeGrip.setAttribute('aria-orientation','vertical');resizeGrip.title='上下拖动调整高度 · 双击恢复自动高度';drawer.append(resizeGrip);
     root.append(drawer,launcher);document.body.append(root);
     let saved;try{saved=JSON.parse(localStorage.getItem(STORE));}catch{}
@@ -86,7 +89,8 @@ export function createShell(){
     window.addEventListener('blur',()=>endResize(true));
     function open(){opened=true;drawer.hidden=false;launcher.setAttribute('aria-expanded','true');launcher.setAttribute('aria-label','收起 Amin os');place();}
     function close(){endResize(true);tileDesktop?.leave();opened=false;drawer.hidden=true;root.dataset.open='false';launcher.setAttribute('aria-expanded','false');launcher.setAttribute('aria-label','打开 Amin os');launcher.focus();}
-    function select(id){active=id;nav.hidden=id==='home';appHeading.textContent=APPS.find(a=>a.id===id)?.name??'';home.hidden=id!=='home';for(const [key,pane]of Object.entries(panes)){pane.hidden=key!==id;tabs[key].setAttribute('aria-current',key===id?'page':'false');}homeButton.setAttribute('aria-current',id==='home'?'page':'false');notice.hidden=true;}
+    function select(id){active=id;nav.hidden=id==='home';appHeading.textContent=APPS.find(a=>a.id===id)?.name??'';home.hidden=id!=='home';for(const [key,pane]of Object.entries(panes)){pane.hidden=key!==id;tabs[key].setAttribute('aria-current',key===id?'page':'false');}homeButton.setAttribute('aria-current',id==='home'?'page':'false');notice.hidden=true;updateStoryGate();}
+    function updateStoryGate(){if(!STORY_APPS.includes(active)){storyGate.hidden=true;return;}try{renderStoryGate(storyGate,globalThis.SillyTavern?.getContext?.(),document);}catch{storyGate.hidden=true;}}
     function showHome(){epoch++;select('home');open();if(blocked){message.textContent=blocked;retry.hidden=true;notice.hidden=false;}}
     async function showApp(id,section){
         if(!panes[id])return;

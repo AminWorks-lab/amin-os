@@ -4,6 +4,7 @@ import { formatGameTime, formatPeriods, parsePeriods, createSceneId, validateCal
 import { contextExpiryPreview } from '../effects/model.js';
 import { periodicPreview } from '../effects/settlement.js';
 import { mountTravel, appendExpiryPreview } from './travel-view.js';
+import {contextLine} from '../shared/context-line.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text != null) el.textContent = text; if (className) el.className = className; return el; };
 const LABELS = { 'set-time': '设置游戏时间', 'advance-time': '推进游戏时间', activity: '按活动规则推进', 'time-rules': '保存活动耗时', 'save-schedule': '保存人物日程', 'delete-schedule': '删除人物日程', 'confirm-presence': '确认场景人物', 'save-absence-rule': '保存离场规则', 'delete-absence-rule': '删除离场规则', 'settle-absence': '确认离场变化', travel: '旅行', periods: '保存时段划分', 'save-scene': '保存场景资料', 'switch-scene': '进入场景', 'leave-scene': '离开当前场景', settings: '保存读取设置' };
@@ -170,7 +171,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
         editor.append(actions); body.append(editor);
     }
     function renderHistory(state) {
-        body.append(node('p', '这里只展示属于当前聊天消息与回复候选路径的已确认记录。回到旧分支时，后续记录不会成为当前事实。', 'amin-context'));
+        body.append(node('p', '这里只展示属于当前聊天消息与回复候选路径的已确认记录。回到旧分支时，后续记录不会成为当前事实。', 'amin-meta'));
         const floorPanel = card('查看楼层的游戏时间'), floor = Number.isInteger(floorDraft) ? floorDraft : api.context()?.chat?.length ?? 0;
         floorPanel.append(field('消息楼层（0 为聊天开始前）', floor, value => { floorDraft = value; }, { type: 'number', min: 0, max: api.context()?.chat?.length ?? 0 }), button('查看该楼层', () => { api.floorGameTime(floorDraft); render(); }));
         try { const point = api.floorGameTime(floor); floorPanel.append(node('p', formatGameTime(point.clock, state.periods)), node('p', point.sceneName ? '当时场景：' + point.sceneName : '当时没有已确认场景', 'amin-meta')); } catch (e) { floorPanel.append(node('p', e.message, 'amin-notice')); }
@@ -194,7 +195,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
     }
     function renderSchedules(state) {
         const people = peopleFor(), refs = api.mapReferences();
-        body.append(node('p', '日程提供预计位置。已确认在场人物优先；打开页面和推进时间都不会把人物移动到日程地点。', 'amin-context'),
+        body.append(node('p', '日程提供预计位置。已确认在场人物优先；打开页面和推进时间都不会把人物移动到日程地点。', 'amin-meta'),
             selectField('查看人物', characterFilter, [['', '全部人物'], ...people.map(value => [value.id, value.name])], value => { characterFilter = value; scheduleId = ''; loadSchedule(state); render(); }));
         const forecast = api.forecast().filter(value => !characterFilter || value.characterId === characterFilter);
         for (const item of forecast) {
@@ -221,7 +222,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
         editor.append(form, actions); body.append(editor);
     }
     function renderAbsence(state) {
-        body.append(node('p', '离场规则只生成可确认的变化。打开场景、读取上下文和推进时钟不会执行这些变化；规则不会自动移动人物、扣血或扣物品。', 'amin-context'));
+        body.append(node('p', '离场规则只生成可确认的变化。打开场景、读取上下文和推进时钟不会执行这些变化；规则不会自动移动人物、扣血或扣物品。', 'amin-meta'));
         for (const item of absenceFor()) {
             const entry = card(item.sceneName + ' · ' + item.title);
             entry.append(node('p', item.status + (item.elapsedMinutes === null ? '' : ` · 已过去 ${item.elapsedMinutes} 分钟 / ${item.cycles} 个周期`)), node('p', `${item.before || '空'} → ${item.after || '空'}`));
@@ -238,11 +239,11 @@ export function mount(target, { service = getSharedSceneService(), travelService
     function render() {
         if (disposed) return;
         let state, currentToken;
-        try { currentToken = api.capture(); state = validateState(api.read()); } catch (e) { body.replaceChildren(node('p', e.message, 'amin-empty')); review.replaceChildren(); intro.textContent = '场景与时间 · 当前聊天'; return; }
+        try { currentToken = api.capture(); state = validateState(api.read()); } catch (e) { body.replaceChildren(node('p', e.message, 'amin-empty')); review.replaceChildren(); intro.textContent = contextLine(api.context(), '数据不可读取'); return; }
         const moved = !token || token.identity !== currentToken.identity || token.metadata !== currentToken.metadata || token.path !== currentToken.path;
         if (moved || token.basis !== currentToken.basis || token.references !== currentToken.references) resetDrafts(state, moved);
         token = currentToken;
-        intro.textContent = `场景与时间 · ${formatGameTime(state.clock, state.periods)} · ${state.scenes[state.activeSceneId]?.name ?? '未进入场景'} · ${state.settings.enabled && state.settings.includeInContext ? '已开启 AI 读取' : '仅本地记录'}`;
+        intro.textContent = contextLine(api.context(), formatGameTime(state.clock, state.periods), state.scenes[state.activeSceneId]?.name ?? '未进入场景', state.settings.enabled && state.settings.includeInContext ? '已开启 AI 读取' : '仅本地记录');
         tabs.replaceChildren();
         const names = ['时钟', '场景', '日程', '离场', '旅行', '记录', '设置'];
         for (const name of names) {

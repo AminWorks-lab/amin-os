@@ -2,6 +2,8 @@ import { mountGeneration } from '../generation/view.js';
 import { createRelationshipsService, getSharedRelationshipsService } from './service.js';
 import { personLabel, renderRelationshipGraph } from './graph.js';
 import { evidenceMatches } from './model.js';
+import {contextLine} from '../shared/context-line.js';
+import {linkedEmpty} from '../shared/open-app.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
@@ -149,7 +151,7 @@ export function mount(target, options = {}) {
         const actions = make('div', '', 'amin-toolbar');
         const create = button('新增人物关系', () => openEditor(), { primary: true, mutation: true, disabled: characters.length < 2 }); create.dataset.minimumPeople = 'true';
         actions.append(create); controls.append(form, actions);
-        if (characters.length < 2) controls.append(make('p', '先在人物应用中建立至少两个人物，再选择关系两端。已有关系仍保留。', 'amin-empty'));
+        if (characters.length < 2) controls.append(linkedEmpty(make, '先在人物卡建立至少两个人物，再选择关系两端。已有关系仍保留。', 'characters', { onError: error => say(error.message, true) }));
     }
     function renderGraph() {
         graphPanel.replaceChildren(make('h3', '人物关系地图'), make('p', '选中人物后突出本人和直接关联人物，其余人物淡化保留。箭头表示关系方向；分层仅表示连接远近，不代表辈分。节点网络可拖动人物调整位置，位置仅在本次查看中保留；可缩放或滚动查看大图。', 'amin-meta'));
@@ -164,7 +166,7 @@ export function mount(target, options = {}) {
         graphPanel.append(button(visible ? '收起关系图' : '展开关系图', () => { graphVisible = !visible; renderGraph(); }));
         if (!visible) { graphPanel.append(make('p', '下方列表展示完整关系。可用聚焦人物、关系方向和搜索缩小范围。', 'amin-meta')); return; }
         const result = renderRelationshipGraph(document, characters, state.relationships, { focusId, layout: graphLayout, savedPositions: graphPositions, onMove: (id, point) => graphPositions.set(id, point), activeEdgeIds: filteredRelationships().map(edge => edge.id), width: availableWidth, onSelect: id => { focusId = focusId === id ? '' : id; direction = 'all'; renderControls(); renderGraph(); renderList(); controls.querySelector?.('select')?.focus(); } });
-        if (!result.graph.nodes.length) { graphPanel.append(make('p', '还没有人物。请先到人物应用建立人物资料。', 'amin-empty')); return; }
+        if (!result.graph.nodes.length) { graphPanel.append(linkedEmpty(make, '还没有人物。请先在人物卡建立人物资料。', 'characters', { onError: error => say(error.message, true) })); return; }
         graphPanel.append(result.element);
         if (result.graph.omittedNodes || result.graph.omittedEdges) graphPanel.append(make('p', `图中显示 ${result.graph.nodes.length} / ${result.graph.totalNodes} 个人物、${result.graph.edges.length} / ${result.graph.totalEdges} 条关系。超过 128 人时保留聚焦人物；下方列表保留全部符合筛选的关系。`, 'amin-meta'));
     }
@@ -235,13 +237,15 @@ export function mount(target, options = {}) {
         const owner = api.context?.()?.chatMetadata; if (owner !== positionOwner) { graphPositions.clear(); positionOwner = owner; }
         try { api.capture(); state = api.read(); characters = api.characters(); unavailable = false; }
         catch (reason) {
-            unavailable = true; say(reason.message, true); context.textContent = '人物关系 · 当前聊天数据不可读取';
-            for (const panel of [controls, aiPanel, alertsPanel, rulesPanel, graphPanel, review, listPanel, settingsPanel, retryPanel]) panel.replaceChildren();
+            unavailable = true; say(reason.message, true); context.textContent = contextLine(api.context?.(), '数据不可读取');
+            // Unreadable data leaves no empty cards or summary-less <details> behind.
+            for (const panel of [controls, aiPanel, alertsPanel, rulesPanel, graphPanel, review, listPanel, settingsPanel, retryPanel]) { panel.replaceChildren(); panel.hidden = true; }
             updateLocks(); return;
         }
         const people = new Set([...characters.map(item => item.id), ...state.relationships.flatMap(edge => [edge.fromId, edge.toId])]);
         if (focusId && !people.has(focusId)) { focusId = ''; direction = 'all'; }
-        context.textContent = `人物关系 · 当前聊天 / 当前分支 · ${characters.length} 个人物 · ${state.relationships.length} 条有向关系 · ${state.settings.includeInContext ? '已允许 AI 读取' : '仅本地记录'}`;
+        context.textContent = contextLine(api.context?.(), '当前分支', `${characters.length} 个人物`, `${state.relationships.length} 条有向关系`, state.settings.includeInContext ? '已允许 AI 读取' : '仅本地记录');
+        for (const panel of [controls, aiPanel, alertsPanel, rulesPanel, graphPanel, review, listPanel, settingsPanel, retryPanel]) panel.hidden = false;
         renderControls(); renderAI(); renderRules(); renderGraph(); renderList(); renderReview(); renderSettings(); retryPanel.replaceChildren();
         if (api.dirty()) {
             const card = make('section', '', 'amin-card amin-stack'); card.append(make('h3', '保存尚未完成'), make('p', '已确认操作保留在当前聊天内存中。重试只保存同一项变更，不重复建立关系。'), button('重试保存', async () => { await api.retrySave(); if (committedEditor) clearEditor(); render(); say('已保存此前确认的关系操作。'); }, { primary: true, disabled: api.busy() })); retryPanel.append(card);

@@ -4,6 +4,8 @@ import { uuid } from '../../uuid.js';
 import { createCharactersService, getSharedCharactersService } from './service.js';
 import { createDiceService, getSharedDiceService } from '../dice/service.js';
 import { KNOWLEDGE_STATES } from '../journal/model.js';
+import {contextLine} from '../shared/context-line.js';
+import {linkedEmpty} from '../shared/open-app.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
@@ -34,7 +36,7 @@ export function mount(target, options = {}) {
     let metadata = api.context()?.chatMetadata;
     function updateContext() {
         const ctx = api.context();
-        context.textContent = `当前聊天：${ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? '尚未打开'} · 当前分支人物卡 · 数值读取世界状态`;
+        context.textContent = contextLine(ctx, '当前分支人物卡', '数值读取世界状态');
     }
     function reflect() {
         const busy = running || !!api.busy?.() || !!dice.busy?.();
@@ -94,7 +96,7 @@ export function mount(target, options = {}) {
         const stats = card(panel, '属性与技能绑定'), rows = make('div', '', 'amin-stack');
         stats.append(make('p', '绑定世界状态中已有的数值。D20 使用绑定值作为修正值；若要使用力量等属性的修正，请绑定对应的修正字段。', 'amin-help'), rows);
         let bindings = []; try { bindings = api.bindings(); } catch (error) { say(error.message, 'error'); }
-        if (!bindings.length) stats.append(make('p', '还没有可绑定的数值。请先在世界状态中建立人物项目和数字或进度字段，再刷新人物卡。', 'amin-empty'));
+        if (!bindings.length) stats.append(linkedEmpty(make, '还没有可绑定的数值。请先在世界状态中建立人物项目和数字或进度字段，再刷新人物卡。', 'status', { opener: options.openApp, onError: error => say(error.message, 'error') }));
         const statRows = [];
         function addStat(stat = {}) {
             const wrapper = card(rows, '', 'amin-card amin-stack'), fields = grid(wrapper);

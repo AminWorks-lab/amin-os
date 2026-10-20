@@ -7,6 +7,8 @@ import { createJournal, getSharedService } from './service.js';
 import { readCurrentScene, formatGameTime } from '../scene/model.js';
 import { readInventory } from '../inventory/model.js';
 import { readCharacters } from '../characters/model.js';
+import {contextLine} from '../shared/context-line.js';
+import {linkedEmpty} from '../shared/open-app.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
@@ -215,6 +217,8 @@ export function mount(target, options = {}) {
             status = select(controls, '状态筛选', [['', '全部状态'], ...Object.entries(STATUSES)], filters.status);
             due = checkbox(controls, '只看已到提醒间隔的伏笔', filters.dueOnly);
         }
+        // Search and filters appear once this kind has records; an empty kind shows only its empty state and add button.
+        controls.hidden = !entries.some(entry => entry.kind === selected);
         const list = make('div', '', 'amin-stack'); body.append(list);
         function drawList() {
             list.replaceChildren(); const matching = filterEntries(entries, { ...filters, kind: selected });
@@ -312,7 +316,7 @@ export function mount(target, options = {}) {
         if (memoryCharacterId && !people.some(item => item.id === memoryCharacterId)) choices.push([memoryCharacterId, `人物已缺失 · ${memoryCharacterId}`]);
         const filter = select(body, '筛选人物记忆', choices, memoryCharacterId);
         filter.addEventListener('change', () => { memoryCharacterId = filter.value; render(); });
-        if (!people.length) body.append(make('p', '请先在人物卡建立人物，再登记记忆。', 'amin-empty'));
+        if (!people.length) body.append(linkedEmpty(make, '请先在人物卡建立人物，再登记记忆。', 'characters', { onError: error => say(error.message, 'error') }));
         const factList = section(`事实 · ${facts.length} 条`);
         if (!facts.length) factList.append(make('p', '尚未登记事实。', 'amin-empty'));
         for (const entry of facts) {
@@ -473,7 +477,7 @@ export function mount(target, options = {}) {
     function render() {
         if (disposed) return;
         stop(); form = null; body.replaceChildren(); drawTabs();
-        const ctx = api.context(); context.textContent = `剧情档案 · ${ctx?.getCurrentChatId?.() ?? '尚未打开聊天'} · 当前加载 ${ctx?.chat?.length ?? 0} 楼`;
+        const ctx = api.context(); context.textContent = contextLine(ctx, `当前加载 ${ctx?.chat?.length ?? 0} 楼`);
         if (!ctx?.chatMetadata || ctx?.getCurrentChatId?.() == null) { body.append(make('p', '打开一个聊天后，即可管理它的伏笔与编年史。', 'amin-empty')); return; }
         try { if (selected === 'references') drawReferences(); else if (selected === 'transfer') drawTransfer(); else if (selected === 'memory') drawMemory(); else if (selected === 'auto') drawAuto(); else if (selected === 'prior') drawPrior(); else drawEntries(); }
         catch (error) { say(error.message, 'error'); }

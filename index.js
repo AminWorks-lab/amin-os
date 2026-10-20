@@ -6,6 +6,7 @@ import {installExtraFloorButtons} from './apps/extra-floor-ui.js';
 import {installReplyFloorButtons} from './apps/reply/floor-ui.js';
 import {initializeAppearance,installAppearance,getAppearance} from './settings/appearance.js';
 import {initializeAI} from './ai/service.js';
+import {installTabScroll} from './ui/tabs.js';
 import { createShell } from './shell.js';
 import { views } from './apps/views.js';
 import { getSharedService as getLinkageService } from './apps/linkage/service.js';
@@ -38,6 +39,7 @@ export function initialize() {
     initializeAppearance(()=>globalThis.SillyTavern?.getContext?.());
     const shell=createShell();
     installAppearance(document);
+    installTabScroll(document);
     instance=shell;
     if(existing.length){
         shell.setBlocked(`检测到旧插件：${existing.join('、')}。请在扩展管理中停用这三个旧插件，然后刷新页面，再使用 Amin os。已有数据会保留。`);
