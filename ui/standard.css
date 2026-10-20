@@ -193,8 +193,8 @@ html[data-wsh-frame][data-amin-surface][data-amin-touch=true] :is(input:not([typ
 /* Linkage mode badge at the end of each linked app's context bar. */
 :is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module] {display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto;min-height:28px;padding:2px 10px;border-radius:999px!important;font-size:max(11px,calc(var(--amin-font) - 1px))!important;line-height:1.4!important;white-space:nowrap;overflow-wrap:normal;color:var(--amin-text)!important;background:var(--amin-card)!important;border:1px solid var(--amin-line)!important}
 :is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module]::before {content:'';width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:var(--amin-muted)}
-:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=auto]::before {background:#22a06b}
-:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=review]::before {background:#d9a21b}
-:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=readonly]::before {background:#3b82c4}
+:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=auto]::before {background:var(--amin-success)}
+:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=review]::before {background:var(--amin-warning)}
+:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=readonly]::before {background:var(--amin-accent)}
 
 @media (pointer:coarse) {:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module] {min-height:36px}}

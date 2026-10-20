@@ -1,0 +1,18 @@
+/* --amin-* is the only palette (settings/appearance.js writes it inline on each surface;
+   base.css holds the defaults). The world-status (--wsh-*) and map (--dm-*) variables are
+   aliases, re-declared on every surface so a per-app theme resolves to that app's tokens.
+   Also linked into the world-status iframe, whose root receives the --amin-* tokens. */
+@layer amin-tokens {
+  #amin-os,[data-amin-surface],html[data-wsh-frame] {
+    --wsh-bg:var(--amin-bg);--wsh-card:var(--amin-card);--wsh-control:var(--amin-control);
+    --wsh-line:var(--amin-line);--wsh-text:var(--amin-text);--wsh-muted:var(--amin-muted);
+    --wsh-accent:var(--amin-accent);--wsh-ink:var(--amin-ink);--wsh-gold:var(--amin-warning);
+    --wsh-danger:var(--amin-danger);--wsh-glow:transparent;--wsh-radius:var(--amin-radius);
+    --wsh-scheme:var(--amin-scheme);
+    --dm-bg:var(--amin-bg);--dm-surface:var(--amin-control);--dm-header:var(--amin-bg);
+    --dm-text:var(--amin-text);--dm-muted:var(--amin-muted);--dm-border:var(--amin-line);
+    --dm-accent:var(--amin-accent);--dm-map:var(--amin-card);--dm-map-center:var(--amin-control);
+    --dm-danger:var(--amin-danger);
+  }
+  html[data-wsh-frame] {--wsh-font:system-ui,"Microsoft YaHei",sans-serif}
+}

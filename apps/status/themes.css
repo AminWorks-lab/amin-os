@@ -1,8 +1,5 @@
-html[data-wsh-theme], [data-wsh-palette]{--wsh-bg:#0d1926;--wsh-card:#152638;--wsh-control:#1d3347;--wsh-line:#38536b;--wsh-text:#e5eff7;--wsh-muted:#a4bacd;--wsh-accent:#7be1d1;--wsh-gold:#efc98c;--wsh-danger:#ffaaaa;--wsh-ink:#102b2c;--wsh-glow:#234453;--wsh-radius:14px;--wsh-scheme:dark;--wsh-font:system-ui,"Microsoft YaHei",sans-serif}
-html[data-wsh-theme=sakura],[data-wsh-palette=sakura]{--wsh-bg:#fff6f8;--wsh-card:#fffcfd;--wsh-control:#f7e6ed;--wsh-line:#dcb6c7;--wsh-text:#4e3042;--wsh-muted:#805a70;--wsh-accent:#a63967;--wsh-gold:#976018;--wsh-danger:#b82e4d;--wsh-ink:#fff;--wsh-glow:#f5d9e7;--wsh-radius:20px;--wsh-scheme:light}
-html[data-wsh-theme=parchment],[data-wsh-palette=parchment]{--wsh-bg:#f1e5ce;--wsh-card:#fbf3e2;--wsh-control:#e8d8ba;--wsh-line:#baa37b;--wsh-text:#493824;--wsh-muted:#766046;--wsh-accent:#775029;--wsh-gold:#8a571a;--wsh-danger:#a3392d;--wsh-ink:#fff8e9;--wsh-glow:#dac49c;--wsh-radius:5px;--wsh-scheme:light;--wsh-font:Georgia,"Noto Serif SC","Songti SC",SimSun,serif}
-html[data-wsh-theme=amethyst],[data-wsh-palette=amethyst]{--wsh-bg:#171529;--wsh-card:#242039;--wsh-control:#322b4d;--wsh-line:#51466e;--wsh-text:#efeafb;--wsh-muted:#b6acd0;--wsh-accent:#c5a9ff;--wsh-gold:#edc5eb;--wsh-danger:#ffabba;--wsh-ink:#251737;--wsh-glow:#423160;--wsh-radius:16px;--wsh-scheme:dark}
-html[data-wsh-theme=mono],[data-wsh-palette=mono]{--wsh-bg:#f4f5f6;--wsh-card:#fff;--wsh-control:#e9ecef;--wsh-line:#c7cdd4;--wsh-text:#202b37;--wsh-muted:#586674;--wsh-accent:#304d66;--wsh-gold:#385572;--wsh-danger:#b93640;--wsh-ink:#fff;--wsh-glow:#e4e9ee;--wsh-radius:10px;--wsh-scheme:light}
+/* World-status styling. Colours come from --amin-* through the --wsh-* aliases in
+   theme-tokens.css; the former independent palettes (nexus, sakura, …) follow the global theme. */
 
 html[data-wsh-theme] :is(.wsh-dialog,.wsh-restore,.wsh-floor-host .wsh-history){color-scheme:var(--wsh-scheme);font-family:var(--wsh-font);color:var(--wsh-text);background:linear-gradient(145deg,var(--wsh-glow),transparent 45%),var(--wsh-bg);border-color:var(--wsh-line);border-radius:var(--wsh-radius)}
 html[data-wsh-theme] :is(.wsh-dialog,.wsh-restore) :is(button,input,select,textarea,.text_pole){font-family:inherit;background:var(--wsh-control);color:var(--wsh-text);border:1px solid var(--wsh-line);border-radius:7px}
@@ -23,9 +20,7 @@ html[data-wsh-theme] .wsh-history-field{border-color:var(--wsh-line);padding:10p
 html[data-wsh-theme] .wsh-history-field>span:first-child{color:var(--wsh-muted);flex:0 0 30%}
 html[data-wsh-theme] .wsh-history-nav button{background:var(--wsh-control);color:var(--wsh-text);border-color:var(--wsh-line)}
 .wsh-theme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:10px;margin:12px 0 20px}
-html[data-wsh-theme] .wsh-dialog .wsh-theme-choice{background:linear-gradient(135deg,var(--wsh-glow),var(--wsh-bg));color:var(--wsh-text);border:2px solid var(--wsh-line);border-radius:var(--wsh-radius);padding:14px;text-align:left;cursor:pointer;font-family:var(--wsh-font);min-width:0}
-html[data-wsh-theme] .wsh-dialog .wsh-theme-choice[aria-pressed=true]{border-color:var(--wsh-accent);box-shadow:inset 0 0 0 1px var(--wsh-accent)}
-.wsh-theme-name{display:block;font-size:16px;font-weight:700;margin-bottom:6px}.wsh-theme-note{display:block;font-size:12px;color:var(--wsh-muted)}.wsh-theme-sample{display:flex;justify-content:space-between;gap:8px;margin-top:16px;padding-top:10px;border-top:1px solid var(--wsh-line);font-size:11px;color:var(--wsh-accent)}
+.wsh-theme-note{display:block;font-size:12px;color:var(--wsh-muted)}
 
 /* The bundled iframe shares tokens while retaining its editor and data bridge. */
 html[data-wsh-frame]{color-scheme:var(--wsh-scheme);--bg:var(--wsh-bg);--card:var(--wsh-card);--line:var(--wsh-line);--text:var(--wsh-text);--muted:var(--wsh-muted);--cyan:var(--wsh-accent);--gold:var(--wsh-gold);--red:var(--wsh-danger);font-family:var(--wsh-font)}
@@ -44,7 +39,7 @@ html[data-wsh-theme] .wsh-history-long{flex-direction:column;gap:5px}html[data-w
 
 /* Shape and material are independent of color palettes. */
 html[data-wsh-style]{--wsh-radius:4px}
-html[data-wsh-style] :is(.wsh-dialog,.wsh-restore,.wsh-dialog button,.wsh-dialog input,.wsh-dialog select,.wsh-dialog textarea,.wsh-rule-card,.wsh-history-card,.wsh-theme-choice){border-radius:4px}
+html[data-wsh-style] :is(.wsh-dialog,.wsh-restore,.wsh-dialog button,.wsh-dialog input,.wsh-dialog select,.wsh-dialog textarea,.wsh-rule-card,.wsh-history-card){border-radius:4px}
 html[data-wsh-frame][data-wsh-style] :is(.hud,.card,button,input,select,textarea,#editor,.chip,#scene){border-radius:4px}
 .wsh-style-choice{padding:16px!important;text-align:left;min-width:0;line-height:1.8}.wsh-style-choice strong{display:block}.wsh-style-choice[aria-pressed=true]{outline:2px solid var(--wsh-accent);outline-offset:2px}
 [data-wsh-style-preview=paper]{border-style:double!important;border-width:3px!important;font-family:Georgia,serif!important}
@@ -64,7 +59,6 @@ html[data-wsh-style=flat] :is(.card,.wsh-history-card,.wsh-rule-card,.wsh-templa
 html[data-wsh-style=flat] :is(.hud,.wsh-dialog){background:var(--wsh-bg);box-shadow:none}
 html[data-wsh-style=flat] .card>.heading{border-left:0;padding-left:0}
 html[data-wsh-style]:not([data-wsh-style=paper]) :is(.card,.wsh-history-card,.wsh-rule-card,.wsh-template-preview){border-radius:0!important}
-html[data-wsh-style] .wsh-dialog .wsh-theme-choice{border-radius:4px}
 /* Blur is applied at the outer window, so the transparent iframe reveals the same backdrop. */
 html[data-wsh-glass=on] .wsh-dialog{background:color-mix(in srgb,var(--wsh-bg) var(--wsh-glass-opacity,65%),transparent)!important;backdrop-filter:blur(16px) saturate(115%);-webkit-backdrop-filter:blur(16px) saturate(115%)}
 html[data-wsh-frame][data-wsh-glass=on],html[data-wsh-frame][data-wsh-glass=on] body,html[data-wsh-frame][data-wsh-glass=on] .hud{background:transparent!important}

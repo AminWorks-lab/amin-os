@@ -1,3 +1,8 @@
+/* Cascade layers only order Amin's own variable layers: token defaults and aliases, then
+   start-screen/backdrop palette overrides. Rules that must beat SillyTavern's (unlayered)
+   styles stay unlayered, because any unlayered host rule outranks every layered rule. */
+@layer amin-tokens, amin-themes;
+@import url('./theme-tokens.css');
 @import url('./base.css');
 @import url('./ui.css');
 @import url('./settings/appearance.css');
