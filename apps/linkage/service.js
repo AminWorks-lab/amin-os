@@ -76,7 +76,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const ctx = options.candidate ? ensureGeneration(options.candidate) : context();
         const settings = readLinkageState(ctx);
         if (!settings.enabled && !manualScope) throw Error('请先启用统一联动更新。');
-        const input = parseUpdate(raw), independent = isIndependent(ctx);
+        const input = parseUpdate(raw), literal = parseUpdate(raw, { canonical: false }), independent = isIndependent(ctx);
         const currentData = independent ? rawData(ctx) : null;
         const existingIds = independent ? [...buildReferenceIndex(currentData).entities.map(entity => entity.id),
             ...(currentData.relationships?.thresholdRules ?? []).map(rule => `relationships:${rule.id}`)] : [];
@@ -84,12 +84,12 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const parsed = allocated?.update ?? input;
         if (!parsed.changes.length) throw Error('本次没有需要更新的内容。');
         const source = options.candidate?.source ?? sourceFor(ctx);
-        if (settings.applied.some(record => !record.archived && sourceEqual(record.source, source) && (options.candidate || changesEqual(record, input.changes)))) throw Error('这次来源的更新已经应用，不会重复执行。');
+        if (settings.applied.some(record => !record.archived && sourceEqual(record.source, source) && (options.candidate || changesEqual(record, input.changes) || changesEqual(record, literal.changes)))) throw Error('这次来源的更新已经应用，不会重复执行。');
         let token = operation.capture(independent ? [...paths, [STATE_KEY]] : paths);
         const operationId = createId(), at = now(), sandbox = independent ? toLegacyContext(ctx) : { ...ctx, chatMetadata: clone(ctx.chatMetadata) };
         const touched = [], descriptions = [], changes = [], beforeData = rawData(sandbox);
         for (const [index, change] of parsed.changes.entries()) {
-            if (manualScope && change.module === 'status' && change.action !== 'set') throw Error('手动状态更新仅允许设置已有字段的最终值。');
+            if (manualScope && change.module === 'status' && change.action !== 'set-field') throw Error('手动状态更新仅允许设置已有字段的最终值。');
             if (!canWrite(ctx,change.module)) throw Error(`${MODULES[change.module][0]} 未在本次操作的更新范围内。`);
             const adapter = adapters.find(a => a.id === change.module);
             if (!adapter?.apply) throw Error('这个模块目前只支持读取。');

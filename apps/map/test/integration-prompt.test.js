@@ -35,7 +35,7 @@ test('independent map preview uses actual shared context and typed rules without
     assert.ok(prompt.includes(buildDataPrompt(f.ctx)));
     assert.ok(prompt.includes(buildUpdateRules(f.ctx)));
     assert.match(prompt, /module:map/);
-    assert.match(prompt, /move\(mapId\)/);
+    assert.match(prompt, /move-to\(mapId\)/);
     assert.match(prompt, /<amin_update>/);
     assert.match(prompt, /qingyun_sect/);
     assert.match(prompt, /青云宗/);
@@ -89,9 +89,9 @@ test('the map move advertised by independent preview parses and commits current 
     const protectedData = JSON.stringify({ world_info: f.ctx.chatMetadata.world_info,
         variables: f.ctx.chatMetadata.variables, chat: f.ctx.chat });
     try {
-        assert.match(mapIntegrationPrompt(f.ctx), /move\(mapId\)/);
+        assert.match(mapIntegrationPrompt(f.ctx), /move-to\(mapId\)/);
         const update = parseUpdate('<amin_update>' + JSON.stringify({ version: 1, changes: [{ module: 'map',
-            action: 'move', target: 'qingyun_sect', data: { mapId: 'world' }, reason: '正文中已到达青云宗' }] }) + '</amin_update>');
+            action: 'move-to', target: 'qingyun_sect', data: { mapId: 'world' }, reason: '正文中已到达青云宗' }] }) + '</amin_update>');
         service.stage(update);
         await service.confirm();
         assert.equal(f.ctx.chatMetadata[STATE_KEY].modules.map.maps.world.currentLocation, 'qingyun_sect');

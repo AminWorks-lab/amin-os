@@ -5,7 +5,8 @@ import { createOperationService, subscribeStateChanges, chatIdentity } from '../
 import { getAI } from '../../ai/service.js';
 import { managesModule } from '../linkage/policy.js';
 import { KEY, readStore, readRelationships, resolveRelationships, visibleEvents, transition, appendSnapshot, currentPrompt, evaluateThresholds, validateEvidence, sourceReferences } from './model.js';
-import { validateEndpoints, applyRelationshipChange } from './updates.js';
+import { validateEndpoints, applyRelationshipChange, UPDATE_SPEC } from './updates.js';
+import { canonicalAction } from '../linkage/contract.js';
 import { draftRelationships } from './draft.js';
 
 export const PROMPT_KEY = 'amin-os-person-relationships';
@@ -60,7 +61,7 @@ export function createRelationshipsService(getContext = () => globalThis.SillyTa
         if (new Set(changes.map(change => change?.target)).size !== changes.length) throw Error('同一关系出现多份建议，请只保留最终变更。');
         const shadow = { ...ctx, chatMetadata: copy(ctx.chatMetadata) }, summaries = [];
         for (const change of changes) {
-            if (!['save', 'delete'].includes(change?.action)) throw Error('关系 AI 建议只能更新关系，不可改写规则。');
+            if (!['save-relationship', 'delete-relationship'].includes(canonicalAction(UPDATE_SPEC, change?.action))) throw Error('关系 AI 建议只能更新关系，不可改写规则。');
             const result = applyRelationshipChange(shadow, copy(change), { operationId: createId(), now: now(), origin: 'ai', allowedSources: sources });
             shadow.chatMetadata[KEY] = result.patches[0].value; summaries.push(result.summary);
         }

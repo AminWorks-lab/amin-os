@@ -16,3 +16,18 @@ export function renderContract(spec, { advanced = true, sources = true } = {}) {
 
 export const actionNames = (spec, { advanced } = {}) => (spec?.actions ?? [])
     .filter(action => advanced === undefined || Boolean(action.advanced) === advanced).map(action => action.name);
+
+// Action metadata lives on each spec action: `creates`/`upserts` name the
+// entity kind it defines (a create target is always an @new alias; an upsert
+// target may be one), and `aliases` lists legacy names that older chats and
+// model habits still emit. Rules show only `name`; parsing maps aliases to it.
+export function canonicalAction(spec, action) {
+    for (const entry of spec?.actions ?? []) if (entry.name === action || entry.aliases?.includes(action)) return entry.name;
+    return action;
+}
+export const actionSpec = (spec, action) => (spec?.actions ?? []).find(entry => entry.name === canonicalAction(spec, action));
+/** Direct callers (settlements, previews) may still pass a legacy name. */
+export function canonicalChange(spec, change) {
+    const action = canonicalAction(spec, change?.action);
+    return action === change?.action ? change : { ...change, action };
+}
