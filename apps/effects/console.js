@@ -26,7 +26,7 @@ export function renderConsole({body,api,state,say,render,manage,groups,editSkill
  const choices=skills.filter(s=>!state.group||abilityGroup(s)===state.group);
  if(!choices.some(s=>s.id===state.skillId))state.skillId='';
  const tools=el('div',null,'amin-toolbar');body.append(tools);
- button(tools,'添加 / 管理能力',manage);if(groups)button(tools,'管理分组',groups);button(tools,'刷新能力列表',render);
+ button(tools,'添加 / 管理能力',manage);if(groups)button(tools,'管理分组',groups);
  const chooser=el('section',null,'amin-card amin-stack amin-ability-chooser');body.append(chooser);chooser.append(el('h3','选择能力','amin-section-heading'));
  const filters=el('div',null,'amin-form-grid');chooser.append(filters);
  const group=select(filters,'能力分组',[['','全部分组'],...names.map(n=>[n,n])],state.group||'');

@@ -236,7 +236,7 @@ test('worldbook rules and injected application data have independent previews an
         assert.doesNotMatch(find(f.root,'统一条目预览内容','textarea').value,/红色围巾/);
         await click(f.root,'检查绑定世界书');await click(f.root,'复制条目预览');
         const copied=f.calls.find(call=>Array.isArray(call))[1];assert.match(copied,/用户前文/);assert.doesNotMatch(copied,/红色围巾/);
-        assert.doesNotMatch(data.value,/用户前文/);assert.match(f.root.textContent,/不保存到可见聊天正文/);
+        assert.doesNotMatch(data.value,/用户前文/);assert.match(f.root.textContent,/不会出现在聊天正文中/);
         await toggle(f.root,'背包与账本 · 提供资料给模型',false);
         assert.match(data.value,/红色围巾/);await click(f.root,'保存联动设置');assert.equal(data.value,'');
         await click(f.root,'刷新消息内资料预览');assert.match(notice(f.root),/已刷新消息内资料预览/);
@@ -323,5 +323,23 @@ test('scope template saves only saved permissions and loads into a draft before 
         assert.equal(find(f.root, '额外联动规则', 'textarea').value, '本聊天规则');
         await click(f.root, '保存联动设置');
         assert.equal(f.settings().modules.inventory.enabled, true);
+    } finally { f.view.dispose(); }
+});
+
+test('recent rejected updates list time, floor, failing item, category and the raw JSON', async () => {
+    const f = fixture();
+    let records = [{ id: 'r1', at: '2026-10-20T08:30:00.000Z', index: 4, swipe: 1, manual: false, raw: '{"version":1}', category: 'permission', reason: '背包与账本 未在本次操作的更新范围内。',
+        item: { index: 1, module: 'inventory', label: '背包与账本', action: 'create-item', target: '@new:potion' } }];
+    f.api.rejections = () => structuredClone(records);
+    f.api.clearRejections = () => { records = []; };
+    try {
+        f.view.open();
+        assert.match(f.root.textContent, /最近被拒绝的更新（1）/);
+        assert.match(f.root.textContent, /第 5 楼 · 第 2 个候选 · 权限问题/);
+        assert.match(f.root.textContent, /失败位置：第 2 项 · 背包与账本 · create-item · @new:potion/);
+        assert.match(f.root.textContent, /原因：背包与账本 未在本次操作的更新范围内。/);
+        assert.match(f.root.textContent, /查看原始 JSON\{"version":1\}/);
+        await click(f.root, '清空列表');
+        assert.match(f.root.textContent, /暂无被拒绝的更新/);
     } finally { f.view.dispose(); }
 });

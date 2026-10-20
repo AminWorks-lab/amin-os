@@ -10,6 +10,8 @@ import { readCharacters } from '../characters/model.js';
 import {contextLine} from '../shared/context-line.js';
 import {linkedEmpty} from '../shared/open-app.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
+import { collapseTabs } from '../../ui/tabs.js';
+import { infoNote } from '../../ui/forms.js';
 
 const mounted = new WeakMap();
 const tabNames = { task: '任务', clue: '线索', hook: '伏笔', chronicle: '编年史', memory: '事实与记忆', auto: '自动整理', prior: '前作参考', references: '引用预览', transfer: '导入 / 导出' };
@@ -29,6 +31,9 @@ export function mount(target, options = {}) {
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     body.id = instance + '-body'; body.setAttribute('role', 'tabpanel');
     page.append(context, tabs, notice, body); target.append(page);
+    // Five everyday pages stay in the strip; the rest and a fallback refresh open from “⋯”.
+    const overflow = collapseTabs(tabs, { keep: ['任务', '线索', '伏笔', '事实与记忆', '编年史'], label: '更多剧情档案页面',
+        actions: [{ label: '重新读取', title: '档案会随剧情与聊天切换自动更新；仅在显示异常时使用', run: () => go(render) }] });
     const generationView = mountGeneration(page, { modules: ['journal'], getContext: options.getContext ?? (() => api.context()), document: doc, service: options.generationService, ai: options.ai });
     let selected = options.characterId ? 'memory' : 'hook', memoryCharacterId = options.characterId ?? '', form = null, controller = null, disposed = false;
     const filters = { query: '', status: '', scope: 'current', dueOnly: false };
@@ -74,6 +79,7 @@ export function mount(target, options = {}) {
             });
         }
         body.setAttribute('aria-labelledby', instance + '-tab-' + selected);
+        overflow.update();
     }
 
     function showSources(parent, entry) {
@@ -208,7 +214,6 @@ export function mount(target, options = {}) {
     function drawEntries() {
         const ctx = api.context(), store = api.read(), entries = inspectEntries(store, ctx?.chat ?? []), tools = toolbar(body);
         button(tools, '新增' + KINDS[selected], () => openForm(), true);
-        button(tools, '刷新', render);
         const controls = grid(body), query = field(controls, '搜索标题、正文或人物', filters.query); query.type = 'search';
         const scope = select(controls, '显示范围', [['current', '当前分支'], ['inactive', '来源变化 / 其他分支'], ['all', '全部保存记录']], filters.scope);
         let status, due;
@@ -441,7 +446,7 @@ export function mount(target, options = {}) {
     function drawReferences() {
         const store = api.read(), ctx = api.context(), all = inspectEntries(store, ctx?.chat ?? []), active = all.filter(entry => entry.current && !entry.stale && entry.enabled);
         const card = section(`当前引用 · ${active.length} 条`);
-        card.append(make('p', '以下内容会用于当前分支的后续生成。关闭单条引用即可停止附加；来源变动后的记录自动排除。', 'amin-help'));
+        card.append(infoNote(doc, '以下内容会随后续回复一起发给 AI。', '关闭单条引用即可停止附加；来源楼层变动后的记录自动排除。'));
         if (!api.supported) card.append(make('p', '当前前端缺少聊天提示接口；仍可管理记录、预览和复制。', 'amin-notice'));
         let prompt;
         try { prompt = compile(store, ctx?.chat ?? []); } catch (error) { prompt = error.message; say(prompt, 'error'); }
@@ -451,11 +456,11 @@ export function mount(target, options = {}) {
 
     function drawTransfer() {
         const exportCard = section('导出当前分支'), output = field(exportCard, '剧情档案 JSON', exportRecords(api.read(), api.context()?.chat ?? []), true); output.readOnly = true;
-        exportCard.append(make('p', '导出当前分支仍存在的档案及保存时的来源正文。其他分支与删除历史不包含在导出文件中。', 'amin-help'));
+        exportCard.append(infoNote(doc, '导出当前分支的档案。', '包含仍存在的档案及保存时的来源正文；其他分支与删除历史不在导出文件中。'));
         const exportActions = toolbar(exportCard);
         button(exportActions, '复制 JSON', async () => { const clipboard = doc.defaultView?.navigator?.clipboard ?? globalThis.navigator?.clipboard; if (!clipboard?.writeText) { output.focus(); output.select(); throw Error('剪贴板不可用，已选中文本，请手动复制'); } await clipboard.writeText(output.value); say('已复制当前分支档案。'); });
         const importCard = section('导入到当前聊天'), raw = field(importCard, '粘贴剧情档案 JSON', '', true);
-        importCard.append(make('p', '导入先预览，明确保存后才写入。每条导入记录的引用默认关闭，需要重新绑定当前聊天来源才可启用。', 'amin-help'));
+        importCard.append(infoNote(doc, '导入先预览，保存后才写入。', '每条导入记录的引用默认关闭，需要重新绑定当前聊天来源才可启用。'));
         const preview = make('div', '', 'amin-stack'); importCard.append(preview);
         raw.addEventListener('input', () => { preview.replaceChildren(); form = { dirty: !!raw.value.trim(), revision: 0 }; });
         button(toolbar(importCard), '验证并预览导入', () => {
@@ -494,6 +499,6 @@ export function mount(target, options = {}) {
         go(() => { selected = 'memory'; memoryCharacterId = event.detail.characterId; render(); });
     }
     doc.addEventListener?.('amin:select-character', selectCharacter);
-    const view = { open(options = {}) { if (!form) { if (options.tab && Object.hasOwn(tabNames, options.tab)) selected = options.tab; if (options.characterId) { selected = 'memory'; memoryCharacterId = options.characterId; } render(); } }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); stop(); unsubscribe(); doc.removeEventListener?.('amin:select-character', selectCharacter); if (ownService) api.dispose(); page.remove(); mounted.delete(target); } };
+    const view = { open(options = {}) { if (!form) { if (options.tab && Object.hasOwn(tabNames, options.tab)) selected = options.tab; if (options.characterId) { selected = 'memory'; memoryCharacterId = options.characterId; } render(); } }, dispose() { if (disposed) return; disposed = true; generationView.dispose(); stop(); unsubscribe(); overflow.dispose(); doc.removeEventListener?.('amin:select-character', selectCharacter); if (ownService) api.dispose(); page.remove(); mounted.delete(target); } };
     mounted.set(target, view); render(); say(api.status()); return view;
 }

@@ -12,6 +12,7 @@ import {ruleFields,appendRules} from './rules-view.js';
 import {ACTION_TEMPLATES,actionTaskFields} from './action-fields.js';
 import {contextLine} from '../shared/context-line.js';
 import {attachLinkageBadge} from '../linkage/badge.js';
+import {collapseTabs} from '../../ui/tabs.js';
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 export function mount(target,options={}){
  const instanceId='amin-'+uuid();
@@ -38,6 +39,8 @@ export function mount(target,options={}){
  const tabButtons=['能力面板','能力管理','生效中','行动结算','周期结算','变更记录','提示预览'].map((name,i)=>{
   const b=button(tabs,name,()=>navigate(()=>{selected=name;render();}));b.id=instanceId+'-tab-'+i;b.setAttribute('role','tab');b.setAttribute('aria-controls',body.id);return b;
  });
+ // The panel follows effect changes and chat switches; “⋯” keeps a manual fallback.
+ const overflow=collapseTabs(tabs,{keep:['能力面板','生效中','行动结算','能力管理'],label:'更多能力页面',actions:[{label:'重新读取能力列表',title:'仅在显示异常时使用',run:()=>navigate(render)}]});
  tabs.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();let i=tabButtons.findIndex(b=>b.textContent===selected),n=tabButtons.length;i=e.key==='Home'?0:e.key==='End'?n-1:(i+(e.key==='ArrowRight'?1:n-1))%n;navigate(()=>{selected=tabButtons[i].textContent;render();tabButtons[i].focus();});};
  function field(parent,label,value='',multiline=false){const row=node('label',label,'amin-field'+(multiline?' amin-span-full':'')),input=node(multiline?'textarea':'input');input.value=value;input.setAttribute('aria-label',label);if(multiline)input.rows=4;row.append(input);parent.append(row);return input;}
  function select(parent,label,options){const row=node('label',label,'amin-field'),input=node('select');input.setAttribute('aria-label',label);for(const [value,text]of options){const o=node('option',text);o.value=value;input.append(o);}row.append(input);parent.append(row);return input;}
@@ -143,7 +146,7 @@ export function mount(target,options={}){
   formOpen=false;formDirty=false;
   body.onpointerdown=body.onpointermove=body.onpointerup=body.onpointercancel=null;
   stopDraft();
-  for(const b of tabButtons){const on=b.textContent===selected;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;if(on)body.setAttribute('aria-labelledby',b.id);}
+  for(const b of tabButtons){const on=b.textContent===selected;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;if(on)body.setAttribute('aria-labelledby',b.id);}overflow.update();
   clearBody();syncRecovery();target.scrollTop=0;status.textContent=api.status();context.textContent=contextLine(api.context(),'能力发动与持续效果');
   try{const store=api.read(),chat=api.context()?.chat??[];
    if(selected==='能力面板'){consoleView=renderConsole({body,api,state:consoleState,say,render,manage:()=>{selected='能力管理';render();},groups:groupManager,editSkill:s=>importForm({book:s.book,id:s.entryId,title:s.name,content:s.original,custom:s.custom},s),onFormOpen:openForm,adjust:effectForm,end:endForm,remove:deleteEffect});
@@ -188,5 +191,5 @@ export function mount(target,options={}){
  const unsubscribe=api.subscribe(event=>{if(!formOpen&&!event?.error)render();else status.textContent=api.status();syncRecovery();});
  const ctx=api.context(),events=ctx.eventTypes??ctx.event_types??{};
  const chatChanged=()=>{entries=[];books=[];chosenBook='';loadedBook='';consoleState.target='';consoleState.holder='';consoleState.skillId='';consoleState.targetMode=null;managementState.skillId='';loadEpoch++;render();};if(events.CHAT_CHANGED)ctx.eventSource?.on(events.CHAT_CHANGED,chatChanged);
- render();return {open(){if(!formOpen)render();},dispose(){stopDraft();consoleView?.dispose();consoleView=null;loadEpoch++;unsubscribe();if(events.CHAT_CHANGED)ctx.eventSource?.removeListener?.(events.CHAT_CHANGED,chatChanged);page.remove();}};
+ render();return {open(){if(!formOpen)render();},dispose(){stopDraft();consoleView?.dispose();consoleView=null;loadEpoch++;unsubscribe();overflow.dispose();if(events.CHAT_CHANGED)ctx.eventSource?.removeListener?.(events.CHAT_CHANGED,chatChanged);page.remove();}};
 }

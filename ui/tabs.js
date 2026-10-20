@@ -32,3 +32,95 @@ export function installTabScroll(document=globalThis.document){
  document.addEventListener('scroll',onScroll,true);document.addEventListener('wheel',onWheel,{passive:false});view.addEventListener?.('resize',schedule);schedule();
  return {refresh:schedule,dispose(){observer.disconnect();resize?.disconnect();document.removeEventListener('scroll',onScroll,true);document.removeEventListener('wheel',onWheel,{passive:false});view.removeEventListener?.('resize',schedule);}};
 }
+
+let menuCount=0;
+// A “⋯” menu: a toggle button plus a menu panel inserted after `anchor()` (or after the
+// toggle's tab strip / toolbar), outside any horizontally scrolling strip so it is never clipped.
+// items() is read each time the menu opens: [{label, run, title?, disabled?} | {separator:true}].
+export function createMoreMenu(document,{items,label='更多',anchor}={}){
+ const wrap=document.createElement('span'),toggle=document.createElement('button'),panel=document.createElement('div'),id='amin-more-'+(++menuCount);
+ wrap.className='amin-more';toggle.type='button';toggle.className='amin-more-toggle';toggle.textContent='⋯';toggle.title=label;
+ toggle.setAttribute('aria-label',label);toggle.setAttribute('aria-haspopup','menu');toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls',id);
+ panel.id=id;panel.className='amin-more-menu';panel.setAttribute('role','menu');panel.setAttribute('aria-label',label);panel.hidden=true;wrap.append(toggle);
+ const entries=()=>[...(panel.children??[])].filter(item=>item.getAttribute?.('role')==='menuitem'&&!item.disabled);
+ const inside=target=>target&&(wrap.contains?.(target)||panel.contains?.(target));
+ const onOutside=event=>{if(!inside(event.target))close(false);};
+ function close(focus=true){
+  if(panel.hidden)return;panel.hidden=true;toggle.setAttribute('aria-expanded','false');
+  document.removeEventListener?.('pointerdown',onOutside,true);if(focus)toggle.focus?.();
+ }
+ function open(focusFirst=false){
+  panel.replaceChildren();
+  for(const item of items?.()??[]){
+   if(item.separator){const line=document.createElement('div');line.setAttribute('role','separator');line.className='amin-more-separator';panel.append(line);continue;}
+   const entry=document.createElement('button');entry.type='button';entry.textContent=item.label;entry.setAttribute('role','menuitem');entry.tabIndex=-1;
+   if(item.title)entry.title=item.title;if(item.disabled)entry.disabled=true;
+   entry.addEventListener('click',()=>{close(false);item.run?.();});panel.append(entry);
+  }
+  if(!entries().length)return;
+  const after=anchor?.()??wrap.closest?.('[role=tablist],.amin-tabs,.amin-toolbar')??wrap;
+  if(panel.previousElementSibling!==after)after.after?.(panel);
+  panel.hidden=false;toggle.setAttribute('aria-expanded','true');
+  document.addEventListener?.('pointerdown',onOutside,true);
+  if(focusFirst)entries()[0]?.focus?.();
+ }
+ toggle.addEventListener('click',()=>{if(panel.hidden)open(false);else close();});
+ // Keys stay inside the menu: host tab strips listen for arrows too.
+ toggle.addEventListener('keydown',event=>{
+  if(event.key==='ArrowDown'&&panel.hidden){event.preventDefault?.();open(true);}
+  else if(event.key==='Escape')close();
+  else if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  event.stopPropagation?.();
+ });
+ panel.addEventListener('keydown',event=>{
+  const list=entries(),index=list.indexOf(document.activeElement);let next=null;
+  if(event.key==='ArrowDown'||event.key==='ArrowRight')next=list[(index+1)%list.length];
+  else if(event.key==='ArrowUp'||event.key==='ArrowLeft')next=list[(index+list.length-1)%list.length];
+  else if(event.key==='Home')next=list[0];else if(event.key==='End')next=list.at(-1);
+  else if(event.key==='Escape'){event.preventDefault?.();close();}
+  else if(event.key==='Tab')close(false);
+  else return;
+  event.stopPropagation?.();if(next){event.preventDefault?.();next.focus?.();}
+ });
+ return {element:wrap,toggle,panel,open,close,dispose(){close(false);panel.remove?.();wrap.remove?.();}};
+}
+
+// At most the `keep` tabs (by label) stay in the strip; the others open from a “⋯” at its end.
+// The selected tab always stays in the strip. `actions` adds menu-only commands such as a
+// fallback refresh. Views that redraw their tabs call update() afterwards; a MutationObserver
+// covers redraws where the browser provides one.
+export function collapseTabs(list,{keep=[],actions=[],label='更多页面'}={}){
+ const document=list?.ownerDocument;
+ if(!document?.createElement||!list.append)return {update(){},dispose(){},menu:null};
+ const pinned=new Set(keep),name=tab=>String(tab.textContent??'').trim();
+ const selected=tab=>['aria-selected','aria-pressed'].some(key=>tab.getAttribute?.(key)==='true')||tab.getAttribute?.('aria-current')==='page';
+ const extra=()=>(typeof actions==='function'?actions():actions).filter(Boolean);
+ const tabs=()=>[...(list.children??[])].filter(tab=>tab!==menu.element&&tab.tagName==='BUTTON');
+ const menu=createMoreMenu(document,{label,anchor:()=>list,items:()=>{
+  const hidden=tabs().filter(tab=>tab.dataset.tabOverflow==='true').map(tab=>({label:name(tab),run(){
+   const label=name(tab);tab.click?.();
+   queueMicrotask(()=>tabs().find(item=>name(item)===label&&item.dataset.tabOverflow!=='true')?.focus?.());
+  }}));
+  const more=extra();return [...hidden,...(hidden.length&&more.length?[{separator:true}]:[]),...more];
+ }});
+ let updating=false;
+ function update(){
+  if(updating)return;updating=true;
+  try{
+   let overflow=0;
+   for(const tab of tabs()){
+    const hide=pinned.size>0&&!pinned.has(name(tab))&&!selected(tab);
+    if(hide)overflow++;
+    if((tab.dataset.tabOverflow==='true')!==hide){if(hide)tab.dataset.tabOverflow='true';else delete tab.dataset.tabOverflow;}
+   }
+   const wanted=overflow>0||extra().length>0;
+   if(menu.element.hidden===wanted)menu.element.hidden=!wanted;
+   if([...(list.children??[])].at(-1)!==menu.element)list.append(menu.element);
+  }finally{updating=false;}
+ }
+ const Observer=document.defaultView?.MutationObserver;
+ const observer=typeof Observer==='function'?new Observer(records=>{if(records.some(record=>!menu.element.contains?.(record.target)&&record.target!==menu.element))update();}):null;
+ observer?.observe(list,{childList:true,subtree:true,attributes:true,attributeFilter:['aria-selected','aria-pressed','aria-current']});
+ update();
+ return {update,menu,dispose(){observer?.disconnect();menu.dispose();}};
+}

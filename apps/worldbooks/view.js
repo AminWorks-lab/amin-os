@@ -1,4 +1,5 @@
 import {getManager} from './runtime.js';
+import {createMoreMenu} from '../../ui/tabs.js';
 
 const el = (tag, text, cls) => {
     const element = document.createElement(tag);
@@ -263,7 +264,8 @@ export async function mount(target, {manager} = {}) {
         body.replaceChildren();
         const toolbar = el('div', null, 'amin-toolbar');
         body.append(toolbar);
-        button(toolbar, '刷新列表', refresh);
+        // The list follows host worldbook and chat events; the menu keeps a manual fallback.
+        toolbar.append(createMoreMenu(document, { label: '更多世界书操作', items: () => [{ label: '重新读取世界书列表', title: '仅在列表与酒馆不一致时使用', run: () => refresh().catch(error => say(error.message)) }] }).element);
         button(toolbar, state.paused ? '恢复自动应用' : '暂停自动应用', () => api.pause(!state.paused));
 
         if (tab === '展示范围') {
@@ -283,7 +285,7 @@ export async function mount(target, {manager} = {}) {
                         await api.setVisible(visible);
                     } catch (error) { say(error.message); }
                 });
-                if (!matches.length) empty(list, names.length ? '没有匹配的世界书。试试其他关键词。' : '暂无可展示的世界书。添加或导入世界书后，点击“刷新列表”。');
+                if (!matches.length) empty(list, names.length ? '没有匹配的世界书。试试其他关键词。' : '暂无可展示的世界书。添加或导入世界书后会自动出现在这里。');
             }
             draw();
             return;
@@ -386,7 +388,14 @@ export async function mount(target, {manager} = {}) {
         if (hidden.length) body.append(el('p', `组合中另有 ${hidden.length} 本未在此展示；可在展示范围中选中管理。`, 'amin-result'));
     }
 
-    const unsubscribe = api.subscribe(render);
+    // Re-read the catalog when the host reports worldbook or chat changes.
+    const hostCtx = globalThis.SillyTavern?.getContext?.(), events = hostCtx?.eventTypes ?? hostCtx?.event_types ?? {};
+    let catalogTimer = null;
+    const hostChanged = () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => { if (!disposed) refresh().catch(error => say(error.message)); }, 150); };
+    const hostEvents = ['WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHAT_CHANGED'].map(name => events[name]).filter(Boolean);
+    for (const name of hostEvents) hostCtx?.eventSource?.on?.(name, hostChanged);
+    const stopHost = () => { clearTimeout(catalogTimer); for (const name of hostEvents) { if (hostCtx?.eventSource?.removeListener) hostCtx.eventSource.removeListener(name, hostChanged); else hostCtx?.eventSource?.off?.(name, hostChanged); } };
+    const unsubscribeManager = api.subscribe(render), unsubscribe = () => { unsubscribeManager(); stopHost(); };
     try { await refresh(); } catch (error) {
         disposed = true; bookEpoch++; catalogEpoch++; unsubscribe(); page.remove(); throw error;
     }

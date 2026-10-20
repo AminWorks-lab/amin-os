@@ -5,6 +5,7 @@ import {messageVersion,persistAudioMessageId,audioMessageSource} from './floor-m
 import {floorLoading} from './lazy-view.js';
 import {views} from './views.js';
 import {STORY_APPS,renderStoryGate} from './shared/story-readiness.js';
+import {infoNote} from '../ui/forms.js';
 
 export function installExtraFloorButtons(id){
  const getContext=()=>globalThis.SillyTavern?.getContext?.(),mounted=new Map(),owned=new Set();
@@ -28,7 +29,7 @@ export function installExtraFloorButtons(id){
    const body=node('div','amin-reply-floor-body amin-ui');windowElement.append(bar);
    if(STORY_APPS.includes(id)){const gate=node('div','amin-story-gate amin-ui');gate.setAttribute('role','status');try{renderStoryGate(gate,getContext(),document);}catch{gate.hidden=true;}windowElement.append(gate);}
    windowElement.append(body);host.append(windowElement);
-   if(id!=='tts')body.append(node('p','amin-reply-floor-note','显示当前聊天的数据，操作与 OS 内应用共享；此入口不是历史楼层快照。'));
+   if(id!=='tts')body.append(infoNote(document,'显示当前聊天的最新资料。','与桌面中的应用共用同一份资料，操作会同步；这里不是这一楼当时的历史快照。','amin-reply-floor-note'));
    const run=++epoch;
    const start=()=>{
     const loading=floorLoading(body);let loaded=false;

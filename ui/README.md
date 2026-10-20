@@ -53,7 +53,9 @@
 | --- | --- |
 | `amin-app-page` | 自然伸展的页面，统一内边距和纵向间距 |
 | `amin-context` | 简短上下文与数据归属，底部分隔线 |
-| `amin-tabs` | 紧凑横向标签页，窄屏换行 |
+| `amin-tabs` | 紧凑横向标签页，单行横滚；超过 5 个时用 `collapseTabs(list, { keep, actions })`（`ui/tabs.js`）把其余标签收进行末“⋯”菜单 |
+| `amin-more` | `createMoreMenu(document, { label, items })` 生成的“⋯”菜单，键盘可操作；兜底的“重新读取”放在这里 |
+| `amin-info` | `infoNote(document, 一句话, 细节)`（`ui/forms.js`）：页内说明只留一句，细节放进 ⓘ 的提示 |
 | `amin-toolbar` / `amin-inline` | 可换行操作行 / 可换行内联内容 |
 | `amin-stack` | 统一间距的纵向内容 |
 | `amin-card` | 中性内容卡片，使用当前主题背景和边框 |

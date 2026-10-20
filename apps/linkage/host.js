@@ -139,7 +139,7 @@ export function createLinkageHost(getContext, {
         cancel();
         if (disposed) return;
         const ctx = getContext();
-        if (!hostReady(ctx)) { say('当前宿主缺少联动生成接口或事件，本轮无法接收更新'); return; }
+        if (!hostReady(ctx)) { say('当前酒馆版本缺少联动所需的接口，本轮无法接收更新'); return; }
         if (!readSettings(ctx).enabled) { say('当前聊天未启用统一联动更新；请在此分支启用并保存设置'); return; }
         if (options?.signal?.aborted) { say('本轮生成已取消，未建立更新接收记录'); return; }
         if (!ctx?.chatMetadata) { say('当前聊天资料尚未就绪，未建立更新接收记录'); return; }
@@ -199,12 +199,12 @@ export function createLinkageHost(getContext, {
                 if (!active.captured) {
                     active.before = messageSnapshot(ctx);
                     const accepted = await captureGeneration(active.type, { excludedReply: active.excludedReply });
-                    if (accepted === false) throw Error('当前不能建立独立剧情更新基线，请完成待保存操作后重试');
+                    if (accepted === false) throw Error('当前有待保存的操作，本轮不能接收更新；请先完成保存后重试');
                     if (!current(active) || run !== active) return;
                     active.captured = true;
                 }
                 say('已注入独立剧情更新规则，等待新的完整角色回复');
-            } catch (error) { active.failed = true; clearData(); say('本轮独立更新基线未建立：' + error.message); }
+            } catch (error) { active.failed = true; clearData(); say('本轮未能准备接收更新：' + error.message); }
             return;
         }
         // Keep exactly one applicable owned entry across overlapping book bindings.
@@ -240,11 +240,11 @@ export function createLinkageHost(getContext, {
             // message or remove the previous reply for a regeneration afterward.
             active.before = messageSnapshot(ctx);
             const accepted = await captureGeneration(active.type, { excludedReply: active.excludedReply });
-            if (accepted === false) throw Error('联动服务当前不能建立生成基线，请完成待保存操作后重试');
+            if (accepted === false) throw Error('当前有待保存的操作，本轮不能接收更新；请先完成保存后重试');
             if (!current(active) || run !== active) return;
             active.captured = true;
             say('统一条目已激活，等待新的完整角色回复');
-        } catch (error) { active.failed = true; clearData(); say('本轮更新基线未建立：' + error.message); }
+        } catch (error) { active.failed = true; clearData(); say('本轮未能准备接收更新：' + error.message); }
     }
     function schedule() {
         if (!run?.ended || run.candidate === null) return;
@@ -264,7 +264,7 @@ export function createLinkageHost(getContext, {
         if (!run) return;
         if (!run.write) { cancel(); return; }
         if (!run.captured) {
-            if (run.independent && !run.failed) say('本轮未建立 Amin 更新基线；正文可正常生成，未修改当前资料');
+            if (run.independent && !run.failed) say('本轮没有准备好接收 Amin 更新；正文可正常生成，未修改当前资料');
             else if (run.selected && !run.failed) say('本轮规则已展开，但未确认统一条目实际激活，未接收更新；请检查世界书预算与预设');
             else if (!run.selected && message === '已收到当前聊天的生成事件，等待加载统一更新规则') say('本轮未确认世界书加载和统一更新规则激活；此提示不代表变量恢复结果或小白执行结果，请另看“剧情变量 · 小白变量 2.0”的恢复状态');
             cancel(); return;
@@ -293,8 +293,8 @@ export function createLinkageHost(getContext, {
     };
     if (source?.on) for (const [key, handler] of Object.entries(handlers)) if (events[key]) {
         const guarded = (...args) => {
-            try { return Promise.resolve(handler(...args)).catch(error => cancel('联动宿主适配已停止：' + error.message)); }
-            catch (error) { cancel('联动宿主适配已停止：' + error.message); }
+            try { return Promise.resolve(handler(...args)).catch(error => cancel('联动已暂停：' + error.message)); }
+            catch (error) { cancel('联动已暂停：' + error.message); }
         };
         source.on(events[key], guarded); subscriptions.push([events[key], guarded]);
     }

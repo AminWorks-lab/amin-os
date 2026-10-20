@@ -49,8 +49,8 @@ export function validateEvidence(input) {
     const sources = input.sources.map(source => {
         keys(source, ['index', 'revision'], '关系来源楼层');
         if (!Number.isInteger(source.index) || source.index < 0 || source.index > 99999) throw Error('关系来源楼层无效。');
-        const revision = text(source.revision, '关系来源修订', 200000, true);
-        if (!validMessageRevision(revision)) throw Error('关系来源修订格式无效。');
+        const revision = text(source.revision, '关系来源楼层记录', 200000, true);
+        if (!validMessageRevision(revision)) throw Error('关系来源楼层记录格式无效。');
         return { index: source.index, revision };
     });
     if (new Set(sources.map(source => source.index)).size !== sources.length) throw Error('关系来源楼层重复。');

@@ -1,5 +1,6 @@
 import { getSharedSavesService } from './service.js';
 import {contextLine} from '../shared/context-line.js';
+import {infoNote} from '../../ui/forms.js';
 
 const mounted = new WeakMap();
 const tabs = { saves: '剧情存档', transfer: '导入 / 导出' };
@@ -150,7 +151,7 @@ export function mount(target, options = {}) {
             panel.append(make('p', `将从${sourceText(summary.source)}创建独立聊天，并恢复当时记录的完整应用状态。原聊天仍保留，缺失的旧楼数据不会由当前状态推算。`));
         } else if (kind === 'delete') panel.append(make('p', '这会删除所选命名存档；当前应用状态和聊天消息不会改变。'));
         else if (kind === 'import') panel.append(make('p', '导入只把已验证的存档收入当前聊天，不会立即恢复，也不会改动聊天消息。'));
-        else if (kind === 'save') panel.append(make('p', '确认后保存当前允许范围内的应用状态及消息来源修订；不会替换聊天正文，也不收录全局设置、API 配置或密钥。'));
+        else if (kind === 'save') panel.append(make('p', '保存当前所有资料，恢复时不会改动聊天消息。'));
         if (summary.snapshot) panel.append(make('p', `${when(summary.snapshot.createdAt)} · ${sourceText(summary.snapshot.source)}`, 'amin-meta'));
         if (Array.isArray(summary.moduleNames)) panel.append(make('p', summary.moduleNames.length ? `包含模块：${summary.moduleNames.join('、')}` : '当前没有可保存的应用状态。', 'amin-meta'));
         if (kind === 'restore' || summary.changes?.length) drawChanges(panel, summary.changes);
@@ -188,21 +189,25 @@ export function mount(target, options = {}) {
         const create = section('创建当前状态存档'), grid = make('div', '', 'amin-form-grid'); create.append(grid);
         field(grid, '存档名称', nameDraft, value => { nameDraft = value; });
         field(grid, '备注（可选）', noteDraft, value => { noteDraft = value; }, { multiline: true, full: true });
-        create.append(make('p', '保存应用状态与核验分支所需的消息来源修订。恢复不会替换聊天消息；全局界面设置、模型 API 配置与密钥不会进入存档。', 'amin-help'));
-        button(toolbar(create), '预览创建存档', () => { ensureNoPreview(); api.stageSave({ name: nameDraft, note: noteDraft }); }, 'amin-primary');
+        create.append(infoNote(doc, '保存当前所有资料，恢复时不会改动聊天消息。', '存档记下各应用的当前资料和所在楼层，用于以后恢复或新开分支。全局界面设置、模型 API 配置与密钥不会进入存档。'));
+        // Creating a save only adds a record; it runs directly. Restore and delete keep their preview.
+        button(toolbar(create), '创建存档', async () => {
+            ensureNoPreview(); api.stageSave({ name: nameDraft, note: noteDraft }); await api.confirm();
+            say(`已创建存档「${nameDraft.trim()}」。`, false); nameDraft = ''; noteDraft = '';
+        }, 'amin-primary');
 
         const list = section('命名存档');
-        if (!store.saves.length) list.append(make('p', '还没有命名存档。填写名称并预览后，确认一次即可保存当前应用状态。', 'amin-empty'));
+        if (!store.saves.length) list.append(make('p', '还没有命名存档。填写名称后点击“创建存档”即可保存当前资料。', 'amin-empty'));
         for (const snapshot of [...store.saves].reverse()) drawSnapshot(snapshot, list);
         const backups = section(`自动安全备份 · 与检查点共用最近 ${store.checkpointSettings?.limit ?? 10} 份`);
-        backups.append(make('p', '每次恢复前自动建立；它们同样只包含允许范围内的应用状态。', 'amin-help'));
+        backups.append(infoNote(doc, '每次恢复前自动建立。', '安全备份同样只包含各应用的资料，可用来撤销一次恢复。'));
         if (!store.backups.length) backups.append(make('p', '还没有安全备份。第一次确认恢复时会自动创建。', 'amin-empty'));
         for (const snapshot of [...store.backups].reverse()) drawSnapshot(snapshot, backups, { backup: true });
     }
     function drawCheckpoints(store) {
         const settings = store.checkpointSettings ?? { enabled: true, limit: 10 }, draft = checkpointDraft ??= { ...settings };
         const config = section('自动记录完整楼层状态');
-        config.append(make('p', '只记录当前聊天末尾实际存在的完整状态。后续楼层与候选分别保留；消息被编辑或切换候选后，只有来源完全匹配的记录才能新开分支。旧历史不会补造检查点。', 'amin-help'));
+        config.append(infoNote(doc, '自动记下每一楼的完整资料；旧历史不会补造检查点。', '只记录当前聊天末尾实际存在的资料。后续楼层与候选分别保留；消息被编辑或切换候选后，只有来源完全匹配的记录才能新开分支。'));
         const enabledLabel = make('label', '', 'amin-check'), enabled = make('input'); enabled.type = 'checkbox'; enabled.checked = draft.enabled;
         enabled.setAttribute('aria-label', '启用自动楼层检查点'); enabled.addEventListener('change', () => { draft.enabled = enabled.checked; });
         enabledLabel.append(enabled, make('span', '启用自动楼层检查点')); config.append(enabledLabel);
@@ -212,7 +217,7 @@ export function mount(target, options = {}) {
         const actions = toolbar(config);
         button(actions, '立即记录当前楼层', async () => { ensureNoPreview(); const saved = await api.captureCheckpoint(); say(saved ? '已记录当前楼层完整状态。' : '空聊天尚无可记录楼层。'); }, 'amin-primary');
         const list = section(`楼层检查点 · ${store.checkpoints?.length ?? 0} 份`);
-        list.append(make('p', (store.storage?.external ? '检查点保存在外部存储，聊天内只保留引用。' : '外部存储不可用时，聊天内最多保留 2 份完整检查点。') + '同一状态修订只记录一次；自动检查点、恢复前备份和操作前备份按保留数量滚动淘汰。长期保留请另建命名存档或导出 JSON。', 'amin-help'));
+        list.append(infoNote(doc, '超过保留数量时最早的记录会被替换。', (store.storage?.external ? '检查点保存在外部存储，聊天内只保留引用。' : '外部存储不可用时，聊天内最多保留 2 份完整检查点。') + '同样的资料只记录一次；自动检查点、恢复前备份和操作前备份共用保留数量。长期保留请另建命名存档或导出 JSON。'));
         if (!store.checkpoints?.length) list.append(make('p', '尚无完整楼层检查点。可立即记录当前楼层，或等待后续消息和应用更新。', 'amin-empty'));
         for (const saved of [...(store.checkpoints ?? [])].reverse()) drawSnapshot(saved, list, { checkpoint: true });
     }
@@ -222,11 +227,14 @@ export function mount(target, options = {}) {
         importArea.spellcheck = false;
         importing.append(make('p', '先验证格式、版本、大小和模块内容。验证不会写入；导入后也不会自动恢复。', 'amin-help'));
         button(toolbar(importing), '验证 JSON', async () => {
-            ensureNoPreview(); inspected = await api.inspectImport(importText); say('JSON 已验证，可核对后预览导入。', false);
+            ensureNoPreview(); inspected = await api.inspectImport(importText); say('JSON 已验证，核对后可收纳到当前聊天。', false);
         }, 'amin-primary');
         if (inspected) {
             const result = section('验证通过 · ' + inspected.name, importing, 'amin-result amin-stack'); snapshotMeta(result, inspected);
-            button(toolbar(result), '预览收纳到当前聊天', () => { ensureNoPreview(); api.stageImport(importText); });
+            button(toolbar(result), '收纳到当前聊天', async () => {
+                ensureNoPreview(); api.stageImport(importText); await api.confirm();
+                say(`已收纳存档「${inspected.name}」；需要时在“剧情存档”页预览恢复。`, false); inspected = null; importText = '';
+            });
         }
         const exporting = section(exportName ? `导出 · ${exportName}` : '导出存档');
         if (!exportText) exporting.append(make('p', '在“剧情存档”页选择一个命名存档或安全备份，再点击“导出 JSON”。', 'amin-empty'));

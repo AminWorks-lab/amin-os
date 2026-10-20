@@ -17,6 +17,7 @@ import { isIndependent, readStoryRoot, writeStoryRoot, STATE_KEY, prepareIndepen
 import { mountGeneration } from '../generation/view.js';
 import { openLinkage as openLinkageApp } from '../linkage/open.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
+import { collapseTabs } from '../../ui/tabs.js';
 import { getSharedService as getLinkageService } from '../linkage/service.js';
 import { managesModule, mayWrite } from '../linkage/policy.js';
 import { buildDataPrompt, buildUpdateRules } from '../linkage/prompt.js';
@@ -230,6 +231,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   for (const [tab, page] of [[historyTab, historyPage], [displayTab, displayPage], [rulesTab, rulesPage]]) { tab.type = 'button'; tab.setAttribute('aria-controls', page.id); page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', tab.id); }
   rulesTab.onclick = () => selectPage('rules');
   historyTab.onclick = () => selectPage('history'); displayTab.onclick = () => selectPage('display');
+  let tabOverflow = null;
   function selectPage(value) {
     contextNote.textContent = contextLine(context(), '当前剧情状态', '历史快照仅供浏览');
     if (value === undefined) value = selectedPage;
@@ -242,6 +244,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
       b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(selectedPage === name));
       b.tabIndex = selectedPage === name ? 0 : -1;
     }
+    tabOverflow?.update();
   }
   stateTab.onclick = () => selectPage('state'); generateTab.onclick = () => selectPage('generate'); templateTab.onclick = () => selectPage('templates');
   tabs.addEventListener('keydown', e => {
@@ -250,7 +253,8 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
     const j = e.key === 'Home' ? 0 : e.key === 'End' ? pages.length-1 : (i + (e.key === 'ArrowRight' ? 1 : pages.length-1)) % pages.length;
     selectPage(pages[j]); [stateTab, generateTab, templateTab, rulesTab, historyTab, displayTab][j].focus();
   });
-  selectHudPage = selectPage; tabs.append(stateTab, generateTab, templateTab, rulesTab, historyTab, displayTab); body.append(frame, generationPage, templatePage, historyPage, displayPage, rulesPage); selectPage(page);
+  selectHudPage = selectPage; tabs.append(stateTab, generateTab, templateTab, rulesTab, historyTab, displayTab);
+  tabOverflow = collapseTabs(tabs, { keep: ['状态栏', '生成设置', '状态规则', '楼层记录'], label: '更多世界状态页面' }); body.append(frame, generationPage, templatePage, historyPage, displayPage, rulesPage); selectPage(page);
   frame.title = '世界状态栏编辑器';
   // Only the bundled frame may use this variable bridge; commands are allowlisted.
   const token = uuid();

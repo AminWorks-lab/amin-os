@@ -177,7 +177,7 @@ try {
     await app('effects'); await click('effects', '生效中'); assert.ok(await evaluate("pane('effects').textContent.includes('已到期')"));
     checks.push('Travel: actual map envelope route preview, 15-minute confirmed map/time/scene update, 5-minute effect expiry shown');
 
-    await app('saves'); await fill('saves', '存档名称', '浏览器出发后存档'); await fill('saves', '备注（可选）', '含人物、背包、关系、地图、时钟、限时效果与固定骰点'); await click('saves', '预览创建存档'); await click('saves', '确认创建存档');
+    await app('saves'); await fill('saves', '存档名称', '浏览器出发后存档'); await fill('saves', '备注（可选）', '含人物、背包、关系、地图、时钟、限时效果与固定骰点'); await click('saves', '创建存档');
     assert.equal(await evaluate('ctx.chatMetadata.amin_os_saves_v1.saves.length'), 1);
     await app('inventory'); await click('inventory', '消耗'); await fill('inventory', '操作数量', '1'); await fill('inventory', '变更原因', '存档后变更'); await click('inventory', '预览消耗物品'); await click('inventory', '确认操作');
     await app('saves'); await click('saves', '预览恢复'); assert.equal(await evaluate("(await import('/apps/inventory/model.js')).readInventory(ctx).items[0].quantity"), 1); await click('saves', '确认恢复到当前楼层');

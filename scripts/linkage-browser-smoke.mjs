@@ -195,7 +195,7 @@ try {
     await app('effects'); await click('effects', '生效中'); await click('effects', '建立生效记录'); await fill('effects', '技能', 'shield'); await fill('effects', '持有者', '艾琳'); await fill('effects', '作用层面', '雨中寒冷');
     await fill('effects', '持续或解除条件', '直到进入温暖住所'); await expand('effects', '叠加与周期规则'); await fill('effects', '状态叠加方式', 'independent'); await fill('effects', '状态类型编号', 'cold'); await fill('effects', '周期结算规则', 'set'); await fill('effects', '每隔多少游戏分钟结算', '10'); await fill('effects', '周期操作对象', JSON.stringify(['pc-a','hp'])); await fill('effects', '每周期增减量（负数为消耗）', '-2');
     await layoutsAt('effects', 'effects-periodic-editor'); await click('effects', '确认保存'); await failIfNotice('effects', '周期结算');
-    await app('scene'); await click('scene', '时钟'); await fill('scene', '推进量', '20'); await fill('scene', '原因', '雨中等待守卫'); await click('scene', '预览自定义推进'); await click('scene', '确认应用一次'); assert.equal(await hp(), 8);
+    await app('scene'); await click('scene', '时钟'); await fill('scene', '推进量', '20'); await fill('scene', '原因', '雨中等待守卫'); await click('scene', '推进时间'); assert.equal(await hp(), 8);
     await app('effects'); await click('effects', '周期结算'); await click('effects', '预览全部周期结算'); assert.equal(await hp(), 8); await layoutsAt('effects', 'effects-periodic-preview'); await click('effects', '确认结算'); assert.equal(await hp(), 4);
     if (await evaluate("(await import('/apps/effects/service.js')).getSharedService().dirty()")) {
         functionalIssues.push({ feature: 'effect settlement persistence', notice: await notice('effects') });

@@ -64,7 +64,7 @@ export const adapter = {
             const index = state.characters.findIndex(person => person.id === next.id);
             if (index < 0) state.characters.push(next); else state.characters[index] = next;
         }
-        const summary = `${change.action === 'delete-character' ? '移除' : '更新'}人物「${next?.name ?? previous.name}」`;
+        const summary = `${change.action === 'delete-character' ? '移除' : change.action === 'create-character' ? '新增' : '更新'}人物「${next?.name ?? previous.name}」`;
         return { patches: [{ path: [KEY], value: appendSnapshot(readStore(ctx), ctx.chat, state, { id: operationId, at: now, reason: change.reason }) }], summary };
     },
 };

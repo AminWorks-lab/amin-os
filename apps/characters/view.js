@@ -7,6 +7,7 @@ import { KNOWLEDGE_STATES } from '../journal/model.js';
 import {contextLine} from '../shared/context-line.js';
 import {linkedEmpty} from '../shared/open-app.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
+import { createMoreMenu } from '../../ui/tabs.js';
 
 const mounted = new WeakMap();
 const componentNames = { value: '数值', current: '当前值', max: '最大值' };
@@ -302,7 +303,9 @@ export function mount(target, options = {}) {
             if (!characters.some(character => character.id === selected)) selected = characters[0]?.id ?? '';
             const actions = toolbar(body);
             button(actions, '新增人物卡', () => openCharacter(), { primary: true, blocked: writable });
-            button(actions, '刷新人物与数值', () => { render(); say('已读取当前聊天的人物与世界状态。'); });
+            // Cards follow story and chat changes on their own; the menu keeps a manual fallback.
+            const more = createMoreMenu(doc, { label: '更多人物卡操作', items: () => [{ label: '重新读取人物与数值', title: '仅在显示异常时使用', run: () => { render(); say('已读取当前聊天的人物与世界状态。'); } }] });
+            actions.append(more.element);
             if (!characters.length) body.append(make('p', '当前分支还没有人物卡。新增 PC 或 NPC，再绑定世界状态中的属性、技能、生命或理智。', 'amin-empty'));
             else {
                 const fields = grid(body), search = field(fields, '筛选人物', filter); search.type = 'search';

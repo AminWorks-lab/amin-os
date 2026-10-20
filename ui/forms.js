@@ -37,3 +37,18 @@ export function createFormControls(doc, { rows = 4, register = () => {} } = {}) 
     const grid = parent => toolbar(parent, 'amin-form-grid');
     return { make, field, select, checkbox, toolbar, grid };
 }
+
+/**
+ * One short sentence with the details behind an ⓘ marker (title on hover, the
+ * same text for screen readers and on keyboard focus). Use for page notes that
+ * would otherwise be a long disclaimer paragraph.
+ */
+export function infoNote(doc, text, detail = '', className = 'amin-help') {
+    const note = doc.createElement('p'); note.className = className; note.textContent = text;
+    if (detail) {
+        const info = doc.createElement('span'); info.className = 'amin-info'; info.textContent = ' ⓘ';
+        info.title = detail; info.tabIndex = 0; info.setAttribute('role', 'note'); info.setAttribute('aria-label', detail);
+        note.title = detail; note.append(info);
+    }
+    return note;
+}
