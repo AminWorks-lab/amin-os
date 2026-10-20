@@ -3,7 +3,7 @@ import { createTextUpdates } from './src/integrations/text-updates.js';
 import { createMapTools } from './src/integrations/tool-calling.js';
 import { createVariableBridge } from './src/integrations/chat-variables.js';
 import { createDraftSession } from './src/core/draft.js';
-import { createApiSettings } from './src/adapters/generation.js';
+import { createApiSettings } from '../../ai/transport.js';
 import { createPreferences } from './src/ui/preferences.js';
 import { installMessageButtons } from './src/ui/message-buttons.js';
 import { createDemoDocument } from './src/core/demo.js';

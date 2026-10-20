@@ -1,4 +1,4 @@
-import { waitForSignal } from '../apps/map/src/core/generation-job.js';
+import { waitForSignal } from './signal.js';
 import { withLinkageToolScope } from '../apps/linkage/host.js';
 
 // SillyTavern's ConnectionManagerRequestService routes through its own server and

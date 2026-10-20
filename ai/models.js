@@ -1,6 +1,6 @@
-import {endpointFor} from '../apps/map/src/adapters/generation.js';
+import {endpointFor} from './transport.js';
 import {resolveHostConnection} from './host-connection.js';
-import {waitForSignal} from '../apps/map/src/core/generation-job.js';
+import {waitForSignal} from './signal.js';
 
 export function modelsEndpoint(baseUrl){
     return endpointFor(baseUrl).replace(/\/chat\/completions$/, '/models');

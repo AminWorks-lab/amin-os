@@ -1,4 +1,4 @@
-import {validateApiSettings} from '../apps/map/src/adapters/generation.js';
+import {validateApiSettings} from './transport.js';
 
 // Read host configuration only. Generation always uses our own fetch transport.
 async function loadHost() {

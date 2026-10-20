@@ -4,13 +4,14 @@ import { isIndependent, readStoryRoot, writeStoryRoot, prepareIndependentManualW
 import {collectStatusSources,readStatusPersona,requireStatusPersona} from './sources.js';
 import {readStatusChat, requireStatusChat} from './chat-context.js';
 import {canChangeType} from './type-permission.js';
-import {getAI} from '../../ai/service.js';
+import {getAIOrHost} from '../../ai/service.js';
+import {parseModelJSON} from '../../ai/json.js';
 import { checkpointState } from './state-checkpoint.js';
 import { mergeUpdates, RELATION_UPDATE_RULES } from './state-tools.js';
 import { acquireMetadataWrite } from '../shared/operations.js';
 import { captureStoryBackup, recordStoryBackup, usesStoryStorage, usesCurrentStoryStorage } from './story-backups.js';
 export async function generateStatus(CONFIG, signal, sourceOptions = {}) {
-const sharedAI=getAI(),snapshot=requireStatusChat(sharedAI?.capture('status'));
+const sharedAI=getAIOrHost(),snapshot=requireStatusChat(sharedAI?.capture('status'));
 if(snapshot) CONFIG={...CONFIG,api:{...CONFIG.api,maxTokens:snapshot.config.maxTokens,timeoutMs:snapshot.config.timeoutSeconds*1000}};
 const LOCK = '__LWB_HUD_BUILDER_V1_RUNNING__';
 if (window[LOCK]) {
@@ -122,49 +123,12 @@ try {
   });
   window.toastr?.info('正在读取 ' + source.世界书.length + ' 本世界书并生成状态栏…');
 
-  let text;
-  if (sharedAI) {
-    text = await sharedAI.generate('世界状态',ctx,{prompt,systemPrompt,trimNames:false},{signal:controller.signal,snapshot,data:{card:source.角色卡,books:source.世界书,chat:source.最近对话,request:{...(persona?{用户设定:source.用户设定}:{}),操作:JSON.parse(prompt).操作,用户补充要求:CONFIG.instructions,已有状态栏:replacing?null:initial,当前情况补充:source.当前情况补充}}});
-  } else if (CONFIG.api.baseUrl.trim()) {
-    if (!CONFIG.api.model.trim()) throw Error('使用独立API时必须填写 model。');
-    let endpoint;
-    try { endpoint = new URL(CONFIG.api.baseUrl.trim()); }
-    catch { throw Error('独立API地址无效，需要完整 http:// 或 https:// 地址。'); }
-    if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password
-      || endpoint.search || endpoint.hash) throw Error('API地址只填写基础地址或 chat/completions 地址，不要包含密钥或查询参数。');
-    let path = endpoint.pathname.replace(/\/+$/, '');
-    if (!path.endsWith('/chat/completions')) path += (path ? '' : '/v1') + '/chat/completions';
-    endpoint.pathname = path;
-    const headers = { 'Content-Type': 'application/json' };
-    if (CONFIG.api.apiKey.trim()) headers.Authorization = 'Bearer ' + CONFIG.api.apiKey.trim();
-    let response;
-    try {
-      response = await fetch(endpoint.href, {
-        method: 'POST', headers, signal: controller.signal,
-        body: JSON.stringify({ model: CONFIG.api.model.trim(), stream: false,
-          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
-          max_tokens: CONFIG.api.maxTokens }),
-      });
-    } catch {
-      guard();
-      throw Error('独立API网络请求失败。检查地址、浏览器跨域许可及HTTPS/HTTP限制；也可留空地址改用酒馆连接。');
-    }
-    if (!response.ok) throw Error('独立API返回 HTTP ' + response.status + '。请检查模型名、密钥和接口配置。');
-    const result = await response.json();
-    const choice = result.choices?.[0];
-    if (choice?.finish_reason === 'length') throw Error('模型输出被截断，请提高 maxTokens 或减少状态栏字段。');
-    text = choice?.message?.content;
-  } else {
-    if (typeof ctx.generateRaw !== 'function') throw Error('当前酒馆没有 generateRaw 接口，无法使用默认连接。');
-    // 不指定 api 参数：酒馆使用当前 main_api 和连接设置。
-    text = await ctx.generateRaw({ prompt, systemPrompt, responseLength: CONFIG.api.maxTokens, trimNames: false });
-  }
+  const text = await sharedAI.generate('世界状态',ctx,{prompt,systemPrompt,responseLength:CONFIG.api.maxTokens,trimNames:false},{signal:controller.signal,snapshot,data:{card:source.角色卡,books:source.世界书,chat:source.最近对话,request:{...(persona?{用户设定:source.用户设定}:{}),操作:JSON.parse(prompt).操作,用户补充要求:CONFIG.instructions,已有状态栏:replacing?null:initial,当前情况补充:source.当前情况补充}}});
   guard();
   if (typeof text !== 'string' || !text.trim()) throw Error('模型未返回有效文本。');
-  text = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   let proposed;
-  try { proposed = JSON.parse(text); }
-  catch { throw Error('模型结果不是完整合法JSON，未修改状态栏。请重试或换用更遵守格式的模型。'); }
+  try { proposed = parseModelJSON(text, { label: '状态栏模型结果' }); }
+  catch (error) { throw Error(error.message + '请重试或换用更遵守格式的模型。'); }
   const safeName = n => /^[\p{L}\p{N}_]{1,32}$/u.test(n) && !['__proto__', 'prototype', 'constructor'].includes(n);
   function validValue(v) {
     if (typeof v === 'string') return v.length <= 4000;

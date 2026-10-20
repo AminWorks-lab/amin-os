@@ -1,8 +1,8 @@
 import { CONTENT_MODES, contentInstruction, writingInstruction } from './writing-library.js';
-import {getAI} from '../../ai/service.js';
+import {getAIOrHost} from '../../ai/service.js';
 import { readWorldContext, hostWorldSettings } from './world-context.js';
 import { splitDiceDraft, mergeDiceDraft } from '../dice/draft.js';
-import { parseRequestBody } from '../map/src/adapters/request-body.js';
+import { parseRequestBody } from '../../ai/request-body.js';
 const LEGACY_ROLEPLAY_PROMPT='你是用户的回复拟稿助手。为用户本人拟写下一条消息，不替其他角色决定行动。';
 export const DEFAULT_ROLEPLAY_PROMPT='你是剧情角色的回复拟稿助手。为指定的回复主体拟写下一步对白、行动与反应，贴合该角色的人设和当前剧情。主体可以是剧情中的任何角色，不限定为玩家或用户。';
 export const DEFAULT_AUTHOR_PROMPT='你是作者与编剧的剧情策划助手。以作者视角设计接下来如何推进故事，不扮演用户或任何角色，不直接续写正文。';
@@ -142,8 +142,7 @@ function assertRevisionResult(options,revision) {
 }
 export async function generateOptions(ctx, settings, { draft = '', world, onContext, signal, isCurrent = () => true, contentStyle, writingStyle, directions, revisionTask, linkedContext } = {}) {
     draft=splitDiceDraft(draft,ctx).body;
-    const sharedAI=getAI(),snapshot=sharedAI?.capture('reply');
-    if(!sharedAI && typeof ctx?.generateRaw!=='function') throw new Error('当前前端缺少 generateRaw 接口。');
+    const sharedAI=getAIOrHost(),snapshot=sharedAI.capture('reply');
     if(snapshot?.route?.mode==='amin' && Object.hasOwn(parseRequestBody(snapshot.config?.requestBody),'messages')) throw new Error('AI 设置的自定义 requestBody 覆盖了 messages，回复选项的提示词不会发送。请移除该字段后重试。');
     const s=normalizeSettings(settings);
     const selectedDirections=directions===undefined?sampleDirections((s.writingMode==='author'?s.authorDirectionItems:s.directionItems).filter(item=>item.enabled&&item.text.trim()).map(item=>item.text).join('\n'),s.count):directionOverride(directions);
@@ -167,7 +166,7 @@ export async function generateOptions(ctx, settings, { draft = '', world, onCont
         const finalRules=`输出前逐项核对：遵守${identityRule}与 JSON 格式；执行用户设置的模式提示词及以下具体要求；每项符合对应方向。关联资料是已记录事实，只作为生成依据；区分角色已知与玩家已知，未发生的行动结果、其他角色反应或变量更新不能写成既成事实。要求新情节时，将其写成意图或方案。\n用户要求（再次核对）：\n${requirements}${revision?`\n局部调整要求（再次核对）：\n${revision.instruction||'保持原方向，写出不同的表达。'}${revision.preserveText?`\n逐字保留片段：${JSON.stringify(revision.preserveText)}`:''}${slotRules}`:''}${contentRules?`\n内容约束（逐条候选核对，不得省略）：${contentRules}\n输出前确认每条候选正文均体现这些内容约束；不要输出核对过程。`:''}`;
         const requestText=`${taskPrompt}${linkedText}${revisionText}\n${finalRules}`;
         const request={systemPrompt,prompt:`${taskPrompt}\n参考数据：${JSON.stringify(data)}${linkedText}${revisionText}\n${finalRules}`,responseLength:s.length==='long'?3000:1800,trimNames:false};
-        return sharedAI?sharedAI.generate('回复选项',ctx,request,{signal,snapshot,data:{...sharedData,request:requestText},includeEffects:false,includeJournal:false,includeScene:false,includeLinkage:false}):ctx.generateRaw(request);
+        return sharedAI.generate('回复选项',ctx,request,{signal,snapshot,data:{...sharedData,request:requestText},includeEffects:false,includeJournal:false,includeScene:false,includeLinkage:false});
     };
     if(s.writingMode==='author'){
         const requirements=s.authorPrompt||'承接当前局面，提供不同冲突、节奏与走向的可执行方案。';

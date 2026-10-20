@@ -4,6 +4,7 @@ import { mapIntegrationPrompt } from './integration-prompt.js';
 import {mountWorldbookSources} from '../../../worldbook-source-ui.js';
 import {sourceSettings,saveSourceSettings} from '../../../worldbook-sources.js';
 import {getAI} from '../../../../ai/service.js';
+import {parseModelJSON} from '../../../../ai/json.js';
 import { inspectMapRegex, syncMapRegex } from '../adapters/text-regex.js';
 import { TEXT_PROMPT } from '../integrations/text-updates.js';
 import { mapChanges } from './map-presentation.js';
@@ -327,8 +328,7 @@ export function createPanel(store,persistence,preferences,options={}){
                 guard();job.setStage('检查地图结构与路线方位');
                 if(disposed)throw new Error('地图窗口已关闭，未应用生成结果');
                 if(token!==draft.token()||navToken!==navigationRevision)throw new Error('生成期间聊天或草稿发生变化，未覆盖当前地图，请重新生成');
-                const raw=String(result).trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
-                const parsed=JSON.parse(raw);
+                const parsed=parseModelJSON(result,{label:'地图生成结果'});
                 if(!expand)for(const m of Object.values(parsed.maps??{}))for(const e of m.edges??[]){if(!capturedNaming)e.name='';if(!capturedDistance)e.distance=null;}
                 const doc=expand?applyMapExpansion(base,parsed,{nameRoads:capturedNaming,distanceRoads:capturedDistance}):applyGeneratedMap(base,parsed);for(const m of Object.values(doc.maps))validateRules(m);
                 if(!expand)for(const m of [doc.maps[base.activeMap]])if(['沧州 · 示例地图','未命名地图','根据世界设定命名'].includes(m.name))m.name=`${material.source.角色卡.名称||'当前世界'} · 地图`;

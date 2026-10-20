@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fetchModels,modelsEndpoint} from '../ai/models.js';
-import {createApiProfiles} from '../apps/map/src/adapters/generation.js';
+import {createApiProfiles} from '../ai/transport.js';
 const config={enabled:true,baseUrl:'https://example.test/v1',model:'',apiKey:'session-key'};
 test('model discovery derives endpoint and works without a chosen model',async()=>{
  for(const base of ['https://example.test/v1','https://example.test/v1/','https://example.test/v1/chat/completions'])assert.equal(modelsEndpoint(base),'https://example.test/v1/models');

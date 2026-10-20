@@ -42,7 +42,6 @@ async function openEmbedded(page = selectedPage){
   return showHud(page,{target:embeddedMount,embedded:true});
 }
 let running = null;
-let sessionKey = '';
 let hudPanel = null;
 let hudEpoch = 0;
 let generationForm, formHome, sourceHost, sourcePicker, sourceIdentity, restorePanel;
@@ -461,7 +460,6 @@ function mount() {
   function save() {
     const s = {};
     for (const [k,input] of Object.entries(fields)) {
-      if (k === 'apiKey') { sessionKey = input.value; continue; }
       s[k] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value;
     }
     if(!sourcePicker)throw Error('请先打开单角色聊天');const sources=sourcePicker.getValue();saveSourceSettings(context(),'status',sources);
@@ -485,7 +483,7 @@ function mount() {
     running = new AbortController(); report.textContent = '正在读取设定并请求模型…';
     generateButton.disabled = replaceButton.disabled = saveButton.disabled = true;
     try {
-      const result = await generateStatus({ api: { baseUrl: s.baseUrl, apiKey: sessionKey, model: s.model, timeoutMs: 120000, maxTokens: s.maxTokens }, mode,
+      const result = await generateStatus({ api: { timeoutMs: 120000, maxTokens: s.maxTokens }, mode,
         includePersona:s.includePersona===true,includeCharacter:s.includeCharacter,readWorldbooks:s.readWorldbooks,selectedBooks:s.selectedBooks,legacyBindings:true,includeGlobalBooks:s.includeGlobalBooks,extraBooks:s.extraBooks,
         allowTypeChange:s.allowTypeChange===true, updateNote: s.updateNote || '', instructions: s.instructions || '根据世界观设计简洁实用的状态栏。', statusRules: compileRules(context(), KEY, mode === 'update' ? 'update' : 'generate') }, running.signal);
       report.textContent = result.ok ? (result.changed ? '操作完成，可打开状态栏查看。' +
