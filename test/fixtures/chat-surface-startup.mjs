@@ -25,6 +25,7 @@ const stubs = {
     './apps/extra-floor-ui.js': { installExtraFloorButtons: register },
     './apps/reply/floor-ui.js': { installReplyFloorButtons: () => register('reply-floor') },
     './settings/appearance.js': { initializeAppearance() {}, installAppearance() {} },
+    './ui/tabs.js': { installTabScroll() {} },
     './ai/service.js': { initializeAI() {} },
     './shell.js': { createShell: () => shell },
     './apps/views.js': { views: {} },

@@ -10,11 +10,12 @@ import {getSharedService} from './service.js';
 import {durationFields,appendTiming,timingLabel} from './timing-view.js';
 import {ruleFields,appendRules} from './rules-view.js';
 import {ACTION_TEMPLATES,actionTaskFields} from './action-fields.js';
+import {contextLine} from '../shared/context-line.js';
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 export function mount(target,options={}){
  const instanceId='amin-'+uuid();
  const api=options.api??getSharedService();
- const page=node('div',null,'amin-page amin-app-page amin-effects'),context=node('div','能力与效果 · 选择能力、确认发动，并管理当前聊天的持续效果。','amin-context');
+ const page=node('div',null,'amin-page amin-app-page amin-effects'),context=node('div',contextLine(api.context(),'能力发动与持续效果'),'amin-context');
  const tabs=node('div',null,'amin-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','持续效果页面');
  const status=node('div',null,'amin-notice');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  const recovery=node('section',null,'amin-card amin-stack');recovery.hidden=true;
@@ -141,7 +142,7 @@ export function mount(target,options={}){
   body.onpointerdown=body.onpointermove=body.onpointerup=body.onpointercancel=null;
   stopDraft();
   for(const b of tabButtons){const on=b.textContent===selected;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;if(on)body.setAttribute('aria-labelledby',b.id);}
-  clearBody();syncRecovery();target.scrollTop=0;status.textContent=api.status();
+  clearBody();syncRecovery();target.scrollTop=0;status.textContent=api.status();context.textContent=contextLine(api.context(),'能力发动与持续效果');
   try{const store=api.read(),chat=api.context()?.chat??[];
    if(selected==='能力面板'){consoleView=renderConsole({body,api,state:consoleState,say,render,manage:()=>{selected='能力管理';render();},groups:groupManager,editSkill:s=>importForm({book:s.book,id:s.entryId,title:s.name,content:s.original,custom:s.custom},s),onFormOpen:openForm,adjust:effectForm,end:endForm,remove:deleteEffect});
    }else if(selected==='能力管理'){

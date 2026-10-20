@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { generateStatus } from '../apps/status/generator.js';
+import { contextLine } from '../apps/shared/context-line.js';
 import { createCurrentStoryStorage } from '../apps/state2/current-story-storage.js';
 import { registerChatSavePreparation, saveChatMetadata } from '../apps/shared/chat-save.js';
 import * as backups from '../apps/status/story-backups.js';
@@ -99,7 +100,7 @@ async function application(f, runtime = { archiveStory: () => f.service.capture(
     isIndependent, readStoryRoot, writeStoryRoot, STATE_KEY, prepareIndependentManualWrite,
     mountGeneration: (_target, options) => {const view={options,opens:0,disposed:false,open(){this.opens++;},dispose(){this.disposed=true;}};generationViews.push(view);return view;},
     mountLinkage: () => ({ open() {}, dispose() {} }), getLinkageService: () => ({ subscribe: () => () => {} }),
-    managesModule: () => !!f.ctx.chatMetadata.amin_os_linkage_v1?.enabled, getState2Runtime: () => runtime, state2HistoryMode: () => ({ managed: true }),
+    managesModule: () => !!f.ctx.chatMetadata.amin_os_linkage_v1?.enabled, getState2Runtime: () => runtime, state2HistoryMode: () => ({ managed: true }), contextLine,
   };
   const source = readFileSync(new URL('../apps/status/index.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gmu, '').replace('export async function initialize', 'async function initialize')

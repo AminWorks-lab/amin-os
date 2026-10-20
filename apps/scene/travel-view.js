@@ -1,5 +1,6 @@
 import { getSharedTravelService } from '../map/travel.js';
 import { formatGameTime } from './model.js';
+import {linkedEmpty} from '../shared/open-app.js';
 
 const node = (tag, text, className) => {
     const element = document.createElement(tag);
@@ -110,7 +111,7 @@ export function mountTravel(target, { service = getSharedTravelService(), period
 
         const reachable = options.routes.filter(route => route.accessible);
         const destinations = card('选择相邻目的地');
-        if (!options.fromNodeId) destinations.append(node('p', '当前地图没有已保存的位置。请先在地图中设置当前位置。', 'amin-empty'));
+        if (!options.fromNodeId) destinations.append(linkedEmpty(node, '当前地图没有已保存的位置。请先在地图中设置当前位置。', 'map'));
         else if (!reachable.length) destinations.append(node('p', '当前地点没有已发现且可从此方向通行的相邻道路。', 'amin-empty'));
         for (const route of reachable) {
             const selected = route.edgeId === selectedEdge && route.nodeId === selectedNode, item = node('section', null, 'amin-card amin-stack');
