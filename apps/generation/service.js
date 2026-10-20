@@ -10,6 +10,7 @@ import { bindings, bindingParts } from '../characters/model.js';
 import { currentDrafts, readStore as readJournalStore } from '../journal/model.js';
 import { isIndependent, toLegacyContext } from '../story-state/access.js';
 import { allocateUpdateEntityIds } from '../linkage/entity-ids.js';
+import { updateSchema } from '../linkage/contract.js';
 import { buildReferenceIndex } from '../linkage/references.js';
 
 export const GENERATION_MODULES = ['characters', 'inventory', 'relationships', 'scene', 'journal', 'status'];
@@ -21,6 +22,9 @@ const actions = {
     relationships:['save-relationship'], scene:['set-time','save-scene','save-schedule'],
     journal:['save-fact','save-knowledge','save-hook','save-task','save-clue','draft-chronicle'],
 };
+/** response_format schema for one generation run: only the selected modules and their allowed actions. */
+export const generationSchema = modules => updateSchema(modules.length === 1 ? `${modules[0]}_generation` : 'joint_generation',
+    modules.map(id => ({ id, spec: adapters.find(adapter => adapter.id === id).spec, actions: actions[id] })));
 const clone = value => structuredClone(value), same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
 const empty = value => value == null || value === '' || (Array.isArray(value) && !value.length);
 // False and zero are explicit values, not missing fields. Arrays preserve their
@@ -135,7 +139,7 @@ export function createGenerationService(getContext, { ai = getAI, collectSources
                 const statusContract = 'set-field: target="项目名.字段名", data={value: 与现有字段同类型的最终值, component?: "value"|"current"|"max"}。value/省略 component 指整个字段；current/max 仅适用于已有进度的当前/最大。数字、文本、布尔、字符串列表和进度保持原类型；进度保持 0≤当前≤最大、最大>0。不新增、删除、重命名或转换类型。';
                 const statusInstruction = '按所选已有剧情核对当前世界状态，不续写、不重生成聊天正文。只返回有明确依据的已有字段最终值，reason 说明依据的楼层和事实。使用绝对值，不重复扣减已反映在当前状态中的事件；不确定或没有变化时 changes=[]。已保存的状态规则不能扩大本次操作的类型和权限。';
                 const systemPrompt=statusOnly ? `${statusInstruction}只输出 JSON {"version":1,"changes":[{"module":"status","action":"set-field","target":"实际项目.实际字段","data":{"value":"与现有类型一致"},"reason":"第N楼的明确事实"}]}，最多64项。${statusContract}` : `根据用户选定来源整理资料，不续写剧情。只输出 JSON {"version":1,"changes":[{"module":"characters","action":"create-character","target":"${newTarget}","data":{},"reason":"来源依据"}]}。最多64项。仅处理指定模块。先人物后物品、关系、场景，先事实后记忆，先任务后关联线索；任务奖励仅为说明，不自动发放；使用稳定ID，不重复建立已有实体。create仅新增；supplement仅填空，不覆盖已有内容（0和false也是已有值）；update允许有依据的资料修订。不得删除、消费、转账、结算、调整配置、掷骰或凭空生成属性数值。档案必须提供所选真实sourceStart/sourceEnd；关系sources仅可用所选楼层，非聊天来源填[]并在reason说明。无适用内容输出空changes。${identityRules}下列协议中只允许每个模块列出的操作：\n`+effective.map(id=>`${id}: 允许 ${actions[id].join(',')}\n${adapters.find(a=>a.id===id).contract}`).join('\n');
-                const raw=await provider.generate(`${labels[route]} · 资料生成`,{...ctx,chat:clone(ctx.chat),chatMetadata:clone(ctx.chatMetadata)},{systemPrompt:systemPrompt+(statusOnly ? '' : '\n人物数值属性只可绑定 references.bindings 中已有字段；没有可用字段时 stats=[]，来源数值可记在 notes 供用户以后配置。'),prompt},{signal:activeController.signal,snapshot,data:{request:prompt},includeEffects:false,includeJournal:false,includeScene:false,includeLinkage:false}); assertCurrent();
+                const raw=await provider.generate(`${labels[route]} · 资料生成`,{...ctx,chat:clone(ctx.chat),chatMetadata:clone(ctx.chatMetadata)},{systemPrompt:systemPrompt+(statusOnly ? '' : '\n人物数值属性只可绑定 references.bindings 中已有字段；没有可用字段时 stats=[]，来源数值可记在 notes 供用户以后配置。'),prompt,schema:generationSchema(effective)},{signal:activeController.signal,snapshot,data:{request:prompt},includeEffects:false,includeJournal:false,includeScene:false,includeLinkage:false}); assertCurrent();
                 const parsed=parseUpdate(raw);
                 current={modules:effective,mode,sources:clone(sources),provenance:clone(sourceResult.provenance),sourceText:sourceResult.text,warnings,basis,changes:parsed.changes};
                 current.changes=validate(parsed.changes);

@@ -31,3 +31,29 @@ export function canonicalChange(spec, change) {
     const action = canonicalAction(spec, change?.action);
     return action === change?.action ? change : { ...change, action };
 }
+
+/**
+ * JSON Schema for an amin_update payload limited to the given modules and
+ * actions, for providers that accept response_format json_schema. Each change
+ * is one branch per module with its allowed action names; data stays an open
+ * object because argument shapes are documented in the contract text and
+ * checked by the adapters, not here. `actions` defaults to every spec action.
+ */
+export function updateSchema(name, modules, { maxItems = 64 } = {}) {
+    const branches = modules.map(({ id, spec, actions = actionNames(spec) }) => {
+        const unknown = actions.filter(action => canonicalAction(spec, action) !== action || !actionSpec(spec, action));
+        if (unknown.length) throw Error(`${id} 的结构化输出包含未知操作：${unknown.join(', ')}`);
+        return {
+            type: 'object', additionalProperties: false, required: ['module', 'action', 'data', 'reason'],
+            properties: { module: { type: 'string', enum: [id] }, action: { type: 'string', enum: [...actions] }, target: { type: 'string' }, data: { type: 'object' }, reason: { type: 'string' } },
+        };
+    });
+    if (!branches.length) throw Error('结构化输出至少需要一个模块。');
+    return {
+        name,
+        schema: {
+            type: 'object', additionalProperties: false, required: ['version', 'changes'],
+            properties: { version: { type: 'integer', enum: [1] }, changes: { type: 'array', maxItems, items: branches.length === 1 ? branches[0] : { anyOf: branches } } },
+        },
+    };
+}

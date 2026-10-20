@@ -1,7 +1,8 @@
 import { readCharacters } from '../characters/model.js';
 import { LIMITS, relationshipContext, sourceReferences } from './model.js';
-import { UPDATE_CONTRACT } from './updates.js';
+import { UPDATE_CONTRACT, UPDATE_SPEC } from './updates.js';
 import { parseUpdate } from '../linkage/protocol.js';
+import { updateSchema } from '../linkage/contract.js';
 import { parseModelJSON } from '../../ai/json.js';
 import { runTask } from '../../ai/task.js';
 
@@ -9,6 +10,9 @@ export const RELATIONSHIP_PROMPT = `你负责根据已经发生的剧情提出�
 只输出 JSON：{"version":1,"changes":[{"module":"relationships","action":"save-relationship","target":"关系稳定ID","data":{"fromId":"人物ID","toId":"人物ID","type":"信任","sources":[0]},"reason":"具体剧情依据"}]}。
 无变化输出空 changes。每个关系至多提出一次最终变更。仅可使用 save-relationship 或 delete-relationship，不可改阈值规则或读取设置。save-relationship 为完整关系，保留未变化的标签、备注和强度；新关系请创建安全且不重复的 ID。sources 必须填写支持该变更的所选楼层索引。
 ${UPDATE_CONTRACT}`;
+
+// Sent as response_format only when the relationships channel enables structured output.
+export const RELATIONSHIP_SCHEMA = updateSchema('relationship_suggestions', [{ id: 'relationships', spec: UPDATE_SPEC, actions: ['save-relationship', 'delete-relationship'] }], { maxItems: 30 });
 
 export function parseSuggestions(raw) {
     if (typeof raw !== 'string' || raw.length > 160000) throw Error('关系建议响应为空或超过容量。');
@@ -36,7 +40,7 @@ export async function draftRelationships({ ai, ctx, start, end, instruction = ''
     const snapshot = ai.capture('relationships');
     check();
     const context = { ...ctx, chat: structuredClone(ctx.chat), chatMetadata: structuredClone(ctx.chatMetadata) };
-    const changes = await runTask('人物关系 · 剧情更新', { ai, ctx: context, system: RELATIONSHIP_PROMPT, payload: prompt, parse: parseSuggestions, signal, check, snapshot,
+    const changes = await runTask('人物关系 · 剧情更新', { ai, ctx: context, system: RELATIONSHIP_PROMPT, payload: prompt, parse: parseSuggestions, schema: RELATIONSHIP_SCHEMA, signal, check, snapshot,
         include: { includeEffects: false, includeJournal: false, includeScene: false, includeLinkage: false },
         cancelled: aborted => aborted.reason ?? Error('已取消关系建议。'), emptyMessage: '关系建议响应为空或超过容量。' });
     return { changes, sources: indices };
