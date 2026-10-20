@@ -1,0 +1,18 @@
+/* Suite windows: one row of suite tabs over the member app's own page.
+   The suite pane itself does not scroll; the visible member pane is the window's only main scroll area. */
+#amin-os .amin-app-pane.amin-suite {display:flex;flex-direction:column;overflow:hidden}
+/* Suite tabs read as a header row (larger text, underline) so they stay distinct from the member's own tabs below. */
+#amin-os .amin-suite>.amin-suite-tabs {flex:none;gap:2px;padding:2px var(--amin-space,var(--amin-gap)) 0;margin:0;border-bottom:1px solid var(--amin-line)}
+#amin-os .amin-suite>.amin-suite-tabs>button {min-height:40px;padding:6px 10px;font-size:calc(var(--amin-font) + 2px);border:0!important;border-bottom:3px solid transparent!important;border-radius:0!important;background:transparent!important}
+#amin-os .amin-suite>.amin-suite-tabs>button[aria-selected=true] {color:var(--amin-text)!important;font-weight:600;border-bottom-color:var(--amin-accent)!important}
+#amin-os .amin-suite>.amin-suite-tabs>button:focus-visible {outline:2px solid var(--amin-accent);outline-offset:-2px}
+#amin-os .amin-suite-body {flex:1;min-height:0;display:flex;flex-direction:column}
+#amin-os .amin-suite-body>.amin-app-pane {flex:1;min-height:0}
+#amin-os .amin-suite-body>.amin-app-pane[hidden] {display:none}
+#amin-os .amin-floor-history .wsh-history {max-height:none;overflow:visible;padding:0;color:inherit}
+#amin-os .amin-floor-history .wsh-history-nav {position:sticky;top:0;z-index:1;background:var(--amin-bg);padding:6px 0}
+#amin-os .amin-floor-history .wsh-history-nav button {min-height:36px;background:var(--amin-control);color:var(--amin-text);border:1px solid var(--amin-line);border-radius:var(--amin-radius)}
+#amin-os .amin-floor-history .wsh-history-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:var(--amin-gap);align-items:start}
+#amin-os .amin-floor-history .wsh-history-field {border-color:var(--amin-line)}
+#amin-os .amin-floor-history .wsh-history-long {flex-direction:column;gap:4px}
+#amin-os .amin-floor-history .wsh-history-long>span:last-child {text-align:left}

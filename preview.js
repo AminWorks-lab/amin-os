@@ -22,7 +22,7 @@ ctx.getPresetManager=()=>({getSelectedPresetName:()=> '演示酒馆预设（模�
 ctx.generateQuietPrompt=({quietPrompt})=>ctx.generateRaw({systemPrompt:quietPrompt,prompt:quietPrompt});
 ctx.ConnectionManagerRequestService={getSupportedProfiles:()=>[{id:'demo-profile',name:'演示连接（模拟）',api:'openai',model:'demo',preset:'演示参数预设'}],async sendRequest(_id,messages){return {content:await ctx.generateRaw({systemPrompt:messages[0]?.content,prompt:messages.map(m=>m.content).join('\n')})};}};
 globalThis.SillyTavern={getContext:()=>ctx};
-// Demo chats carry an initialized Amin story state (blank modules plus the demo world state), like a chat set up in 设置 → 剧情存储.
+// Demo chats carry an initialized Amin story state (blank modules plus the demo world state), like a chat set up in 存档与历史 → 剧情存储.
 const {emptyState,validateState,STATE_KEY}=await import('./apps/story-state/schema.js');
 const storyState=status=>{const value=emptyState();value.modules.status=status==null?null:JSON.parse(status);return validateState(value);};
 for(const chat of contexts)chat[STATE_KEY]=storyState(chat.variables.状态栏);

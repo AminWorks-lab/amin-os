@@ -91,8 +91,8 @@ export function initialize() {
                 if(result.error)throw result.error;
                 if(!views[id])return await result.value?.open?.();
             }
-            // Mount once; a failed load or mount is retried on the next open.
-            mounted[id]??=views[id]().then(m=>m.mount(shell.panes[id])).catch(error=>{mounted[id]=null;throw error;});
+            // Mount once; a failed load or mount is retried on the next open. Suite windows also get their members.
+            mounted[id]??=views[id]().then(m=>m.mount(shell.panes[id],shell.suiteHost(id))).catch(error=>{mounted[id]=null;throw error;});
             await (await mounted[id])?.open?.(section);
         });
     }

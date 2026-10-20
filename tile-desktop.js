@@ -31,7 +31,8 @@ export function createTileDesktop({home,cards,apps,createIcon,openApp,onLayout})
  const scaleField=field('磁贴整体大小（70%–100%）',scale);scaleField.append(scaleValue);
  editor.append(field('网格宽度',columns),scaleField,field('选择磁贴',choice),field('打开应用',target),field('名称',name),field('尺寸',sizes),field('左上角列',positionX),field('左上角行',positionY),field('背景图片地址',image),colors.element,up,down,left,right,add,copy,remove,restore,extend);top.after(editor);home.append(hint);
  const catalog=make('details','amin-tile-catalog'),summary=make('summary','','所有应用'),all=make('div','amin-tile-editor');catalog.append(summary,all);home.append(catalog);
- for(const app of apps){const o=make('option','',app.name);o.value=app.id;target.append(o);const b=make('button','',app.name);b.type='button';b.onclick=()=>openApp(app.id);all.append(b);}
+ // A tile may still open one app inside a suite; the catalog lists home-level entries only.
+ for(const app of apps){const o=make('option','',app.member?`${app.name}（分组内）`:app.name);o.value=app.id;target.append(o);if(app.member)continue;const b=make('button','',app.name);b.type='button';b.onclick=()=>openApp(app.id);all.append(b);}
  catalog.ontoggle=()=>onLayout();
  const save=()=>{try{saveTiles(localStorage,layout,grid);hint.textContent='布局已保存';}catch{hint.textContent='本次布局已应用，浏览器未允许保存';}};
  const appFor=t=>apps.find(a=>a.id===t.target);

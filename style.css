@@ -9,5 +9,6 @@
 @import url('./apps/home/home.css');
 @import url('./apps/scene/style.css');
 @import url('./apps/relationships/relationships.css');
+@import url('./apps/suites/suites.css');
 
 @import url('./desktop-effects.css');

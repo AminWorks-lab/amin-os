@@ -18,4 +18,12 @@ export const views = {
     reply: lazyView(retry => import(/* view */ './reply/workspace.js' + retry), '回复选项'),
     settings: lazyView(retry => import(/* view */ '../settings/view.js' + retry), '设置'),
     ai: lazyView(retry => import(/* view */ '../ai/view.js' + retry), 'AI 设置'),
+    // Pages that appear only as tabs of a suite (存档与历史).
+    story: lazyView(retry => import(/* view */ './suites/story-storage.js' + retry), '剧情存储'),
+    floors: lazyView(retry => import(/* view */ './suites/floor-history.js' + retry), '楼层记录'),
+    // Suite windows: one row of tabs over the member views above (see apps/suites/registry.js).
+    archive: lazyView(retry => import(/* view */ './suites/view.js' + retry), '存档与历史'),
+    library: lazyView(retry => import(/* view */ './suites/view.js' + retry), '资料库'),
+    abilities: lazyView(retry => import(/* view */ './suites/view.js' + retry), '能力与检定'),
+    preferences: lazyView(retry => import(/* view */ './suites/view.js' + retry), '设置'),
 };

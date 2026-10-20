@@ -1,6 +1,7 @@
 // Live tile summaries: a plain snapshot of current story data in, short tile text out.
 // Pure and synchronous; tile-live-feed.js gathers the snapshot from the app services.
-export const LIVE_TARGETS=Object.freeze(['status','characters','scene','effects','journal','inventory','relationships']);
+// Suite tiles show their most telling member: 能力与检定 shows the active effects.
+export const LIVE_TARGETS=Object.freeze(['status','characters','scene','effects','journal','inventory','relationships','abilities']);
 const SMALL_SIZES=new Set(['small','slimWide','slimTall']);
 export const isSmallTile=size=>SMALL_SIZES.has(size);
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -71,6 +72,7 @@ const summarize={
   const active=s.effects.filter(e=>!e?.paused).length,paused=s.effects.length-active;
   return summary([`${active} 个效果生效中`,paused?`${paused} 个已暂停`:''],String(active));
  },
+ abilities(s){return summarize.effects(s);},
  journal(s){
   if(!Array.isArray(s.journal))return null;
   const tasks=s.journal.filter(e=>e?.kind==='task'),active=tasks.filter(t=>t.status==='active').length,waiting=tasks.filter(t=>t.status==='open').length;

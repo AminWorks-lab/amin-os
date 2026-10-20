@@ -4,6 +4,7 @@ import {getAppearance} from './settings/appearance.js';
 import { clampPosition, drawerPlacement, resizedHeight } from './window-state.js';
 import { STORY_APPS, renderStoryGate } from './apps/shared/story-readiness.js';
 import { openApp as openLinkedApp } from './apps/shared/open-app.js';
+import { SUITES, getSuite, routeApp, suiteOf } from './apps/suites/registry.js';
 
 const APPS=[
     {id:'characters',name:'人物卡',sub:'人物档案、状态绑定与属性检定',icon:'♙',color:'mint'},
@@ -23,11 +24,18 @@ const APPS=[
     {id:'organizations',name:'势力概览',sub:'组织、联盟、地区与局势评估',icon:'◎',color:'mint'},
     {id:'reply',name:'回复选项',sub:'拟写下一句，由你决定',icon:'≋',color:'peach'},
     {id:'ai',name:'AI 设置',sub:'共享 API、异步预设与任务',icon:'✧',color:'mint'},
-    {id:'settings',name:'设置',sub:'全局外观与应用个性化',icon:'⚙',color:'lavender'},
-];
+    {id:'settings',name:'外观设置',sub:'全局外观与应用个性化',icon:'⚙',color:'lavender'},
+    {id:'story',name:'剧情存储',sub:'剧情文件、备份与导入',icon:'▤',color:'mint'},
+    {id:'floors',name:'楼层记录',sub:'世界状态的只读楼层记录',icon:'◈',color:'lavender'},
+    // Suites: one home entry and window for several member apps (apps/suites/registry.js).
+    ...SUITES.map(suite=>({id:suite.id,name:suite.name,sub:suite.sub,suite:true})),
+].map(app=>({...app,member:!!suiteOf(app.id)}));
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
 
+// Suites and suite-only pages borrow the icon of a related app.
+const ICON_ALIASES={archive:'saves',library:'worldbooks',abilities:'effects',preferences:'settings',story:'journal',floors:'status'};
 function icon(id){
+    id=ICON_ALIASES[id]??id;
     const paths={scene:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M12 7v5l3 2',journal:'M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5',tts:'M3 9h4l5-5v16l-5-5H3z M16 8q5 4 0 8 M19 4q9 8 0 16',worldbooks:'M3 4h7l2 2 2-2h7v16h-7l-2 2-2-2H3z M12 6v16',information:'M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5',effects:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3z',map:'M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2V5z M9 3v16 M15 5v16',status:'M4 5h16v14H4z M8 9h3 M8 13h8 M15 9h1',organizations:'M4 20V9h6v11 M14 20V4h6v16 M2 20h20 M6 12h2 M16 7h2 M16 11h2',reply:'M4 4h16v12H9l-5 4V4z M8 8h8 M8 12h5',stylewriter:'M12 19l7-7 3 3-7 7-3-3z M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z M2 2l7.6 7.6',ai:'M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M5.6 18.4l2.1-2.1 M16.3 7.7l2.1-2.1 M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8'};
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
     for(const [key,value]of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.5','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))svg.setAttribute(key,value);
@@ -48,14 +56,15 @@ export function createShell(){
     const homeButton=el('button','amin-home-tab','←');homeButton.type='button';homeButton.title='返回开始屏';homeButton.setAttribute('aria-label','Amin os 首页');nav.append(homeButton);const appHeading=el('span','amin-current-app');nav.append(appHeading);
     const area=el('div','amin-area'),home=el('div','amin-home');
     const cards=el('div','amin-home-apps');home.append(cards);
-    const panes={},tabs={},handlers={};let tileDesktop;let active='home',opened=false,epoch=0,blocked='',drag=null,suppressClick=false;
+    const panes={},tabs={},handlers={};let tileDesktop;let active='home',activeTab=null,opened=false,epoch=0,blocked='',drag=null,suppressClick=false;
     for(const app of APPS){
-        const tab=el('button','amin-app-tab',app.name);tab.type='button';tab.dataset.app=app.id;tab.addEventListener('click',()=>showApp(app.id));tabs[app.id]=tab;nav.append(tab);
+        // Suite members get no nav tab of their own: the suite window places their panes under its tab row.
+        if(!app.member){const tab=el('button','amin-app-tab',app.name);tab.type='button';tab.dataset.app=app.id;tab.addEventListener('click',()=>showApp(app.id));tabs[app.id]=tab;nav.append(tab);}
         const pane=el('section','amin-app-pane amin-ui');pane.dataset.app=app.id;pane.hidden=true;pane.setAttribute('aria-label',app.name);panes[app.id]=pane;
     }
     const notice=el('div','amin-notice');notice.hidden=true;notice.setAttribute('role','status');
     const message=el('p'),retry=el('button','amin-retry','重试');retry.type='button';retry.addEventListener('click',()=>showApp(active));notice.append(message,retry);
-    area.append(home,...Object.values(panes),notice);
+    area.append(home,...APPS.filter(app=>!app.member).map(app=>panes[app.id]),notice);
     // Story-backed apps share one setup prompt while the current chat has no Amin story state.
     const storyGate=el('div','amin-story-gate amin-ui');storyGate.hidden=true;storyGate.setAttribute('role','status');drawer.append(head,nav,storyGate,area);
     const resizeGrip=el('div','amin-height-grip');resizeGrip.tabIndex=0;resizeGrip.setAttribute('role','slider');resizeGrip.setAttribute('aria-label','调整窗口高度');resizeGrip.setAttribute('aria-orientation','vertical');resizeGrip.title='上下拖动调整高度 · 双击恢复自动高度';drawer.append(resizeGrip);
@@ -93,14 +102,17 @@ export function createShell(){
     function syncHome(){if(blocked||active!=='home')return;if(homeView){homeView.refresh();return;}homeLoad??=import(/* view */ './apps/home/view.js').then(m=>{homeView=m.mount(homeTools,{openApp:(id,request)=>openLinkedApp(id,request,{opener:showApp}),onLayout:place});},error=>{homeLoad=null;console.warn('[Amin os] Home tools unavailable:',error);});}
     function open(){opened=true;drawer.hidden=false;launcher.setAttribute('aria-expanded','true');launcher.setAttribute('aria-label','收起 Amin os');place();syncHome();}
     function close(){endResize(true);tileDesktop?.leave();opened=false;drawer.hidden=true;root.dataset.open='false';launcher.setAttribute('aria-expanded','false');launcher.setAttribute('aria-label','打开 Amin os');launcher.focus();}
-    function select(id){active=id;nav.hidden=id==='home';appHeading.textContent=APPS.find(a=>a.id===id)?.name??'';home.hidden=id!=='home';for(const [key,pane]of Object.entries(panes)){pane.hidden=key!==id;tabs[key].setAttribute('aria-current',key===id?'page':'false');}homeButton.setAttribute('aria-current',id==='home'?'page':'false');notice.hidden=true;updateStoryGate();}
-    function updateStoryGate(){if(!STORY_APPS.includes(active)){storyGate.hidden=true;return;}try{renderStoryGate(storyGate,globalThis.SillyTavern?.getContext?.(),document);}catch{storyGate.hidden=true;}}
+    // `tab` is the member shown when `id` is a suite; the suite view reports later tab changes.
+    function select(id,tab=null){active=id;activeTab=tab;nav.hidden=id==='home';appHeading.textContent=APPS.find(a=>a.id===id)?.name??'';home.hidden=id!=='home';for(const [key,pane]of Object.entries(panes)){if(!tabs[key])continue;pane.hidden=key!==id;tabs[key].setAttribute('aria-current',key===id?'page':'false');}homeButton.setAttribute('aria-current',id==='home'?'page':'false');notice.hidden=true;updateStoryGate();}
+    function updateStoryGate(){if(!STORY_APPS.includes(activeTab??active)){storyGate.hidden=true;return;}try{renderStoryGate(storyGate,globalThis.SillyTavern?.getContext?.(),document);}catch{storyGate.hidden=true;}}
     function showHome(){epoch++;select('home');open();if(blocked){message.textContent=blocked;retry.hidden=true;notice.hidden=false;}}
+    // An app inside a suite opens the suite window on that app's tab; requests stay with the app.
     async function showApp(id,section){
         if(!panes[id])return;
         if(blocked){showHome();return;}
-        tileDesktop?.leave();select(id);open();const ticket=++epoch;message.textContent='正在打开…';retry.hidden=true;notice.hidden=false;
-        try{if(!handlers[id])throw Error('应用仍在加载，请稍后重试。');await handlers[id](section);if(ticket===epoch)notice.hidden=true;}
+        const route=routeApp(id),target=route.window,suite=getSuite(target);
+        tileDesktop?.leave();select(target,route.tab);open();const ticket=++epoch;message.textContent='正在打开…';retry.hidden=true;notice.hidden=false;
+        try{if(!handlers[target])throw Error('应用仍在加载，请稍后重试。');await handlers[target](suite?{tab:route.tab,section}:section);if(ticket===epoch)notice.hidden=true;}
         catch(error){if(ticket===epoch){message.textContent=error.message||'打开失败，请重试。';retry.hidden=false;notice.hidden=false;}}
     }
     const resume=()=>active==='home'?open():showApp(active);
@@ -116,5 +128,12 @@ export function createShell(){
     window.addEventListener('resize',place);window.visualViewport?.addEventListener('resize',place);window.visualViewport?.addEventListener('scroll',place);place();select('home');
     tileDesktop=createTileDesktop({home,cards,apps:APPS,createIcon:icon,openApp:showApp,onLayout:place});
     const startHeading=home.querySelector('.amin-start-heading');if(startHeading)startHeading.after(homeTools);else home.prepend(homeTools);
-    return {panes,open:resume,close,home:showHome,showApp,setLiveTiles(summaries){tileDesktop?.setLive(summaries);},register(id,fn){handlers[id]=fn;},refreshActive(){if(opened&&active!=='home')showApp(active);else if(opened)syncHome();},setBlocked(text){blocked=text;cards.querySelectorAll('button').forEach(b=>b.disabled=true);message.textContent=text;retry.hidden=true;notice.hidden=false;}};
+    // What a suite view needs from the shell: its members' panes and a way to open them.
+    function suiteHost(id){
+        const suite=getSuite(id);if(!suite)return undefined;
+        return {suite,members:suite.members.map(member=>({...member,pane:panes[member.id]})),openApp:member=>showApp(member),
+            openMember:async(member,section)=>{if(!handlers[member])throw Error('应用仍在加载，请稍后重试。');return await handlers[member](section);},
+            onSelect:member=>{if(active!==id)return;activeTab=member;updateStoryGate();}};
+    }
+    return {panes,suiteHost,open:resume,close,home:showHome,showApp,setLiveTiles(summaries){tileDesktop?.setLive(summaries);},register(id,fn){handlers[id]=fn;},refreshActive(){if(opened&&active!=='home')showApp(active);else if(opened)syncHome();},setBlocked(text){blocked=text;cards.querySelectorAll('button').forEach(b=>b.disabled=true);message.textContent=text;retry.hidden=true;notice.hidden=false;}};
 }

@@ -4,6 +4,8 @@ export const TILE_PALETTE=Object.freeze({
  scene:'#326B4D',journal:'#825A48',dice:'#6E4FA2',map:'#167271',status:'#85459C',
  organizations:'#776825',reply:'#A04722',information:'#286CA3',effects:'#A32959',
  worldbooks:'#4E6632',tts:'#824433',ai:'#445188',settings:'#565B63',linkage:'#2E6378',
+ // Suites take the colour of their lead app; that app is no longer a default tile.
+ archive:'#526079',library:'#286CA3',abilities:'#A32959',preferences:'#565B63',
 });
 const valid=value=>typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value);
 const fields=[['backgroundColor','背景色','--amin-tile-custom-bg'],['textColor','文字色','--amin-tile-custom-text'],['iconColor','图标色','--amin-tile-custom-icon']];
