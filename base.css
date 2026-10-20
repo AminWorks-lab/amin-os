@@ -1,6 +1,5 @@
 @import url('./apps/map/style.css');
 @import url('./apps/status/style.css');
-@import url('./apps/status/themes.css');
 @import url('./apps/reply/style.css');
 
 /* Shell defaults. Appearance settings replace these on each surface. */

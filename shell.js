@@ -19,7 +19,6 @@ const APPS=[
     {id:'status',name:'世界状态',sub:'角色、关系与剧情的此刻',icon:'◈',color:'lavender'},
     {id:'organizations',name:'势力概览',sub:'组织、联盟、地区与局势评估',icon:'◎',color:'mint'},
     {id:'reply',name:'回复选项',sub:'拟写下一句，由你决定',icon:'≋',color:'peach'},
-    {id:'stylewriter',name:'回复选项 · 设置',sub:'旧文风转换入口（兼容）',icon:'✎',color:'mint',alias:true},
     {id:'ai',name:'AI 设置',sub:'共享 API、异步预设与任务',icon:'✧',color:'mint'},
     {id:'settings',name:'设置',sub:'全局外观与应用个性化',icon:'⚙',color:'lavender'},
 ];
@@ -48,7 +47,7 @@ export function createShell(){
     const cards=el('div','amin-home-apps');home.append(cards);
     const panes={},tabs={},handlers={};let tileDesktop;let active='home',opened=false,epoch=0,blocked='',drag=null,suppressClick=false;
     for(const app of APPS){
-        const tab=el('button','amin-app-tab',app.name);tab.type='button';tab.dataset.app=app.id;tab.addEventListener('click',()=>showApp(app.id));tabs[app.id]=tab;tab.hidden=Boolean(app.alias);nav.append(tab);
+        const tab=el('button','amin-app-tab',app.name);tab.type='button';tab.dataset.app=app.id;tab.addEventListener('click',()=>showApp(app.id));tabs[app.id]=tab;nav.append(tab);
         const pane=el('section','amin-app-pane amin-ui');pane.dataset.app=app.id;pane.hidden=true;pane.setAttribute('aria-label',app.name);panes[app.id]=pane;
     }
     const notice=el('div','amin-notice');notice.hidden=true;notice.setAttribute('role','status');
@@ -91,7 +90,7 @@ export function createShell(){
     async function showApp(id){
         if(!panes[id])return;
         if(blocked){showHome();return;}
-        tileDesktop?.leave();select(id==='stylewriter'?'reply':id);open();const ticket=++epoch;message.textContent='正在打开…';retry.hidden=true;notice.hidden=false;
+        tileDesktop?.leave();select(id);open();const ticket=++epoch;message.textContent='正在打开…';retry.hidden=true;notice.hidden=false;
         try{if(!handlers[id])throw Error('应用仍在加载，请稍后重试。');await handlers[id]();if(ticket===epoch)notice.hidden=true;}
         catch(error){if(ticket===epoch){message.textContent=error.message||'打开失败，请重试。';retry.hidden=false;notice.hidden=false;}}
     }

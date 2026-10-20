@@ -9,7 +9,7 @@ export const PALETTES = {
  violet:{name:'夜色紫晶',bg:'#171529',card:'#242039',control:'#322b4d',text:'#efeafb',muted:'#b6acd0',line:'#51466eaa',accent:'#c5a9ff',ink:'#251737',scheme:'dark'},
  mono:{name:'极简墨白',bg:'#f4f5f6',card:'#ffffff',control:'#e9ecef',text:'#202b37',muted:'#586674',line:'#c7cdd4',accent:'#304d66',ink:'#ffffff',scheme:'light'},
 };
-export const APP_NAMES={characters:'人物卡',inventory:'背包与账本',relationships:'人物关系',saves:'跨应用存档',scene:'场景与时间',journal:'剧情档案',dice:'骰子',tts:'语音朗读',worldbooks:'世界书管理',information:'信息面板',effects:'能力面板',map:'地图',status:'世界状态',organizations:'势力概览',reply:'回复选项',stylewriter:'文风转换',ai:'AI 设置'};
+export const APP_NAMES={characters:'人物卡',inventory:'背包与账本',relationships:'人物关系',saves:'跨应用存档',scene:'场景与时间',journal:'剧情档案',dice:'骰子',tts:'语音朗读',worldbooks:'世界书管理',information:'信息面板',effects:'能力面板',map:'地图',status:'世界状态',organizations:'势力概览',reply:'回复选项',ai:'AI 设置'};
 export const FLOOR_BUTTON_ORDER=Object.freeze(['map','status','characters','inventory','relationships','saves','dice','scene','journal','organizations','reply','effects','information','worldbooks','tts']);
 const knownFloorButtons=value=>[...new Set((Array.isArray(value)?value:[]).filter(id=>FLOOR_BUTTON_ORDER.includes(id)))];
 export const normalizeFloorButtonOrder=value=>[...new Set([...knownFloorButtons(value),...FLOOR_BUTTON_ORDER])];

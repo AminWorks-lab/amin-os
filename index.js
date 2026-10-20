@@ -76,7 +76,6 @@ export function initialize() {
         map:()=>import('./apps/map/index.js').then(m=>m.initialize({mount:shell.panes.map,onOpen:()=>shell.showApp('map')})),
         status:()=>import('./apps/status/index.js').then(m=>m.initialize({mount:shell.panes.status})),
         reply:()=>import('./apps/reply/workspace.js').then(m=>m.mount(shell.panes.reply)),
-        stylewriter:()=>import('./apps/reply/workspace.js').then(m=>({open:()=>m.mount(shell.panes.reply).open('settings')})),
     };
     const ready={};
     for(const id of Object.keys(apps)){
@@ -94,7 +93,7 @@ export function initialize() {
     for(const id of ['characters','inventory','relationships','saves','dice','scene','journal','organizations','effects','information','worldbooks','tts'])installExtraFloorButtons(id);
     const ev=ctx.eventTypes??ctx.event_types??{};
     if(ev.CHAT_CHANGED)ctx.eventSource?.on(ev.CHAT_CHANGED,()=>queueMicrotask(()=>shell.refreshActive()));
-    globalThis.AminOS=Object.freeze({version:'0.18.1',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
+    globalThis.AminOS=Object.freeze({version:'0.19.0',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
     return shell;
 }
 
