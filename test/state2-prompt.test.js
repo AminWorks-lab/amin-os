@@ -19,12 +19,12 @@ function fixture() {
     };
 }
 
-test('worldbook rules use only native State 2.0 syntax and enabled writable roots', () => {
+test('legacy-shaped chats get the same amin_update protocol; State 2.0 <state> rules are gone', () => {
     const ctx = fixture();
     const rules = buildUpdateRules(ctx);
-    assert.match(rules, /<state>[\s\S]*状态栏\.项目\.示例人物\.当前状态: "正在检查"/);
-    assert.match(rules, /状态栏\.项目\.项目名\.字段名/);
-    assert.doesNotMatch(rules, /amin_update|"changes"|AminOS骰子 · 根变量/);
+    assert.match(rules, /<amin_update>/);
+    assert.match(rules, /module:status/);
+    assert.doesNotMatch(rules, /状态栏\.项目\.示例人物|根变量|LWB_STATE_ERRORS|module:dice/);
     assert.doesNotMatch(rules, /观察中|类型不符|私人变量/);
     assert.equal(buildUpdateRules(ctx, { purpose: 'tool' }), '');
     ctx.chatMetadata[KEY].modules.status.write = false;
@@ -43,13 +43,13 @@ test('message data includes native roots and real visible indices without reveal
     ctx.chatMetadata.amin_os_dice_v1 = history;
     ctx.chatMetadata.variables.AminOS骰子 = JSON.stringify(history);
     const data = buildDataPrompt(ctx);
-    assert.match(data, /"root": "状态栏"/);
-    assert.match(data, /"root": "AminOS骰子"/);
-    assert.match(data, /"rootFields": \[\s*"version",\s*"rolls"\s*\]/);
-    assert.match(data, /"id": "dice:shown",\s*"path": "AminOS骰子\.rolls\[1\]"/);
+    assert.match(data, /"root":"状态栏"/);
+    assert.match(data, /"root":"AminOS骰子"/);
+    assert.match(data, /"rootFields":\["version","rolls"\]/);
+    assert.match(data, /"id":"dice:shown","path":"AminOS骰子\.rolls\[1\]"/);
     assert.match(data, /VISIBLE_ROLL|状态栏\.项目\.HK416\.心智状态/);
     assert.match(data, /状态栏\.项目\.HK416\.心智状态: 类型不符/);
-    assert.doesNotMatch(data, /PRIVATE_ROLL|"id": "dice:hidden"|私人变量/);
+    assert.doesNotMatch(data, /PRIVATE_ROLL|"id":"dice:hidden"|私人变量/);
     assert.doesNotMatch(data, /amin_update|更新规则/);
 });
 
@@ -61,8 +61,8 @@ test('root names cover every linked app and legacy data remains readable before 
         { id: 'seed', at: '2026-09-24T00:00:00.000Z' });
     ctx.chatMetadata[KEY].modules.characters = flags();
     const data = buildDataPrompt(ctx);
-    assert.match(data, /"characters": \{\s*"root": "AminOS人物",\s*"available": false/);
-    assert.match(data, /"name": "艾琳"/);
+    assert.match(data, /"characters":\{"root":"AminOS人物","available":false/);
+    assert.match(data, /"name":"艾琳"/);
     ctx.chatMetadata[KEY].enabled = false;
     assert.equal(buildDataPrompt(ctx), '');
     assert.equal(buildUpdateRules(ctx), '');
@@ -79,16 +79,15 @@ test('journal path mapping keeps canonical index after private entries are filte
     ctx.chatMetadata.variables.AminOS剧情 = JSON.stringify({ version: 1, entries: snapshot.entries, drafts: snapshot.drafts ?? [] });
     ctx.chatMetadata[KEY].modules.journal = flags();
     const data = buildDataPrompt(ctx);
-    assert.match(data, /"id": "journal:shown",\s*"path": "AminOS剧情\.entries\[1\]"/);
-    assert.doesNotMatch(data, /"id": "journal:hidden",\s*"path"|PRIVATE_FACT/);
+    assert.match(data, /"id":"journal:shown","path":"AminOS剧情\.entries\[1\]"/);
+    assert.doesNotMatch(data, /"id":"journal:hidden","path"|PRIVATE_FACT/);
 });
 
-test('external data source suppresses Amin data injection while keeping native update rules', () => {
+test('external data source suppresses Amin data injection while keeping the same update rules', () => {
     const ctx = fixture();
+    const own = buildUpdateRules(ctx);
     ctx.chatMetadata[KEY].dataSource = 'external';
     assert.equal(buildDataPrompt(ctx), '');
-    const rules = buildUpdateRules(ctx);
-    assert.match(rules, /<state>/);
-    assert.match(rules, /由用户预设或世界书提供/);
-    assert.doesNotMatch(rules, /在插件另行插入|recordPaths/);
+    assert.equal(buildUpdateRules(ctx), own);
+    assert.match(own, /<amin_update>/);
 });

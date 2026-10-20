@@ -1,4 +1,5 @@
 import { KEY, readCurrentScene, readStore, appendEvent, transition, assertReferences, absencePreview } from '../../scene/model.js';
+import { renderContract } from '../contract.js';
 
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) && !['__proto__', 'prototype', 'constructor'].includes(value);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -10,9 +11,25 @@ const fields = {
     'delete-schedule': [], 'settle-absence': [],
 };
 const targetActions = new Set(['save-scene', 'switch-scene', 'confirm-presence', 'save-schedule', 'delete-schedule', 'settle-absence']);
+const spec = {
+    notes: '日程只是预测，不推翻明确在场、不改地图；耗时与离场规则由用户配置。',
+    actions: [
+        { name: 'advance-time', args: 'minutes:int>0' },
+        { name: 'activity', args: 'activity:dialogue|shortRest|longRest|travel,count?:1..1000 int', note: '按用户耗时规则推进；重生成不重复计时' },
+        { name: 'set-time', args: 'clock:{year,month,day,hour,minute}', note: '校正剧情时钟', more: 'clock 另可含 calendarLabel?,calendar?:{monthLengths,monthNames,weekDays,epochWeekday}' },
+        { name: 'save-scene', args: 'name?,participants?,participantIds?:[人物ID],weather?,objects?,notes?,mapId?,nodeId?,activate?:bool', note: 'target=场景ID；新建必填 name' },
+        { name: 'switch-scene', note: 'target=场景ID' },
+        { name: 'leave-scene' },
+        { name: 'confirm-presence', args: 'characterIds:[人物ID]', note: 'target=场景ID；只记录剧情明确在场者' },
+        { name: 'save-schedule', args: 'characterId,title,startMinute:0..1439,endMinute:1..1440,mapId,nodeId,weekdays?:[int],enabled?:bool,notes?', note: 'target=日程ID；结束早于开始=跨夜；weekdays 从0起，空=每日', advanced: true },
+        { name: 'delete-schedule', note: 'target=日程ID', advanced: true },
+        { name: 'settle-absence', note: 'target=已到期的离场规则ID；按用户既有规则更新场景，不改规则', advanced: true },
+    ],
+};
+
 export const adapter = {
     id: 'scene', label: '场景、时间与日程', paths: [[KEY], ['amin_os_characters_v1'], ['dynamicMapV1']],
-    contract: 'set-time: data={clock:{year,month,day,hour,minute,calendarLabel?,calendar?:{monthLengths,monthNames,weekDays,epochWeekday}}}，校正剧情时钟。advance-time: data={minutes:1..5256000整数}。activity: data={activity:dialogue|shortRest|longRest|travel,count?:1..1000整数}，按用户耗时规则推进；重生成不得重复计时。save-scene: target=当前或新的安全场景ID,data={name?,participants?,participantIds?:现有人物ID数组,weather?,objects?,notes?,mapId?,nodeId?,activate?:boolean}；新场景必填name。switch-scene: target=当前分支场景ID,data={}。leave-scene:data={}。confirm-presence: target=场景ID,data={characterIds:现有人物ID数组}，只记录剧情明确在场的人物。save-schedule:target=当前或新的安全日程ID,data={characterId,title,startMinute:0..1439,endMinute:1..1440,mapId,nodeId,weekdays?:从0开始的星期序号数组,enabled?:boolean,notes?}；结束早于开始表示跨夜，空weekdays表示每日。delete-schedule:target=日程ID,data={}。settle-absence:target=已到期的离场规则ID,data={}，按用户既有规则更新场景字段；不改规则。日程只预测地点，不更新地图、不推翻明确在场。耗时与离场规则及上下文开关由用户配置，不能通过本模块更新。',
+    spec, contract: renderContract(spec),
     read(ctx) {
         const state = readCurrentScene(ctx);
         // Referenced IDs belong to scene records; labels/content from other modules follow their own read policy.

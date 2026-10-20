@@ -5,6 +5,7 @@ import { buildReferenceIndex } from './references.js';
 import { selectContextEntries } from './entry-selection.js';
 import { compileRules, readGlobalRules } from '../status/rules.js';
 import { isIndependent, toLegacyContext } from '../story-state/access.js';
+import { renderContract } from './contract.js';
 
 // These are chat variable roots, distinct from legacy Amin metadata keys.
 export const STATE2_ROOTS = Object.freeze({
@@ -123,7 +124,7 @@ function renderDataPrompt(ctx, settings, selected, data) {
         '未知不等于零，显示名称不能替代稳定 ID。引用缺失须保持未知，不能按同名人物自动重连。',
         '各应用共享同一人物、物品、地点和事实。人物属性只读取世界状态中的绑定值；背包是衣物与资源的来源；日程仅是预计活动，已确认在场信息优先；记忆需按知情人、传闻和遗忘状态区分。',
         ...(data.effects?.enabled && data.effects.effects?.length ? [EFFECT_CONTINUITY_RULES, '本轮能力状态见 modules.effects.effects；modules.effects.skills 仅为能力库。'] : []),
-        JSON.stringify({ modules: data, ...(!independent ? { nativeVariables } : {}), references, ...(errors ? { stateErrors: String(errors) } : {}) }, null, 2),
+        JSON.stringify({ modules: data, ...(!independent ? { nativeVariables } : {}), references, ...(errors ? { stateErrors: String(errors) } : {}) }),
     ].join('\n\n').replaceAll('{{', '\\u007b\\u007b');
 }
 
@@ -179,7 +180,7 @@ export function buildDataPromptReport(ctx) {
     report.usedChars = report.error ? render(included).length : report.prompt.length;
     report.modules = Object.entries(MODULES).map(([id, [label]]) => ({ id, label,
         included: !report.error && includedIds.has(id), required: required.has(id),
-        chars: data[id] === undefined ? 0 : JSON.stringify(data[id], null, 2).length,
+        chars: data[id] === undefined ? 0 : JSON.stringify(data[id]).length,
         reason: sourceOff ? (!settings.enabled ? '联动已关闭' : '资料由外部预设或世界书提供')
             : !mayRead(ctx, id, settings) ? '模块未启用或无读取权限'
             : report.error ? '必需资料超出预算，已停止生成资料提示词'
@@ -198,52 +199,30 @@ export function buildDataPrompt(ctx) {
     return report.prompt;
 }
 
-const FIELD_RULES = Object.freeze({
-    status: '状态栏.项目.项目名.字段名：只改已有字段，保留类型；进度值仅改 .当前 或 .最大，须满足 0≤当前≤最大。',
-    organizations: '势力资料.organizations.主体ID.字段名、势力资料.alliances.主体ID.字段名、势力资料.regions.主体ID.字段名：按实际类别、已有主体与字段修改；不得改锁定字段、ID 或版本。新增主体须完整且引用有效。',
-    characters: 'AminOS人物.characters[实际索引].字段名：人物名、身份、备注、外观及属性绑定；数值本身写状态栏。新人物追加到 AminOS人物.characters，最少含 {"id":"唯一安全ID","name":"姓名","kind":"npc","notes":"","stats":[]}；kind 可为 pc/npc。',
-    inventory: 'AminOS背包.items[实际索引].字段名、AminOS背包.balances[实际索引].字段名、AminOS背包.ledger[实际索引].字段名：消耗或转交只记录一次，不凭空创造资源。新物品最少 {"id":"唯一安全ID","ownerId":"现有人物ID","name":"名称","quantity":1,"equipped":false,"notes":""}；新余额最少 {"id":"唯一安全ID","ownerId":"现有人物ID","name":"名称","amount":0,"unit":"","notes":""}。若改数量或余额，同步追加账目 {id,at:有效ISO时间,op,reason,summary,entries:[{kind,id,ownerId,name,before,after,delta}]}；前后值与 delta 必须一致，不伪造时间。',
-    relationships: 'AminOS关系.relationships[实际索引].字段名：关系方向、类别、强度、证据与说明；引用现有人物 ID，反向关系需单独记录。新关系最少 {"id":"唯一安全ID","fromId":"人物ID","toId":"另一个人物ID","type":"关系类型","label":"","notes":""}。',
-    scene: 'AminOS场景.clock、AminOS场景.scenes.场景ID、AminOS场景.schedules[实际索引]：只记录已发生的时间、地点、在场与日程变化；日程预测不等于已在场，不改用户时间规则与设置。新场景写 AminOS场景.scenes.新ID: {"id":"同一新ID","name":"场景名"}；新日程向 schedules 追加 {id,characterId,title,startMinute,endMinute,mapId,nodeId}，人物与已发现地点须存在。',
-    journal: 'AminOS剧情.entries[实际索引].字段名：事实、人物记忆、伏笔、任务、线索与编年史；任务使用 kind:"task"、goal、status(open/active/completed/abandoned)、progress(0..100)、deadline、reward；线索使用 kind:"clue"、source、confidence(0..100)、status(unverified/confirmed)、taskId。关联人物、场景、物品使用 characterIds/locationIds/itemIds 的现有稳定 ID。新增任务和线索保留 id/title/body、confirmed:true、enabled:false、sources:null，来源由应用绑定；任务完成须有明确剧情依据，奖励说明不等于已发放，不得据此自动发放资源。rewardClaim 是插件结算维护的领取收据，模型不得创建、删除或修改该字段。只写有当前分支依据的内容。新事实仅先追加待核对记录 {"id":"唯一安全ID","kind":"fact","title":"标题","body":"事实内容","truth":"uncertain","confirmed":true,"enabled":false,"sources":null}；真实来源楼层须由应用绑定，用户确认启用前不能当作已知事实。不得伪造来源消息签名；传闻不能改成已确认，未登记知情人不能当作已知；不改自动整理设置或未确认草稿。',
-    effects: 'AminOS效果.effects[实际索引].字段名：已建立的持续效果、暂停、时长与结算状态；技能定义来自全局能力库，不得修改。周期结算须与状态栏、背包和场景时间一致。',
-    map: 'AminOS地图.maps.地图ID.nodes.地点ID 或 .edges[实际索引]：仅写已发现且允许模型读取的地点、道路、当前位置；不改未发现区域、地图类型、坐标或通行规则。',
-    information: 'AminOS信息.records[实际索引].fields[实际索引].value/status：只改已可见的信息字段；未知、推断值不能当已确认事实，不改资料库与设置。新面板最少 {"id":"唯一安全ID","name":"面板名","kind":"person","mode":"forward","fields":[]}，kind 可为 person/thing/world；新字段最少 {"id":"唯一安全ID","category":"分类","label":"字段名","value":"文本","status":"known"}。',
-});
+// One shared header carries every cross-module convention; module contracts stay
+// signature-only. 0.18+ chats always use the independent <amin_update> protocol.
+const PROTOCOL_HEADER = [
+    '【Amin OS · 剧情更新协议】',
+    '正常输出剧情正文，末尾附一个完整 <amin_update>JSON</amin_update>；不用 <state>、变量语法或代码围栏。',
+    'JSON={"version":1,"changes":[{"module","action","target","data":{},"reason":"本轮依据"}]}，最多64项；无确认变化则 changes:[]；任一项无效则整批不应用。',
+    '- 只记录本轮已发生且确有变化的事实；尝试、计划、猜测或单独骰点不是结果。未知不等于零；不伪造数值、时间或来源。',
+    '- 已有对象复制资料中的稳定ID，不按名称连接。新建一律用 "@new:别名"（英文字母开头）作 target，嵌套新ID（stats[].id、fields[].id、newId）同理；同批引用同一别名，先建被引用对象。不得自编 UUID。',
+    '- 记法：action(data字段)，?可选，a|b 枚举，m..n 闭区间，[x] 数组；无参数写 data:{}；未列字段不可写。来源楼层由插件自动绑定。',
+    '- 不得改开关、权限、设置、世界书、全局库、存档、骰点或聊天正文。',
+].join('\n');
 
 export function buildUpdateRules(ctx, { purpose = 'story', write = purpose === 'story' } = {}) {
     const settings = readLinkageSettings(ctx);
     if (!settings.enabled || !write) return '';
     const writable = adapters.filter(adapter => mayRead(ctx, adapter.id, settings) && mayWrite(ctx, adapter.id, settings));
     if (!writable.length) return '';
-    const rules = inheritedRules(ctx, writable);
-    if (isIndependent(ctx)) return [
-        '【Amin OS · 当前剧情更新协议】',
-        '正常输出剧情正文。在回复末尾附一个完整 <amin_update>...</amin_update> JSON 块；不使用 <state>、小白变量语法或代码围栏，不修改正文来冒充更新。',
-        '格式为 {"version":1,"changes":[{"module":"下列允许更新模块","action":"该模块支持的操作","target":"已有稳定ID或临时别名","data":{},"reason":"本轮确已发生的依据"}]}。最多64项。无已确认变化时 changes 为 []。Amin 校验整批后一次提交，任一项失败时不应用整批。',
-        '只记录已发生且实际不同的事实；尝试、猜测、计划、单独骰点不等于结果发生。未知不等于零。已有引用必须复制当前资料中的稳定ID，不能按同名人物自动连接。',
-        '所有新增实体由插件分配最终ID：创建时 target 使用 @new:alias（别名以英文字母开头，最多60个英文字母、数字、下划线、连字符）；同批后续明确引用字段使用同一别名。不要自行编造UUID或最终人物ID。先创建被引用对象，再写物品、关系、日程等依赖。嵌套新属性/字段等实体ID也使用临时别名。名字、备注和理由是普通文本，不使用别名替代正文。',
-        ...writable.map(adapter => `${adapter.label} · module:${adapter.id}\n${adapter.contract}`),
-        '新增操作中的“新ID”均指上述临时别名；实际稳定ID由插件生成。不得改应用开关、权限、API、世界书、全局能力库、存档、固定骰点、聊天正文或来源收据。字段类型与关联引用必须符合各模块契约。',
-        rules ? `【原应用数值规则】\n${rules}` : '',
-        settings.extraRules ? `【用户补充要求】\n${settings.extraRules}` : '',
-        '用户补充和既有规则只用于判断何时、改什么；本轮更新格式统一使用 amin_update 模块操作。',
-    ].filter(Boolean).join('\n\n').replaceAll('{{', '\\u007b\\u007b');
-    const dataSourceInstruction = settings.dataSource === 'external'
-        ? '当前值和原变量路径由用户预设或世界书提供；只有实际进入本轮请求且能核对的变量可以更新。数组必须使用原变量中的真实索引；外部资料未给出原索引或稳定 ID 时，跳过该条更新，不能按摘要顺序猜索引。'
-        : '当前值、原变量路径和稳定 ID 在插件另行插入的【Amin OS · 统一剧情资料】里。数组使用 recordPaths 标出的真实索引，不能按过滤后的投影数组顺序猜索引。';
+    const rules = inheritedRules(ctx, writable), advanced = settings.advancedActions === true;
     return [
-        '【小白 X 变量 2.0 · Amin OS 更新规则】',
-        '正常输出剧情正文。回复末尾依据本轮确已发生的变化，写一个原生 <state>...</state> 块，由小白 X 变量 2.0 执行。不要放进思考过程或代码围栏，不使用 JSON changes 数组。无已确认变化时写 <state>\n# 本轮无已确认变化\n</state>，不要编造变化。',
-        `${dataSourceInstruction}只写实际不同且有事实依据的叶子路径；尝试、猜测、计划或单独的骰点成功不等于结果已发生。模块若未列在下方则只读。已有引用使用稳定 ID，不按显示名自动重连。`,
-        '原生语法每行是“完整路径: 值”，冒号后必须有空格。字符串用 JSON 双引号；布尔值用 true/false；直接设置非负数字不加引号，直接设置负数用 (-N)；数字增减用 +N/-N；数组追加用 +"文本"、+{完整对象} 或 +[完整列表]；数组按位置删除用 路径[索引]: null；null 会删除字段。多行按顺序执行。一般优先写最终值，避免重生成时重复扣减。',
-        ...writable.map(adapter => `${adapter.label} · 根变量 ${STATE2_ROOTS[adapter.id]}\n${FIELD_RULES[adapter.id]}`),
-        writable.some(adapter => adapter.id === 'status') ? '格式演示（不是当前事实）：<state>\n状态栏.项目.示例人物.当前状态: "正在检查"\n</state>。真实回复只使用本轮资料里存在的目标和已发生的值。' : '',
-        '写入前检查原变量结构、字段类型、人物/物品/地点引用和本轮依据；不要整体覆盖根变量或复制全部资料。不得修改应用启用开关、权限、全局能力库、聊天正文、存档或固定骰点。若小白 X 返回 LWB_STATE_ERRORS，下一轮先按该错误修正。',
-        '下方既有规则和用户补充要求只用于判断何时、改什么；更新格式始终使用上面的原生 <state> 路径语法。',
+        PROTOCOL_HEADER,
+        ...writable.map(adapter => `■ module:${adapter.id} · ${adapter.label}\n${renderContract(adapter.spec, { advanced, sources: false })}`),
         rules ? `【原应用数值规则】\n${rules}` : '',
         settings.extraRules ? `【用户补充要求】\n${settings.extraRules}` : '',
-        '【回复结束前核对】有变化则输出一个完整 <state> 块，逐行使用上列根变量的完整路径；无变化则输出只含无变化注释的块。不要仅在正文中声称已更新。',
+        rules || settings.extraRules ? '以上补充只决定何时、改什么；格式始终是 amin_update 模块操作。' : '',
     ].filter(Boolean).join('\n\n').replaceAll('{{', '\\u007b\\u007b');
 }
 

@@ -2,6 +2,7 @@ import { KEY, activeEffects, change, readStore, timedEffects } from '../../effec
 import { readCurrentScene } from '../../scene/model.js';
 import { SETTLEMENT_PATHS, buildSettlement, metadataEffects, validatePeriodicReferences } from '../../effects/settlement.js';
 import { mayRead } from '../policy.js';
+import { renderContract } from '../contract.js';
 
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
 const dataKeys = {
@@ -9,9 +10,21 @@ const dataKeys = {
     update: ['holder', 'command', 'condition', 'durationMinutes', 'stacking', 'periodic'],
     pause: ['paused'], end: [], settle: [],
 };
+const spec = {
+    notes: 'target=效果ID。stacking={mode:independent|refresh|stack,key:英文状态键,maxStacks:1..100,stacks:1..maxStacks}。推进时间不自动扣值。',
+    advancedNotes: 'periodic={intervalMinutes:int>0,scaleWithStacks:bool,operations:[{kind:"stat",characterId,statId,delta:num≠0}|{kind:"item",itemId,quantity:int>0}|{kind:"balance",balanceId,delta:num≠0}]}，周期结算用 settle。',
+    actions: [
+        { name: 'create', args: 'skillId,holder,target?,targetMode:targeted|direct,scope,command?,condition,durationMinutes?:int>0|null,stacking?', advancedArgs: ',periodic?' },
+        { name: 'update', args: 'holder?,command?,condition?,durationMinutes?,stacking?', advancedArgs: ',periodic?', note: '叠层/刷新前先 settle' },
+        { name: 'pause', args: 'paused:bool' },
+        { name: 'end' },
+        { name: 'settle', note: '只结算已到期周期，同批更新绑定状态与背包' },
+    ],
+};
+
 export const adapter = {
     id: 'effects', label: '能力与持续效果', paths: SETTLEMENT_PATHS,
-    contract: 'create: target=安全的新效果ID, data={skillId:已存在能力ID,holder,target?,targetMode:targeted|direct,scope,command?,condition,durationMinutes?:正整数|null,stacking?:{mode:independent|refresh|stack,key:安全状态类型ID,maxStacks:1..100,stacks:1..maxStacks},periodic?:{intervalMinutes:正整数,scaleWithStacks:boolean,operations:[{kind:stat,characterId,statId,delta:非零数}|{kind:item,itemId,quantity:正整数}|{kind:balance,balanceId,delta:非零数}]}}。update: target=当前效果ID,data={holder?,command?,condition?,durationMinutes?,stacking?,periodic?}。pause: target=当前效果ID,data={paused:boolean}。end: target=当前效果ID,data={}。settle: target=当前效果ID,data={}，只结算已到期未处理周期，同批原子更新绑定世界状态、背包及已结算剧情时刻。叠层/刷新前需先结算待处理周期。读取或推进时间不自动扣值，不修改全局能力库。',
+    spec, contract: renderContract(spec),
     read(ctx) {
         const store = readStore(ctx), clock = readCurrentScene(ctx).clock;
         return { enabled: store.enabled, clock, skills: store.skills.map(skill => ({ id: skill.id, name: skill.name, reminder: skill.reminder })),

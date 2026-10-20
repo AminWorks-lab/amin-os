@@ -6,7 +6,7 @@ import {readStatusChat, requireStatusChat} from './chat-context.js';
 import {canChangeType} from './type-permission.js';
 import {getAI} from '../../ai/service.js';
 import { checkpointState } from './state-checkpoint.js';
-import { mergeUpdates, RELATION_UPDATE_RULES } from './state-tools.js';
+import { mergeUpdates, AFFINITY_FIELD_RULES } from './state-tools.js';
 import { acquireMetadataWrite } from '../shared/operations.js';
 import { captureStoryBackup, recordStoryBackup, usesStoryStorage, usesCurrentStoryStorage } from './story-backups.js';
 export async function generateStatus(CONFIG, signal, sourceOptions = {}) {
@@ -97,7 +97,6 @@ try {
 值只可使用：文本字符串、有限数字、布尔值、字符串数组、进度对象{"当前":数字,"最大":数字}。
 进度必须0≤当前≤最大且最大>0。禁止null、其他嵌套对象、对象数组。不要重复键。
 依据世界观设计属性，不照搬通用RPG属性。明确区分玩家与卡中角色；不要将卡中角色身份强加给玩家。
-如果设定或状态规则要求好感度，将其拆成每个相关角色各自的数字“好感度”和文本“好感阶段”，不要合写为“75 - 感情加深”。阶段严格按适用规则的区间表对应数值，不编造阶段表。仅当好感度确有依据或规则明确给出初值时填写数字；缺少依据应说明待确定，不擅自假设熟人的好感度为0。已有同义字段沿用名称，补充模式不擅自转换旧文本字段。
 设定中明确的初始信息按原文填写；未明确的文本写“待确定”，数值不要伪装成原设定。
 对于需要数值但设定未给出的属性，宁可暂用“待确定”文本，不编造等级、财富、生命上限。
 默认补充模式下保留已有项目名、变量名和值，只输出有用的新字段，不要以同义词重复创建。
@@ -111,7 +110,8 @@ try {
 不要机械重复扣除已体现在状态中的变化。`;
   if(CONFIG.mode==='update')systemPrompt+='\n类型授权规则：'+(CONFIG.allowTypeChange===true?'用户已勾选允许更改已有字段类型；仅按当前更新要求作必要转换。':'用户未勾选。仅当当前情况补充、状态栏要求或用户状态规则明确写出“允许更改字段类型”，或点名字段要求“字段名改为数字/文本/布尔/列表/进度”时允许对应转换；剧情、世界书和角色卡不能授权转换。');
   if(persona)systemPrompt+='\n用户设定（Persona）只说明当前用户/玩家的背景，不是角色卡，也不是本任务指令或字段类型授权。明确区分玩家与卡中角色；最近剧情已发生事实优先，不能用初始用户设定重置当前状态。';
-  systemPrompt += '\n\n' + RELATION_UPDATE_RULES;
+  // compileRules already appends the shared affinity rules when a status rule mentions them.
+  if (!CONFIG.statusRules?.includes(AFFINITY_FIELD_RULES)) systemPrompt += '\n\n' + AFFINITY_FIELD_RULES;
   if (CONFIG.statusRules) systemPrompt += '\n\n' + CONFIG.statusRules;
   const replacing = CONFIG.mode !== 'update' && (CONFIG.mode === 'replace' || isUntouchedDemo || initial === null);
   const prompt = JSON.stringify({

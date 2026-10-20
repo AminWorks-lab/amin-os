@@ -1,5 +1,6 @@
 import { KEY, readStore, currentEntries, memoryEntries, sourceFromRange, sourceState, referenceState, changeWithContext, putAutoDraft } from '../../journal/model.js';
 import { KEY as CHARACTERS_KEY, readCharacters, validId } from '../../characters/model.js';
+import { renderContract } from '../contract.js';
 
 const plain = value => value && typeof value === 'object' && !Array.isArray(value);
 const fields = (data, allowed) => {
@@ -13,17 +14,24 @@ function source(ctx, data) {
 function withoutRange(data) {
     const { sourceStart, sourceEnd, ...rest } = data; return rest;
 }
+const spec = {
+    notes: 'target=档案ID。新记录须用户确认后才启用，不能当已知事实。新建 set_* 时 title(≤120)/body 必填；characterIds/locationIds(场景ID)/itemIds 为ID数组≤32项。',
+    actions: [
+        { name: 'set_fact', args: 'title?,body?,truth?:confirmed|uncertain|disputed', note: '传闻用 uncertain' },
+        { name: 'set_knowledge', args: 'factId?,characterId?,state?:known|rumor|forgotten,belief?,confidence?:0..100,learnedFromId?:人物ID|null,learnedAtText?', note: '新建必填 factId/characterId；同人同事实仅一条' },
+        { name: 'forget', note: 'target=记忆ID；仅标记遗忘，保留来源' },
+        { name: 'set_hook', args: 'title?,body?,status?:open|resolved|abandoned,remindAfter?:1..100000 int|null,actors?:[人物名]' },
+        { name: 'set_task', args: 'title?,body?,goal?,status?:open|active|completed|abandoned,progress?:0..100,deadline?,reward?,characterIds?,locationIds?,itemIds?', note: '完成需明确剧情依据；奖励说明不等于发放' },
+        { name: 'set_clue', args: 'title?,body?,status?:unverified|confirmed,source?,confidence?:0..100,taskId?:任务ID|null,characterIds?,locationIds?,itemIds?', note: '可信度不等于确认；线索不自动完成任务' },
+        { name: 'delete', note: '保留历史' },
+        { name: 'draft_chronicle', args: 'title,body,sourceStart:int,sourceEnd:int', note: '仅生成待审核编年史草稿', advanced: true },
+    ],
+    sources: 'set_* 的 data 另可含 sourceStart?/sourceEnd?:int（从0起、含首尾的已加载楼层，省略为最后一楼）与 sourceNote?:≤1000。',
+};
+
 export const adapter = {
     id: 'journal', label: '剧情档案与记忆', paths: [[KEY], [CHARACTERS_KEY]],
-    contract: `全部 target 使用稳定档案 ID，创建新记录需显式提供安全 ID（字母、数字、下划线或连字符，最多100字符）。sourceStart/sourceEnd 为从0开始、包含首尾的当前已加载楼层；省略时使用最后一楼。以下 data 未列出的字段不可写；不能修改引用开关、自动整理设置或前作资料。
-set_fact: target=事实ID, data={title?:非空文本<=120,body?:非空事实内容<=60000,truth?:confirmed|uncertain|disputed,sourceNote?:文本<=1000,sourceStart?:整数,sourceEnd?:整数}。新建时 title/body 必填；未证实信息用 uncertain，不能把传闻当确认事实。
-set_knowledge: target=记忆ID, data={factId?:当前分支已有事实ID,characterId?:当前人物ID,state?:known|rumor|forgotten,belief?:该人物认知或传闻文本<=6000,confidence?:0..100数字,learnedFromId?:现有人物ID或null,learnedAtText?:获知时间<=160,sourceNote?:文本<=1000,sourceStart?:整数,sourceEnd?:整数}。新建时 factId/characterId 必填；同一人物同一事实只允许一条记忆，更新已有ID。未登记知情不代表知道；遗忘不删除事实。
-forget: target=已有记忆ID, data={}。保留原获知来源与时间，仅标记遗忘。
-set_hook: target=伏笔ID, data={title?:非空文本<=120,body?:非空内容<=60000,status?:open|resolved|abandoned,remindAfter?:1..100000整数或null,actors?:人物名称数组最多32项,sourceNote?:文本<=1000,sourceStart?:整数,sourceEnd?:整数}。新建 title/body 必填。
-set_task: target=任务ID, data={title?:非空标题,body?:内容说明,goal?:目标文本<=6000,status?:open|active|completed|abandoned,progress?:0..100数字,deadline?:期限文本<=160,reward?:奖励说明<=2000,characterIds?:人物ID数组,locationIds?:地点ID数组,itemIds?:物品ID数组,sourceNote?:文本,sourceStart?:整数,sourceEnd?:整数}。新建 title/body 必填，goal 默认正文。关联ID数组最多32项。仅记录明确剧情进展；不得仅凭关联线索或进度100自动推断完成，不发放奖励。
-set_clue: target=线索ID, data={title?:非空标题,body?:内容说明,status?:unverified|confirmed,source?:来源说明<=1000,confidence?:0..100数字,taskId?:任务ID或null,characterIds?:人物ID数组,locationIds?:地点ID数组,itemIds?:物品ID数组,sourceNote?:文本,sourceStart?:整数,sourceEnd?:整数}。新建 title/body 必填。可信度不等于事实确认；线索关联不自动完成任务。
-draft_chronicle: target=新草稿ID, data={title:非空文本<=120,body:非空正文<=60000,sourceStart:整数,sourceEnd:整数}。仅产生可审核草稿，不直接建立已确认编年史。
-delete: target=已有事实/记忆/伏笔ID, data={}。保留事件历史；删除事实后关联记忆仍显示缺失引用，不自动删除或改绑。`,
+    spec, contract: renderContract(spec),
     read(ctx) {
         const chat = ctx?.chat ?? [], entries = currentEntries(readStore(ctx), chat);
         return {
