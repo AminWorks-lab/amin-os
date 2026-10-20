@@ -26,7 +26,7 @@ test('old create and restore events use the normalized target for reads, snapsho
     const before = structuredClone(store), current = activeEffects(store, chat);
     assert.equal(current[0].targetMode, 'targeted'); assert.equal(effectTarget(current[0]), 'Confirmed target');
     assert.equal(snapshotEffects(store, chat).effects[0].targetMode, 'targeted');
-    assert.match(compile(store, chat), /"targetMode": "targeted"/);
+    assert.match(compile(store, chat), /"targetMode":"targeted"/);
     assert.match(compile(store, chat), /Confirmed target/);
     assert.throws(() => change(store, chat, 'create', { skillId: 'skill', holder: 'Caster', targetMode: 'targeted', target: 'Confirmed target', scope: 'vision', condition: 'Until release' }), /已有记录/);
     assert.deepEqual(store, before);

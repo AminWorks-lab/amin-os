@@ -1,10 +1,10 @@
 import { uuid } from '../../uuid.js';
+import { AFFINITY_FIELD_RULES } from './state-tools.js';
+// Field-structure rules (separate number/stage fields, stage sync) are appended
+// once by compileRules from AFFINITY_FIELD_RULES; the sample keeps only its table.
 export const AFFINITY_RULE = `好感度:
 
-- 每个 NPC 的好感信息拆成同一角色项目中的两个独立字段：“好感度”为数字，“好感阶段”为文本。禁止合写成“75 - 感情加深”。
-- 好感阶段必须与最终好感度对应下方区间表的原名，不自行改写阶段名。0 对应“中性”，不代表已经认识或建立关系。
-- 例如：好感度为75，好感阶段为“感情加深”；好感度为-25，好感阶段为“明确的厌恶感”。
-- 更新好感度后核对阶段，跨越区间时同步更新好感阶段；未跨区间则阶段保持不变。已存在同义字段时沿用其名称。
+- 0 对应“中性”，不代表已经认识或建立关系。例如：好感度为75，好感阶段为“感情加深”；好感度为-25，好感阶段为“明确的厌恶感”。
 
 - 数值范围: 正向 1~120, 负向 -1~-120
 - 每 10 点对应一个阶段
@@ -61,7 +61,7 @@ export function compileRules(ctx, settingsKey, scope, expandNames = true) {
     + '全体规则与当前角色规则共同生效；对同一事项发生冲突时，以当前角色规则为准。\n'
     + [section('【全体规则】', global), section('【当前角色规则】', character)].filter(Boolean).join('\n\n');
   if (expandNames) text = text.replace(/\{\{user\}\}/gi, () => ctx.name1 || '用户').replace(/\{\{char\}\}/gi, () => ctx.characters?.[ctx.characterId]?.name || ctx.name2 || '角色');
-  if (text.includes('好感')) text += '\n【好感字段结构】生成涉及好感度时，为每个相关角色分别设置数字“好感度”和文本“好感阶段”，不要混为一个字符串。阶段按适用规则的区间表匹配，0未定义时用“中性”。更新已有成对字段时，依据更新后的最终数值同步核对阶段；跨阶段则同时输出阶段变化。沿用已有同义字段；类型转换遵守本次操作的输出协议，用户明确要求时按支持的类型转换，不能仅因历史格式不同而恢复旧类型。旧数据缺少成对字段时需先由用户编辑或重新生成。';
+  if (text.includes('好感')) text += '\n' + AFFINITY_FIELD_RULES;
   if (text.length > 30000) throw Error('启用的状态规则超过 30000 字符，请精简或关闭部分条目。');
   return text;
 }

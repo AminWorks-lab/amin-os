@@ -116,6 +116,8 @@ export function mount(target, options = {}) {
             control.addEventListener('change', () => { draft.mode = control.value; markDraft(); }); inputNodes.push(control);
             row.append(make('span', '模型更新方式'), control, make('small', '自动模式也会校验整组变更；发生错误时保留原资料。')); settingsPanel.append(row);
         }
+        const advanced = checkbox('发送高级动作说明', draft.advancedActions === true, value => { draft.advancedActions = value; }); inputNodes.push(advanced.input);
+        settingsPanel.append(advanced.row, make('p', '默认只发送常用动作以节省上下文；开启后附带阈值规则、日程、属性绑定、周期结算、编年史草稿等不常用动作的说明。关闭时模型输出的这些动作仍会照常校验。', 'amin-meta'));
         const sourceRow = make('label', '', 'amin-field'), sourceControl = make('select'); sourceControl.setAttribute('aria-label', '资料发送来源');
         for (const [value, label] of [['amin', 'Amin 插入消息上下文'], ['external', '预设／世界书自行提供']]) { const option = make('option', label); option.value = value; sourceControl.append(option); }
         sourceControl.value = draft.dataSource === 'external' ? 'external' : 'amin';

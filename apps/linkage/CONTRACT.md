@@ -7,8 +7,15 @@ export const adapter = {
   id: 'inventory', label: '背包与账本',
   // Exact metadata read dependencies, including other modules read by apply.
   paths: [['amin_os_inventory_v1'], ['amin_os_characters_v1']],
-  // Human-readable, complete supported operation schema for the unified prompt.
-  contract: 'consume: target=item ID, data={quantity: positive integer}',
+  // Compact signature-style schema: one line per action. Shared rules (stable
+  // IDs, @new: aliases, notation, forbidden fields) live once in the protocol
+  // header of prompt.js and must not be repeated here. `advanced` actions,
+  // `advancedArgs`, `advancedNotes` and `more` are only sent when the user
+  // enables advanced descriptions; validation accepts them either way.
+  // `sources` (source-floor fields) is shown to manual generation only, since
+  // the unified coordinator binds the reply floor automatically.
+  spec: { notes: 'target=物品ID。', actions: [{ name: 'consume-item', args: 'quantity:int>0' }] },
+  contract: renderContract(spec), // full text, for manual generation prompts
   // Current branch JSON-safe data. Missing modules return a valid empty state.
   read(ctx) {},
   // Optional model-facing projection: omit unconfirmed/raw evidence and data
@@ -23,7 +30,7 @@ export const adapter = {
 };
 ```
 
-The coordinator applies adapters sequentially to a cloned metadata snapshot, validates the entire batch, then commits all resulting patches under the existing operation lock. No adapter may commit/save separately. Settings, credentials, global libraries, chat messages, and generated dice results are not writable through model updates. IDs refer to existing module-owned IDs; new object IDs must be safe and explicit. Reason is required. Unknown operations and invalid references are errors.
+The coordinator applies adapters sequentially to a cloned metadata snapshot, validates the entire batch, then commits all resulting patches under the existing operation lock. No adapter may commit/save separately. Settings, credentials, global libraries, chat messages, and generated dice results are not writable through model updates. IDs refer to existing module-owned IDs; new objects use `@new:` aliases that the coordinator resolves to plugin-generated IDs. Reason is required. Unknown operations and invalid references are errors.
 
 Cross-module links use stable IDs: character IDs, map/node IDs, item IDs, relationship IDs, effect IDs, journal IDs. World Status uses its existing project/field paths as the canonical numeric source. Renaming must not rebind references by display name. Missing or removed references must remain visible and must not be silently retargeted.
 

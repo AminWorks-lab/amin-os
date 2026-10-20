@@ -91,6 +91,9 @@ test('entry settings are opt-in, validate pins, and fixed items cause budget fai
     for (const invalid of [{ enabled: 'yes', pinned: [] }, { enabled: true, pinned: ['unknown:a'] }, { enabled: true, pinned: ['characters:a', 'characters:a'] }]) {
         settings.contextBudget.entrySelection = invalid; assert.throws(() => validateLinkageState(settings), /条目筛选/);
     }
+    // Compact JSON keeps the small fixture under the 1000-char minimum; give the pinned record real weight.
+    const chars = { version: 1, characters: [person('hiddenByRelevance'), { ...person('a'), notes: '固定条目备注'.repeat(150) }] };
+    ctx.chatMetadata[Characters.KEY] = Characters.appendSnapshot(Characters.emptyStore(), ctx.chat, chars, { id: 'seed', at: '2026-09-24T00:00:00Z' });
     settings.contextBudget = { enabled: true, maxChars: 1000, requiredModules: [], entrySelection: { enabled: true, pinned: ['characters:a'] } };
     const report = buildDataPromptReport(ctx);
     assert.match(report.error, /必需资料/); assert.equal(report.prompt, '');

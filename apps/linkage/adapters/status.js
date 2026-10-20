@@ -2,6 +2,7 @@ import { validateTemplate, valueType, mergeUpdates } from '../../status/state-to
 import { bindingParts } from '../../characters/model.js';
 import '../../status/story-state.js';
 import { isIndependent, readStoryRoot, storyRootPath } from '../../story-state/access.js';
+import { renderContract } from '../contract.js';
 
 const ROOT = '状态栏', HISTORY = 'world_status_hud_history_v1';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -38,10 +39,18 @@ function historyPatch(ctx, value, now) {
     return [{ path: [HISTORY], value: next }];
 }
 
+const spec = {
+    notes: 'target="项目名.字段名"。只改已有字段，不增删、改名或改类型；current/max 仅用于进度，保持 0≤当前≤最大、最大>0。',
+    actions: [
+        { name: 'set', args: 'value:同现有类型,component?:value|current|max' },
+        { name: 'adjust', args: 'delta:num,component?', note: '仅数字或进度' },
+    ],
+};
+
 export const adapter = {
     id: 'status', label: '世界状态',
     paths: [['variables', ROOT], [HISTORY]],
-    contract: 'set: target="项目名.字段名", data={value: 与现有字段同类型的值, component?: "value"|"current"|"max"}; adjust: target 同上, data={delta: 有限数字, component?: "value"|"current"|"max"}。value/省略 component 指整个字段；current/max 仅适用于进度的当前/最大。只更新已有字段，不新增、删除、重命名或改变类型；进度保持 0≤当前≤最大、最大>0，不自动截断。',
+    spec, contract: renderContract(spec),
     read: state,
     apply(ctx, change, { now } = {}) {
         if (change?.module !== 'status' || !['set', 'adjust'].includes(change.action)) throw Error('不支持的世界状态联动操作。');

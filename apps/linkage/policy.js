@@ -24,7 +24,7 @@ export function validateJSON(value, depth = 0) {
 export const emptyLinkageState = () => ({ version: 1, enabled: false, mode: 'review', modules: {}, extraRules: '', links: [], applied: [] });
 export function validateLinkageState(raw) {
     validateJSON(raw);
-    if (!plain(raw) || raw.version !== 1 || Object.keys(raw).some(k => !['version','enabled','mode','modules','extraRules','links','applied','dataSource','contextBudget'].includes(k))) throw Error('联动资料版本或字段不兼容。');
+    if (!plain(raw) || raw.version !== 1 || Object.keys(raw).some(k => !['version','enabled','mode','modules','extraRules','links','applied','dataSource','contextBudget','advancedActions'].includes(k))) throw Error('联动资料版本或字段不兼容。');
     if (typeof raw.enabled !== 'boolean' || !['review', 'auto'].includes(raw.mode) || !plain(raw.modules) || typeof raw.extraRules !== 'string' || raw.extraRules.length > 40000) throw Error('联动设置格式无效。');
     if (raw.contextBudget !== undefined) {
         const budget = raw.contextBudget;
@@ -41,6 +41,7 @@ export function validateLinkageState(raw) {
             || new Set(selection.pinned).size !== selection.pinned.length) throw Error('条目筛选需要有效且不重复的固定条目 ID，最多 2000 项。');
     }
     if (raw.dataSource !== undefined && !['amin','external'].includes(raw.dataSource)) throw Error('请选择有效的资料发送来源。');
+    if (raw.advancedActions !== undefined && typeof raw.advancedActions !== 'boolean') throw Error('高级动作说明开关无效。');
     for (const [id, flags] of Object.entries(raw.modules)) {
         if (!own(MODULES, id) || !plain(flags) || Object.keys(flags).some(k => !['enabled', 'read', 'write'].includes(k)) || ['enabled','read','write'].some(k => typeof flags[k] !== 'boolean') || (id === 'dice' && flags.write)) throw Error('联动模块开关无效。');
         if (flags.write && !flags.read) throw Error('允许模型更新的模块必须同时提供当前资料。');

@@ -2,6 +2,7 @@ import { validateDocument } from '../../map/src/core/protocol.js';
 import { prepareDocument } from '../../map/src/core/spatial.js';
 import { compileMapUpdate } from '../../map/src/integrations/tool-calling.js';
 import { legacyModule, isIndependent } from '../../story-state/access.js';
+import { renderContract } from '../contract.js';
 
 const KEY = 'dynamicMapV1', HISTORY = 'dynamicMapPositionHistoryV1';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -33,10 +34,21 @@ function positionPatch(ctx, doc) {
     return [{ path: [HISTORY], value: next }];
 }
 
+const spec = {
+    notes: 'target=地点/道路ID，限已有地图中可见者。不删除、不建地图，不改地图类型、层级、坐标、锁定方向或通行规则；type 用该地图已有类型。',
+    actions: [
+        { name: 'add_node', args: 'mapId,name,description?,type?' },
+        { name: 'update_node', args: 'mapId,name?,description?,type?' },
+        { name: 'add_edge', args: 'mapId,from,to,name?,type?,direction?|null,distance?:num≥0|null,bidirectional?:bool' },
+        { name: 'update_edge', args: 'mapId,name?,type?,direction?,distance?,bidirectional?' },
+        { name: 'move', args: 'mapId', note: 'target=已到达地点ID' },
+    ],
+};
+
 export const adapter = {
     id: 'map', label: '地图',
     paths: [[KEY], [HISTORY]],
-    contract: '仅限已有地图。target 为地点/道路稳定 ID，data 必须含 mapId。add_node: data={mapId,name,description?,type?}; update_node: data={mapId,name?,description?,type?}; add_edge: data={mapId,from,to,name?,type?,direction?,distance?,bidirectional?}; update_edge: data={mapId,name?,type?,direction?,distance?,bidirectional?}; move: data={mapId}, target=已到达地点 ID。type 只能用该地图已有类型，distance 为非负数或 null，direction 为地图方向值或 null。新增 ID 使用字母开头、字母数字下划线连字符且≤80字符。只能更新已发现并允许模型读取的地点/道路；不删除、不创建地图、不更改地图类型、层级、坐标、锁定方向或通行规则。',
+    spec, contract: renderContract(spec),
     read(ctx) {
         const source = document(ctx);
         if (!source) return { version: 1, activeMap: null, maps: {} };

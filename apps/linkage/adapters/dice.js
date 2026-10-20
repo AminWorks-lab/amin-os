@@ -1,11 +1,14 @@
 import { HISTORY_KEY, readHistory } from '../../dice/service.js';
 import { normalizeConfig } from '../../dice/engine.js';
+import { renderContract } from '../contract.js';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const spec = { notes: '只读：仅可引用已有固定骰点结果；不得生成、修改、删除或重掷骰点，任何 action 都会被拒绝。需要新判定时由用户在骰子应用执行。', actions: [] };
+
 export const adapter = {
     id: 'dice', label: '固定骰点',
     paths: [[HISTORY_KEY]],
-    contract: '只读。只能引用已有固定骰点 ID、配置及结果；任何 action 都会拒绝。禁止模型生成、修改、删除、重掷骰点或把骰点标为已发送。需要新判定时，由用户在骰子应用执行。',
+    spec, contract: renderContract(spec),
     read(ctx) {
         const raw = ctx?.chatMetadata?.[HISTORY_KEY];
         if (raw === undefined) return { version: 1, readOnly: true, rolls: [] };
