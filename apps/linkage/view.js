@@ -3,6 +3,7 @@ import { getSharedService } from './service.js';
 import { installUnifiedWorldbook, inspectUnifiedWorldbook } from './lorebook.js';
 import { uuid } from '../../uuid.js';
 import { renderContextBudgetControls, renderContextBudgetReport } from './context-budget-view.js';
+import {contextLine} from '../shared/context-line.js';
 
 const mounted = new WeakMap();
 const clone = value => structuredClone(value);
@@ -386,7 +387,7 @@ export function mount(target, options = {}) {
             if (!saved || (changed && !settingsDirty)) { saved = clone(current); draft = clone(current); draft.modules ??= {}; settingsDirty = false; renderSettings(); }
             else if (changed) { saved = clone(current); markDraft(); }
             else if(modulesChanged)renderSettings();
-            context.textContent = `统一联动 · 当前聊天 · ${current.enabled ? independent() ? 'Amin 独立剧情资料' : '小白变量 2.0' : '尚未启用'} · 已选 ${moduleRows.filter(row => row.enabled).length} 个模块`;
+            context.textContent = contextLine(getContext(), current.enabled ? independent() ? 'Amin 独立剧情资料' : '小白变量 2.0' : '联动尚未启用', `已选 ${moduleRows.filter(row => row.enabled).length} 个模块`);
             renderNativeState2(); renderDiagnostics(); refreshPrompt(); refreshData(savedDataReport); renderReview(); renderSuggestions(); renderReferences(); retryPanel.replaceChildren();retryPanel.hidden=!api.dirty();
             budgetReportPanel.replaceChildren(); budgetReportPanel.hidden = typeof api.dataPromptReport !== 'function';
             if (!budgetReportPanel.hidden) renderContextBudgetReport(budgetReportPanel, savedDataReport, { document });
@@ -395,7 +396,7 @@ export function mount(target, options = {}) {
             if(serviceStatus!==lastServiceStatus){lastServiceStatus=serviceStatus;if(!localBusy){message='';failed=false;}}
             if (!message) { notice.textContent = serviceStatus; notice.dataset.state = busy() ? 'busy' : ''; }
             else say(message, failed);
-        } catch (error) { unavailable = true; context.textContent = '统一联动 · 当前聊天不可用'; say(error?.message ?? String(error), true); }
+        } catch (error) { unavailable = true; context.textContent = contextLine(getContext(), '联动不可用'); say(error?.message ?? String(error), true); }
         updateLocks();
         for (const element of page.querySelectorAll?.('[data-linkage-invalid]') ?? []) element.disabled = true;
     }

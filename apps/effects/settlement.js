@@ -4,11 +4,10 @@ import { KEY as SCENE_KEY, readCurrentScene, validateClock } from '../scene/mode
 import { KEY as CHARACTERS_KEY, STATUS_PATH, resolveStat, readCharacters } from '../characters/model.js';
 import { KEY as INVENTORY_KEY, readInventory } from '../inventory/model.js';
 import { HISTORY_KEY } from '../status/history.js';
-import { checkpointState } from '../status/state-checkpoint.js';
 import { adapter as statusAdapter } from '../linkage/adapters/status.js';
 import { adapter as inventoryAdapter } from '../linkage/adapters/inventory.js';
 import { periodicStatus, validatePeriodicConfig } from './rules.js';
-import { isIndependent, toLegacyContext } from '../story-state/access.js';
+import { toLegacyContext } from '../story-state/access.js';
 
 export const SETTLEMENT_PATHS = [[KEY], [SCENE_KEY], [CHARACTERS_KEY], [INVENTORY_KEY], [...STATUS_PATH], [HISTORY_KEY]];
 export const MANUAL_SETTLEMENT_PATHS = [...SETTLEMENT_PATHS, ['variables'], ['LWB_RULES_V2'], ['extensions', 'LittleWhiteBox']];
@@ -62,7 +61,7 @@ function applyPatches(ctx, patches, output) {
 // All resource and settlement-watermark patches are prepared on a cloned
 // metadata snapshot. Any missing binding, insufficient stock or numeric boundary
 // rejects the whole plan. Only the shared operation service commits this plan.
-export function buildSettlement(ctx, { effectIds, operationId, now = new Date().toISOString(), includeCheckpoint = false } = {}) {
+export function buildSettlement(ctx, { effectIds, operationId, now = new Date().toISOString() } = {}) {
     if (typeof operationId !== 'string' || !/^[A-Za-z0-9:_-]{1,80}$/.test(operationId)) throw Error('周期结算操作编号无效。');
     const clock = validateClock(readCurrentScene(ctx).clock), store = readStore(ctx), effects = activeEffects(store, ctx.chat);
     if (effectIds !== undefined && (!Array.isArray(effectIds) || !effectIds.length || new Set(effectIds).size !== effectIds.length)) throw Error('请选择需要结算的效果。');
@@ -102,10 +101,6 @@ export function buildSettlement(ctx, { effectIds, operationId, now = new Date().
         rows.push({ effectId: effect.id, name: effect.skill.name, target: effect.target || effect.holder, ticks: status.pendingTicks, stacks, changes });
     }
     if (!rows.length) throw Error('当前没有到期且尚未结算的周期。');
-    if (includeCheckpoint && !isIndependent(ctx) && [...patches.values()].some(patch => patch.path[0] === 'variables') && checkpointState({ ...working, saveMetadataDebounced() {} })) {
-        const path = ['extensions', 'LittleWhiteBox', 'stateCkptV2'];
-        patches.set(JSON.stringify(path), { path, value: structuredClone(working.chatMetadata.extensions.LittleWhiteBox.stateCkptV2) });
-    }
     const next = metadataEffects(store, ctx);
     patches.set(JSON.stringify([KEY]), { path: [KEY], value: next });
     return { patches: [...patches.values()], summary: `结算 ${rows.length} 项持续效果，共 ${rows.reduce((sum, row) => sum + row.ticks, 0)} 个周期`, rows, clock };

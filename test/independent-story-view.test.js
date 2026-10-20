@@ -54,7 +54,7 @@ test('independent UI offers a current-state workflow without native floor recove
   try {
     await tick(); assert.match(f.target.textContent, /Amin 剧情存储/);
     assert.doesNotMatch(f.target.textContent, /重试恢复当前分支|用原聊天校验 Swipe 标识|小白变量恢复未完成/);
-    assert.match(f.target.textContent, /最近 5 份/);
+    assert.match(f.target.textContent, /默认 10 份/);
     assert.equal(f.calls.empty, 0); assert.equal(f.calls.reset, 0); assert.deepEqual(f.calls.legacy, []);
   } finally { f.dispose(); }
 });
@@ -111,7 +111,7 @@ test('backup inspection and preview never restore automatically', async () => {
   const f = fixture();
   try {
     await tick(); button(f.target, '开始空白剧情资料').click(); await tick();
-    button(f.target, '查看最近 5 份备份').click(); await tick(); assert.equal(f.calls.lists, 1);
+    button(f.target, '查看最近备份').click(); await tick(); assert.equal(f.calls.lists, 1);
     const select = all(f.target).find(node => node.tagName === 'SELECT' && node.children.some(option => /First/.test(option.textContent)));
     select.value = 'b-backup'; button(f.target, '预览所选备份').click(); await tick();
     assert.deepEqual(f.calls.backups, ['b-backup']); assert.deepEqual(f.calls.applies, []);
@@ -173,7 +173,7 @@ test('missing external backup storage does not disable local initialization or i
     for (const label of ['开始空白剧情资料', '预览导入旧资料', '预览导入剧情备份']) {
       assert.equal(button(f.target, label).disabled, false, `${label} must remain available without Tauri store`);
     }
-    assert.equal(button(f.target, '查看最近 5 份备份').disabled, true);
+    assert.equal(button(f.target, '查看最近备份').disabled, true);
     button(f.target, '开始空白剧情资料').click(); await tick(); assert.equal(f.calls.empty, 1);
   } finally { f.dispose(); }
 });
@@ -184,7 +184,7 @@ test('enabled local state can reset and export without external backup storage',
     await tick();
     assert.equal(button(f.target, '清空当前资料重新生成').disabled, false);
     assert.equal(button(f.target, '导出当前剧情备份').disabled, false);
-    assert.equal(button(f.target, '查看最近 5 份备份').disabled, true);
+    assert.equal(button(f.target, '查看最近备份').disabled, true);
     assert.equal(button(f.target, '预览所选备份').disabled, true);
     assert.match(f.target.textContent, /外部备份存储不可用/);
     button(f.target, '清空当前资料重新生成').click(); await tick(); assert.equal(f.calls.reset, 1);

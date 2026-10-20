@@ -1,4 +1,5 @@
 import { getSharedSavesService } from './service.js';
+import {contextLine} from '../shared/context-line.js';
 
 const mounted = new WeakMap();
 const tabs = { saves: '剧情存档', transfer: '导入 / 导出' };
@@ -138,11 +139,12 @@ export function mount(target, options = {}) {
         if (summary.name) panel.append(make('p', `名称：${summary.name}`));
         if (kind === 'restore') {
             panel.append(make('p', '确认后会把所选存档的应用状态应用到当前聊天末尾。聊天消息、回复候选和正文不会回退或删除。'));
+            const limit = api.read().checkpointSettings?.limit ?? 10;
             if (summary.backup) {
                 const backup = section('确认时创建的安全备份', panel, 'amin-card amin-stack');
                 backup.append(make('strong', summary.backup.name), make('p', `${when(summary.backup.createdAt)} · 编号 ${summary.backup.id}`, 'amin-meta'));
-                backup.append(make('p', '此备份尚未写入；确认恢复时会先一起保存。应用保留最近 5 份自动安全备份。', 'amin-help'));
-            } else panel.append(make('p', '确认恢复时会先自动保存当前应用状态，并保留最近 5 份安全备份。', 'amin-help'));
+                backup.append(make('p', `此备份尚未写入；确认恢复时会先一起保存。安全备份与楼层检查点共用最近 ${limit} 份的上限。`, 'amin-help'));
+            } else panel.append(make('p', `确认恢复时会先自动保存当前应用状态；安全备份与楼层检查点共用最近 ${limit} 份的上限。`, 'amin-help'));
             panel.append(make('p', '已有完整来源检查点时，可使用“从此处新开分支”继续旧楼剧情。', 'amin-help'));
         } else if (kind === 'branch') {
             panel.append(make('p', `将从${sourceText(summary.source)}创建独立聊天，并恢复当时记录的完整应用状态。原聊天仍保留，缺失的旧楼数据不会由当前状态推算。`));
@@ -192,13 +194,13 @@ export function mount(target, options = {}) {
         const list = section('命名存档');
         if (!store.saves.length) list.append(make('p', '还没有命名存档。填写名称并预览后，确认一次即可保存当前应用状态。', 'amin-empty'));
         for (const snapshot of [...store.saves].reverse()) drawSnapshot(snapshot, list);
-        const backups = section('自动安全备份 · 最近 5 份');
+        const backups = section(`自动安全备份 · 与检查点共用最近 ${store.checkpointSettings?.limit ?? 10} 份`);
         backups.append(make('p', '每次恢复前自动建立；它们同样只包含允许范围内的应用状态。', 'amin-help'));
         if (!store.backups.length) backups.append(make('p', '还没有安全备份。第一次确认恢复时会自动创建。', 'amin-empty'));
         for (const snapshot of [...store.backups].reverse()) drawSnapshot(snapshot, backups, { backup: true });
     }
     function drawCheckpoints(store) {
-        const settings = store.checkpointSettings ?? { enabled: true, limit: 12 }, draft = checkpointDraft ??= { ...settings };
+        const settings = store.checkpointSettings ?? { enabled: true, limit: 10 }, draft = checkpointDraft ??= { ...settings };
         const config = section('自动记录完整楼层状态');
         config.append(make('p', '只记录当前聊天末尾实际存在的完整状态。后续楼层与候选分别保留；消息被编辑或切换候选后，只有来源完全匹配的记录才能新开分支。旧历史不会补造检查点。', 'amin-help'));
         const enabledLabel = make('label', '', 'amin-check'), enabled = make('input'); enabled.type = 'checkbox'; enabled.checked = draft.enabled;
@@ -210,7 +212,7 @@ export function mount(target, options = {}) {
         const actions = toolbar(config);
         button(actions, '立即记录当前楼层', async () => { ensureNoPreview(); const saved = await api.captureCheckpoint(); say(saved ? '已记录当前楼层完整状态。' : '空聊天尚无可记录楼层。'); }, 'amin-primary');
         const list = section(`楼层检查点 · ${store.checkpoints?.length ?? 0} 份`);
-        list.append(make('p', '同一楼层同一修订的状态更新会替换该检查点。自动检查点会按数量和容量滚动淘汰；长期保留请另建命名存档或导出 JSON。', 'amin-help'));
+        list.append(make('p', (store.storage?.external ? '检查点保存在外部存储，聊天内只保留引用。' : '外部存储不可用时，聊天内最多保留 2 份完整检查点。') + '同一状态修订只记录一次；自动检查点、恢复前备份和操作前备份按保留数量滚动淘汰。长期保留请另建命名存档或导出 JSON。', 'amin-help'));
         if (!store.checkpoints?.length) list.append(make('p', '尚无完整楼层检查点。可立即记录当前楼层，或等待后续消息和应用更新。', 'amin-empty'));
         for (const saved of [...(store.checkpoints ?? [])].reverse()) drawSnapshot(saved, list, { checkpoint: true });
     }
@@ -244,12 +246,12 @@ export function mount(target, options = {}) {
         let store;
         try { store = api.read(); }
         catch (error) {
-            context.textContent = '剧情存档 · 当前聊天'; tablist.replaceChildren(); review.replaceChildren();
+            context.textContent = contextLine(getContext?.(), '存档不可读取'); tablist.replaceChildren(); review.replaceChildren();
             body.replaceChildren(make('p', error.message, 'amin-empty')); notice.textContent = ''; return;
         }
-        const ctx = getContext?.(); const chatId = ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? '当前聊天';
+        const ctx = getContext?.();
         if (observedMetadata !== ctx?.chatMetadata) { checkpointDraft = null; observedMetadata = ctx?.chatMetadata; }
-        context.textContent = `剧情存档 · ${chatId} · ${store.saves.length} 个命名存档 · ${store.backups.length} 个安全备份`;
+        context.textContent = contextLine(ctx, `${store.saves.length} 个命名存档`, `${store.backups.length} 个安全备份`);
         drawTabs(); drawReview(); body.replaceChildren(); drawRetry();
         if (selected === 'saves') drawSaves(store); else if (selected === 'checkpoints') drawCheckpoints(store); else drawTransfer();
         notice.textContent = failed ? message : (message || api.status()); notice.dataset.state = failed ? 'error' : api.busy() || ownAction ? 'busy' : '';

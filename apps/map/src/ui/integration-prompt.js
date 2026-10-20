@@ -7,7 +7,7 @@ export const LEGACY_MAP_INTEGRATION_PROMPT = '当前地图摘要（只读，不�
 /** Preview the same permission-filtered context and protocol injected by linkage. */
 export function mapIntegrationPrompt(ctx) {
     if (!isIndependent(ctx)) return LEGACY_MAP_INTEGRATION_PROMPT;
-    const explanation = '地图资料与更新规则由 Amin OS 直接附加到生成请求，无需复制到世界书。联动权限在“世界状态 → 联动更新”调整。';
+    const explanation = '地图资料与更新规则由 Amin OS 直接附加到生成请求，无需复制到世界书。联动权限在首页“联动更新”应用中调整。';
     try {
         const settings = readLinkageSettings(ctx);
         if (!settings.enabled) return explanation + '\n\n当前统一联动未启用，不发送地图资料或地图更新规则。';

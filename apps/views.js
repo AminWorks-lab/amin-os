@@ -14,6 +14,7 @@ export const views = {
     information: lazyView(retry => import(/* view */ './information/view.js' + retry), '信息面板'),
     effects: lazyView(retry => import(/* view */ './effects/view.js' + retry), '能力面板'),
     organizations: lazyView(retry => import(/* view */ './organizations/view.js' + retry), '势力概览'),
+    linkage: lazyView(retry => import(/* view */ './linkage/view.js' + retry), '联动更新'),
     reply: lazyView(retry => import(/* view */ './reply/workspace.js' + retry), '回复选项'),
     settings: lazyView(retry => import(/* view */ '../settings/view.js' + retry), '设置'),
     ai: lazyView(retry => import(/* view */ '../ai/view.js' + retry), 'AI 设置'),

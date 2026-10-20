@@ -46,8 +46,8 @@
 #amin-os .amin-ai>h2 {margin:0 0 6px}
 #amin-os .amin-ai>p {margin:0 0 var(--amin-gap);color:var(--amin-muted)}
 #amin-os .amin-ai label:not(.amin-field):not(.amin-check) {display:flex;flex-direction:column;gap:6px;margin:var(--amin-gap) 0;min-width:0}
-#amin-os .amin-ai nav {display:flex;flex-wrap:wrap;gap:6px}
-#amin-os .amin-ai nav button {flex:1 1 auto;margin:0}
+#amin-os .amin-ai nav:not(.amin-tabs) {display:flex;flex-wrap:wrap;gap:6px}
+#amin-os .amin-ai nav:not(.amin-tabs) button {flex:1 1 auto;margin:0}
 #amin-os .amin-ai .dm-route:not(.amin-card) {padding:var(--amin-gap);margin:var(--amin-gap) 0;background:var(--amin-card);border:1px solid var(--amin-line);border-radius:var(--amin-radius)}
 #amin-os .amin-ai .dm-route label:not(.amin-field):not(.amin-check):first-child {flex-direction:row;align-items:center;justify-content:space-between;gap:12px}
 #amin-os .amin-ai details:not(.amin-card) {padding:var(--amin-gap);margin:var(--amin-gap) 0;background:var(--amin-card);border:1px solid var(--amin-line);border-radius:var(--amin-radius)}

@@ -55,3 +55,19 @@ test('opening and reordering windows never reparents existing iframe hosts',()=>
  assert.equal(appends,0);assert.deepEqual(root.children,original);assert.deepEqual(hosts.map(h=>h.style.order),['1','2']);
  docks.forEach(d=>d.dispose());
 });
+
+test('latest-only floors withdraw idle rows and keep open windows mounted',async()=>{
+ const {initializeAppearance}=await import('../settings/appearance.js');
+ const ctx={chat:[{mes:'a'},{mes:'b'}],extensionSettings:{},saveSettingsDebounced(){}};const previous=globalThis.SillyTavern;globalThis.SillyTavern={getContext:()=>ctx};
+ try{
+  initializeAppearance(()=>ctx);
+  const document={createElement:()=>new Node()},old=new Node(),latest=new Node();old.getAttribute=()=>'0';latest.getAttribute=()=>'1';
+  const oldHost=new Node(),latestHost=new Node(),oldDock=mountFloorControl(old,'map',oldHost,new Node(),document),latestDock=mountFloorControl(latest,'map',latestHost,new Node(),document);
+  const oldRoot=old.children[0],latestRoot=latest.children[0];
+  assert.equal(oldRoot.hidden,true);assert.equal(latestRoot.hidden,false);
+  oldDock.setOpen(true);assert.equal(oldRoot.hidden,false);assert.equal(oldHost.parent,oldRoot);
+  oldDock.setOpen(false);assert.equal(oldRoot.hidden,true);
+  ctx.chat.pop();oldDock.setVisible(true);assert.equal(oldRoot.hidden,false);
+  oldDock.dispose();latestDock.dispose();
+ }finally{globalThis.SillyTavern=previous;}
+});

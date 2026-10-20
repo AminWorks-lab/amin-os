@@ -148,15 +148,20 @@ export function createStoryStateRuntime(getContext = () => globalThis.SillyTaver
         if (independent) try { validateState(ctx.chatMetadata[STATE_KEY]); } catch (cause) { error = cause.message; }
         return {independent,enabled:independent,migrated:independent,available:true,backupAvailable:backup.available ?? backupService.available(),
             ready:ready(ctx),currentOnly:true,mode:'independent',restoring:false,restoreError:error,requiresImport:!independent,
-            backupCount:backup.count ?? 0,revision:ctx?.chatMetadata?.[STATE_KEY]?.revision ?? null,
-            message:error||message||(independent?'Amin 独立剧情资料已启用；仅保存当前资料和最近 5 份备份。':'请预览导入旧资料，或开始空白剧情资料；聊天正文可照常生成。')};
+            backupCount:backup.count ?? 0,backupLimit:backup.limit ?? 10,revision:ctx?.chatMetadata?.[STATE_KEY]?.revision ?? null,
+            message:error||message||(independent?`Amin 独立剧情资料已启用；聊天内只保存当前资料，最近 ${backup.limit ?? 10} 份备份与检查点保存在外部存储。`:'请预览导入旧资料，或开始空白剧情资料；聊天正文可照常生成。')};
     }
     const api = {
         ready,status,prepareManual,prepareGeneration:()=>ready(),
         previewLegacy:source=>importer.previewLegacy(typeof source === 'object' ? source : {source:source??'app'}),previewImport:raw=>importer.previewImport(raw),
         async applyPreview(plan) { const result=importer.validatePreview(plan); return commit(result.modules ?? result,'导入剧情资料',{discardInvalid:true}); },
         initializeEmpty:()=>commit(emptyState().modules,'开始空白剧情资料',{discardInvalid:true}),reset:()=>commit(emptyState().modules,'重置当前剧情资料',{discardInvalid:true}),
-        listBackups:()=>backupService.list(),async previewBackup(id) { const state=await backupService.load(context(),id); return importer.previewImport({format:STATE_FORMAT,version:1,state}); },
+        listBackups:()=>backupService.list(),async previewBackup(id) {
+            // Ring entries hold save snapshots; any kind (automatic, pre-restore, pre-change) previews as a story import.
+            const entry=await backupService.load(context(),id),modules=entry.snapshot.modules;
+            const state={version:1,revision:entry.revision ?? 0,updatedAt:entry.snapshot.createdAt,modules};
+            return importer.previewImport({format:STATE_FORMAT,version:1,state});
+        },
         exportState:()=>({format:STATE_FORMAT,version:1,state:validateState(context().chatMetadata[STATE_KEY])}),
         retrySave:()=>operation.retrySave(),storyStatus:status,storyAvailable:()=>backupService.available(),
         saveBackup:label=>backupService.savePrevious(context(),validateState(context().chatMetadata[STATE_KEY]),{label:label??'手动备份'}),

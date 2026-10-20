@@ -1,6 +1,8 @@
 import {resetTileLayout} from '../tile-layout.js';
 import {getAppearance,PALETTES,APP_NAMES,defaults,mergeFloorToolbarDraft} from './appearance.js';
 import {mountStoryStorage} from './story-storage-view.js';
+import {contextLine,globalContextLine} from '../apps/shared/context-line.js';
+import {takeAppRequest} from '../apps/shared/open-app.js';
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 export function mount(target){
  const service=getAppearance();target.classList.add('amin-ai','amin-settings','amin-app-page');
@@ -9,7 +11,7 @@ export function mount(target){
  function draw(){
   storyView?.dispose();storyView=null;
   draft=mergeFloorToolbarDraft(draft,service.snapshot(),editedToolbarFields);
-  target.replaceChildren();const heading=el('header',null,'amin-context');heading.append(el('h2',page==='story'?'剧情存储':'外观设置'),el('p',page==='story'?'管理当前聊天的剧情文件、备份与跨设备同步。':'统一主题、布局与楼层窗口。分页切换会保留未保存的修改。'));target.append(heading);
+  target.replaceChildren();const heading=el('header',null,'amin-context');heading.append(el('p',page==='story'?contextLine(globalThis.SillyTavern?.getContext?.(),'剧情文件、备份与跨设备同步'):globalContextLine('主题、布局与楼层窗口','切换分页会保留未保存的修改')));target.append(heading);
   const nav=el('nav',null,'amin-tabs'),body=el('section',null,'amin-stack'),notice=el('p',message,'amin-result');nav.setAttribute('aria-label','设置分类');notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');notice.dataset.state=messageState;notice.hidden=!message;target.append(nav,notice,body);noticeNode=notice;
   const report=(text,state='success')=>{message=text;messageState=state;if(noticeNode){noticeNode.textContent=text;noticeNode.dataset.state=state;noticeNode.hidden=!text;}};
   const button=(parent,label,fn)=>{const e=el('button',label);e.type='button';e.onclick=()=>{try{fn();}catch(error){report(error.message,'error');}};parent.append(e);return e;};
@@ -28,9 +30,10 @@ export function mount(target){
   if(page==='story'){
    storyView=mountStoryStorage(body,report);
   }else if(page==='global'){
-   const desktop=section('主页与窗口','自动模式为 Windows 10 磁贴搭配深色直角窗口。'),desktopGrid=grid(desktop);
+   const desktop=section('主页与窗口','自动模式为 Windows 10 磁贴搭配深色直角窗口。实时信息在磁贴上显示地点、生命、游戏时间等当前剧情摘要。'),desktopGrid=grid(desktop);
    select(desktopGrid,'主页磁贴风格',[['classic','风格 1 · 跟随主题'],['win10','风格 2 · Windows 10']],draft.desktop.style,v=>draft.desktop.style=v);
    select(desktopGrid,'窗口主题',[['auto','自动搭配磁贴风格'],['current','保留原有主题'],['win10','Windows 10 深色'],['win10light','Windows 10 浅色']],draft.desktop.windowTheme,v=>draft.desktop.windowTheme=v);
+   const liveRow=el('label',null,'amin-field amin-check'),liveCheck=el('input');liveCheck.type='checkbox';liveCheck.checked=draft.desktop.liveTiles!==false;liveCheck.onchange=()=>draft.desktop.liveTiles=liveCheck.checked;liveRow.append(liveCheck,el('span','磁贴显示实时信息'));desktopGrid.append(liveRow);
    const appearance=section('全局外观','应用默认使用这里的设置，也可在“单个应用”中覆盖。');fields(grid(appearance),draft.global);
    const dimensions=section('侧栏尺寸','屏幕空间不足时自动缩小，位置保持在可见范围内。'),dimensionsGrid=grid(dimensions);
    numeric(dimensionsGrid,'桌面侧栏宽度',draft.window.width,340,800,v=>draft.window.width=v);numeric(dimensionsGrid,'侧栏最大高度',draft.window.height,400,1000,v=>draft.window.height=v);
@@ -54,9 +57,10 @@ export function mount(target){
    body.append(el('p','填写可直接访问的图片或视频地址，也支持 / 开头的酒馆资源路径。视频静音循环，加载依赖资源服务器。单块磁贴背景在主页编辑布局中设置。','amin-meta'));
   }else{
    const names=Object.keys(defaults().floor.buttons).map(id=>[id,APP_NAMES[id]||id]);
-   const buttons=section('楼层入口','选择每条消息下显示的应用按钮。'),buttonGrid=grid(buttons);
+   const buttons=section('楼层入口','选择消息楼层下显示的应用按钮。'),buttonGrid=grid(buttons);
    for(const [id,name]of names){const row=el('label',null,'amin-field amin-check'),check=el('input');check.type='checkbox';check.checked=draft.floor.buttons[id];check.onchange=()=>draft.floor.buttons[id]=check.checked;row.append(check,el('span','显示'+name+'按钮'));buttonGrid.append(row);}
-   const arrangement=section('按钮排列与收纳','也可在消息楼层点击“调整排列”拖动排序。放入“更多”的按钮仍然可以打开应用。'),arrangementGrid=grid(arrangement);
+   {const row=el('label',null,'amin-field amin-check amin-span-full'),check=el('input');check.type='checkbox';check.checked=draft.floor.latestOnly!==false;check.onchange=()=>draft.floor.latestOnly=check.checked;row.append(check,el('span','只在最新一楼显示按钮行（已打开的窗口保持不变）'));buttonGrid.prepend(row);}
+   const arrangement=section('按钮排列与收纳','也可在消息楼层展开“更多”，点击“调整排列”拖动排序。放入“更多”的按钮仍然可以打开应用。'),arrangementGrid=grid(arrangement);
    select(arrangementGrid,'按钮整排对齐',[['left','靠左'],['center','居中'],['right','靠右']],draft.floor.toolbarAlignment,v=>{draft.floor.toolbarAlignment=v;editedToolbarFields.add('toolbarAlignment');});
    const order=el('div',null,'amin-stack amin-floor-order-settings');arrangement.append(order);
    function drawOrder(){
@@ -66,11 +70,11 @@ export function mount(target){
      const move=delta=>{const list=[...draft.floor.buttonOrder];[list[index],list[index+delta]]=[list[index+delta],list[index]];draft.floor.buttonOrder=list;editedToolbarFields.add('buttonOrder');drawOrder();order.querySelector(`[data-floor-button="${id}"] button[data-move="${delta}"]:not(:disabled)`)?.focus();};
      const up=button(row,'上移',()=>move(-1));up.dataset.move='-1';up.disabled=index===0;up.setAttribute('aria-label',`${APP_NAMES[id]}上移`);
      const down=button(row,'下移',()=>move(1));down.dataset.move='1';down.disabled=index===draft.floor.buttonOrder.length-1;down.setAttribute('aria-label',`${APP_NAMES[id]}下移`);
-     const label=el('label',null,'amin-field amin-check'),check=el('input');check.type='checkbox';check.checked=draft.floor.moreButtons.includes(id);check.onchange=()=>{draft.floor.moreButtons=draft.floor.moreButtons.filter(value=>value!==id);if(check.checked)draft.floor.moreButtons.push(id);editedToolbarFields.add('moreButtons');};label.append(check,el('span','放入更多'));row.append(label);order.append(row);
+     const label=el('label',null,'amin-field amin-check'),check=el('input');check.type='checkbox';check.checked=draft.floor.moreButtons.includes(id);check.onchange=()=>{draft.floor.moreButtons=draft.floor.moreButtons.filter(value=>value!==id);if(check.checked)draft.floor.moreButtons.push(id);draft.floor.moreButtonsCustomized=true;editedToolbarFields.add('moreButtons');};label.append(check,el('span','放入更多'));row.append(label);order.append(row);
     });
    }
    drawOrder();
-   button(toolbar(arrangement),'恢复按钮默认排列',()=>{const floor=defaults().floor;for(const key of ['buttonOrder','moreButtons','toolbarAlignment']){draft.floor[key]=floor[key];editedToolbarFields.add(key);}draw();});
+   button(toolbar(arrangement),'恢复按钮默认排列',()=>{const floor=defaults().floor;for(const key of ['buttonOrder','moreButtons','toolbarAlignment']){draft.floor[key]=floor[key];editedToolbarFields.add(key);}draft.floor.moreButtonsCustomized=false;draw();});
    const shared=section('统一窗口尺寸','窗口不会超过消息宽度。先打开的窗口排在上面，重新打开会排到末尾。'),sharedGrid=grid(shared);
    select(sharedGrid,'窗口对齐',[['left','靠左'],['center','居中'],['right','靠右']],draft.floor.alignment,v=>draft.floor.alignment=v);
    select(sharedGrid,'窗口高度',[['fixed','统一高度'],['auto','随内容变化（不超过上限）']],draft.floor.sizeMode,v=>draft.floor.sizeMode=v);
@@ -82,8 +86,9 @@ export function mount(target){
   if(page!=='story'){
    const actions=toolbar(body);
    button(actions,'保存并应用',()=>{service.save(mergeFloorToolbarDraft(draft,service.snapshot(),editedToolbarFields));draft=service.snapshot();editedToolbarFields.clear();report('已应用所有分页的修改。打开的窗口同步更新。');draw();}).className='amin-primary';
-   button(actions,'恢复本页默认',()=>{const d=defaults();if(page==='global'){draft.global=d.global;draft.window=d.window;draft.desktop.style=d.desktop.style;draft.desktop.windowTheme=d.desktop.windowTheme;}else if(page==='apps')draft.apps={};else if(page==='effects')draft.desktop.effects=d.desktop.effects;else{draft.floor=d.floor;for(const key of ['buttonOrder','moreButtons','toolbarAlignment'])editedToolbarFields.add(key);}message='本页已恢复默认，点击“保存并应用”生效。';messageState='';draw();});
+   button(actions,'恢复本页默认',()=>{const d=defaults();if(page==='global'){draft.global=d.global;draft.window=d.window;draft.desktop.style=d.desktop.style;draft.desktop.windowTheme=d.desktop.windowTheme;draft.desktop.liveTiles=d.desktop.liveTiles;}else if(page==='apps')draft.apps={};else if(page==='effects')draft.desktop.effects=d.desktop.effects;else{draft.floor=d.floor;for(const key of ['buttonOrder','moreButtons','toolbarAlignment'])editedToolbarFields.add(key);}message='本页已恢复默认，点击“保存并应用”生效。';messageState='';draw();});
   }
  }
- draw();return {open(){},dispose(){storyView?.dispose();noticeNode=null;target.replaceChildren();}};
+ // Other apps may ask for a specific page, e.g. 剧情存储 from a “还没有剧情资料” prompt.
+ draw();return {open(){const request=takeAppRequest('settings');if(request?.page&&['global','apps','floor','effects','story'].includes(request.page)&&request.page!==page){page=request.page;draw();}},dispose(){storyView?.dispose();noticeNode=null;target.replaceChildren();}};
 }

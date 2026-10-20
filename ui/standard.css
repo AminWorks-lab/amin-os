@@ -71,8 +71,13 @@
 .amin-ui .amin-span-full {grid-column:1/-1}
 .amin-ui :is(.amin-check,.amin-info-check,.amin-wb-check) {display:flex;flex-direction:row;align-items:center;gap:10px;min-height:var(--amin-control-height);margin:0;color:var(--amin-text);cursor:pointer}
 .amin-ui :is(.amin-check,.amin-info-check,.amin-wb-check) :is(input[type=checkbox],input[type=radio]) {width:18px;flex-shrink:0}
-:is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories) {display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:0 0 8px;margin:0;border:0;border-bottom:1px solid var(--amin-line);background:transparent}
-:is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories) button {flex:0 1 auto;min-height:36px;padding:6px 11px;background:transparent!important;border-color:transparent!important;color:var(--amin-muted)!important;font-weight:500}
+/* Tab strips stay on one row; ui/tabs.js sets data-fade while more tabs sit past an edge. */
+:is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories) {--amin-fade-start:0px;--amin-fade-end:0px;display:flex;flex-wrap:nowrap;flex-shrink:0;height:max-content;align-items:center;gap:4px;padding:0 0 8px;margin:0;border:0;border-bottom:1px solid var(--amin-line);background:transparent;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-padding-inline:28px}
+:is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories)::-webkit-scrollbar {display:none}
+:is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories)[data-fade] {-webkit-mask-image:linear-gradient(to right,transparent 0,#000 var(--amin-fade-start),#000 calc(100% - var(--amin-fade-end)),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 var(--amin-fade-start),#000 calc(100% - var(--amin-fade-end)),transparent 100%)}
+:is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories)[data-fade~=start] {--amin-fade-start:28px}
+:is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories)[data-fade~=end] {--amin-fade-end:28px}
+:is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories) button {flex:0 0 auto;min-height:36px;padding:6px 11px;white-space:nowrap;overflow-wrap:normal;background:transparent!important;border-color:transparent!important;color:var(--amin-muted)!important;font-weight:500}
 :is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(button[aria-selected=true],button[aria-pressed=true]) {background:var(--amin-card)!important;color:var(--amin-accent-text,var(--amin-accent))!important;border-color:var(--amin-accent)!important}
 :is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(.amin-card,.amin-result,.ro-card,.card,.wsh-rule-card,.wsh-history-card,.wsh-template-preview,.dm-route,.amin-appearance-card) {min-width:0;max-width:100%;margin:0;padding:var(--amin-space);background:var(--amin-card)!important;color:var(--amin-text)!important;border:1px solid var(--amin-line)!important;border-radius:var(--amin-radius)!important}
 .amin-ui .amin-result {border-inline-start:3px solid var(--amin-accent)!important}
@@ -80,6 +85,10 @@
 .amin-ui :is(.amin-notice,.ro-status,.dm-feedback,.wsh-report):empty {display:none}
 .amin-ui .amin-empty {border-style:dashed!important}
 .amin-ui .amin-empty strong {display:block;margin-bottom:4px;color:var(--amin-text)}
+.amin-ui .amin-linked-empty>p {margin:0 0 8px}
+.amin-ui .amin-linked-empty .amin-empty-action {display:inline-block}
+#amin-os .amin-story-gate {padding:var(--amin-space,var(--amin-gap)) var(--amin-space,var(--amin-gap)) 0}
+.amin-extra-floor-window>.amin-story-gate {padding:var(--amin-space,8px) var(--amin-space,8px) 0}
 :is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is([data-state=error],.amin-notice.error,#status.error) {border-inline-start:3px solid var(--amin-accent)!important;color:var(--amin-text)!important}
 .amin-ui [data-state=busy] {border-inline-start:3px solid var(--amin-accent)!important}
 .amin-ui [data-state=success] {border-color:var(--amin-accent)!important}
@@ -155,15 +164,20 @@ html[data-wsh-frame][data-amin-surface] .fill {background:var(--amin-accent)}
   .amin-ui .amin-span-full {grid-column:auto}
   .amin-ui .amin-section-heading {align-items:flex-start}
 }
+/* The status iframe is narrower than the page, so it takes touch sizing from data-amin-touch (set by the host window) instead of its own width. */
+html[data-wsh-frame][data-amin-surface][data-amin-touch=true] {--amin-control-height:44px}
+html[data-wsh-frame][data-amin-surface][data-amin-touch=true] :is(button,select,input:not([type=checkbox]):not([type=radio]),textarea,summary) {min-height:44px}
+html[data-wsh-frame][data-amin-surface][data-amin-touch=true] :is(.amin-tabs,[role=tablist]) button {min-height:44px}
+html[data-wsh-frame][data-amin-surface][data-amin-touch=true] :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {font-size:max(16px,var(--amin-font))!important}
 @media (max-width:640px),(pointer:coarse) {
-  :is(.amin-ui,html[data-wsh-frame][data-amin-surface]) {--amin-control-height:44px}
-  :is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(button,select,input:not([type=checkbox]):not([type=radio]),textarea,summary) {min-height:44px}
+  .amin-ui {--amin-control-height:44px}
+  .amin-ui :is(button,select,input:not([type=checkbox]):not([type=radio]),textarea,summary) {min-height:44px}
   .amin-ui :is(.amin-tabs,[role=tablist],.dm-tabs,.dm-settings-categories) button {min-height:44px}
   .amin-ui :is(.amin-check,.amin-info-check,.amin-wb-check,.amin-worldbook-sources label) {min-height:44px}
   #amin-os :is(.amin-icon-button,.amin-home-tab) {min-width:44px;min-height:44px;flex-basis:44px}
 }
 @media (max-width:640px) {
-  :is(.amin-ui,html[data-wsh-frame][data-amin-surface]) :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {font-size:max(16px,var(--amin-font))!important}
+  .amin-ui :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {font-size:max(16px,var(--amin-font))!important}
   .amin-ui :is(.amin-form-grid,.amin-target-fields,.amin-org-grid) {grid-template-columns:minmax(0,1fr)}
   .amin-ui .amin-span-full {grid-column:auto}
   .amin-ui .amin-ability-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -175,3 +189,12 @@ html[data-wsh-frame][data-amin-surface] .fill {background:var(--amin-accent)}
 @media (prefers-reduced-motion:reduce) {
   .amin-ui *,.amin-ui *::before,.amin-ui *::after {animation:none!important;transition:none!important}
 }
+
+/* Linkage mode badge at the end of each linked app's context bar. */
+:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module] {display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto;min-height:28px;padding:2px 10px;border-radius:999px!important;font-size:max(11px,calc(var(--amin-font) - 1px))!important;line-height:1.4!important;white-space:nowrap;overflow-wrap:normal;color:var(--amin-text)!important;background:var(--amin-card)!important;border:1px solid var(--amin-line)!important}
+:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module]::before {content:'';width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:var(--amin-muted)}
+:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=auto]::before {background:#22a06b}
+:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=review]::before {background:#d9a21b}
+:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=readonly]::before {background:#3b82c4}
+
+@media (pointer:coarse) {:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module] {min-height:36px}}

@@ -118,7 +118,7 @@ function fixture() {
 test('save list exposes scope, source floor, version, modules, tab semantics and disposes cleanly', () => {
     const f = fixture();
     assert.equal(mount(f.root, { api: f.api, document: f.doc }), f.view, 'mount stays idempotent');
-    assert.match(f.root.textContent, /剧情存档 · chat-a · 1 个命名存档/);
+    assert.match(f.root.textContent, /chat-a · 1 个命名存档/);
     assert.match(f.root.textContent, /第 3 楼 · 第 2 个候选 · 格式 v1/);
     assert.match(f.root.textContent, /角色档案 v1、场景与时间 v1/);
     assert.doesNotMatch(f.root.textContent, /模块（3）|信息资料库/);
@@ -134,7 +134,7 @@ test('create and restore remain previews until explicit confirmation and restore
     await click(f.root, '预览创建存档'); assert.equal(f.store.saves.length, 1); assert.match(f.root.textContent, /待确认 · 建立当前剧情存档/);
     await click(f.root, '确认创建存档'); assert.equal(f.store.saves.length, 2); assert.equal(f.api.stats().createApplies, 1);
     await click(f.root, '预览恢复'); assert.equal(f.store.backups.length, 0); assert.equal(f.api.stats().restoreApplies, 0);
-    assert.match(f.root.textContent, /确认时创建的安全备份/); assert.match(f.root.textContent, /此备份尚未写入/); assert.match(f.root.textContent, /最近 5 份/);
+    assert.match(f.root.textContent, /确认时创建的安全备份/); assert.match(f.root.textContent, /此备份尚未写入/); assert.match(f.root.textContent, /最近 10 份/);
     assert.match(f.root.textContent, /聊天消息、回复候选和正文不会回退或删除/); assert.match(f.root.textContent, /从此处新开分支/);
     assert.match(f.root.textContent, /场景与时间/); assert.match(f.root.textContent, /当前：黄昏 · 门厅/); assert.match(f.root.textContent, /应用后：清晨 · 古堡外/);
     assert.match(f.root.textContent, /数量摘要相同，但模块内容有变化/); assert.match(f.root.textContent, /characters\.char-1\.stats\.hp/);

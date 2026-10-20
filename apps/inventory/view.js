@@ -3,6 +3,9 @@ import { mountGeneration } from '../generation/view.js';
 import { uuid } from '../../uuid.js';
 import { createInventoryService, getSharedInventoryService } from './service.js';
 import { WEAR_SLOTS, WEAR_LAYERS } from './model.js';
+import {contextLine} from '../shared/context-line.js';
+import {linkedEmpty} from '../shared/open-app.js';
+import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
 const TABS = { items: '物品', wear: '穿戴与外观', balances: '资源与货币', ledger: '变更账本' };
@@ -18,6 +21,7 @@ export function mount(target, options = {}) {
     const { make, select, checkbox, grid, toolbar } = formControls;
     const page = make('section', '', 'amin-ui amin-page amin-app-page amin-inventory');
     const context = make('div', '', 'amin-context'), tabs = make('nav', '', 'amin-tabs'), notice = make('div', '', 'amin-notice');
+    attachLinkageBadge(context, 'inventory', { getContext: () => api.context?.() });
     const review = make('section', '', 'amin-stack'), body = make('section', '', 'amin-stack');
     const instance = 'amin-inventory-' + uuid();
     tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '背包与资源页面');
@@ -95,8 +99,7 @@ export function mount(target, options = {}) {
         body.setAttribute('aria-labelledby', instance + '-tab-' + selected);
     }
     function reflectContext() {
-        const ctx = api.context?.(), id = ctx?.getCurrentChatId?.() ?? ctx?.chatId;
-        context.textContent = `当前聊天${id != null ? ' · ' + id : ''} · 当前分支的背包与资源；所有数量由你登记，预览后确认才生效。`;
+        context.textContent = contextLine(api.context?.(), '当前分支的背包与资源', '数量预览后确认才生效');
     }
     function summaryText(summary) {
         if (typeof summary === 'string') return summary;
@@ -254,12 +257,13 @@ export function mount(target, options = {}) {
             const entries = state.ledger.filter(entry => (!filters.owner || entry.entries?.some(change => change.ownerId === filters.owner))
                 && (!filters.kind || entry.entries?.some(change => change.kind === filters.kind))
                 && (!filters.query || [entry.reason, entry.summary, OP_LABELS[entry.op], ...(entry.entries ?? []).map(change => change.name + ' ' + ownerLabel(change.ownerId))].join(' ').toLocaleLowerCase().includes(filters.query.toLocaleLowerCase()))).slice().reverse();
-            list.append(make('p', `符合筛选的记录 ${entries.length} 条，显示最近 ${Math.min(entries.length, filters.count)} 条。`, 'amin-meta'));
-            if (!entries.length) list.append(make('p', '还没有符合筛选的变更记录。确认物品或资源操作后会自动记账。', 'amin-empty'));
+            if (!state.ledger.length) list.append(make('p', '还没有变更记录。确认物品或资源操作后会自动记账。', 'amin-empty'));
+            else { list.append(make('p', `符合筛选的记录 ${entries.length} 条，显示最近 ${Math.min(entries.length, filters.count)} 条。`, 'amin-meta')); if (!entries.length) list.append(make('p', '没有符合筛选的变更记录。', 'amin-empty')); }
             for (const entry of entries.slice(0, filters.count)) drawLedgerEntry(entry, list);
         } else {
             const entries = (itemTab() ? state.items : state.balances).filter(matches).filter(entry => selected !== 'wear' || entry.wear?.slot || entry.equipped);
-            if (!entries.length) list.append(make('p', itemTab() ? '没有符合筛选的物品。先在人物应用登记人物，再添加随身物品；衣物可指定穿戴部位。' : '没有符合筛选的资源账户。可登记金币、补给或其他需要记账的资源。', 'amin-empty'));
+            const recorded = (itemTab() ? state.items : state.balances).length;
+            if (!entries.length && (recorded || characters.length)) list.append(make('p', recorded ? itemTab() ? '没有符合筛选的物品。' : '没有符合筛选的资源账户。' : itemTab() ? '还没有物品。点击“登记新物品”开始记录；衣物可指定穿戴部位。' : '还没有资源账户。可登记金币、补给或其他需要记账的资源。', 'amin-empty'));
             for (const entry of entries) {
                 const box = card(entry.name, list), heading = make('div', '', 'amin-section-heading');
                 heading.append(make('strong', itemTab() ? `数量 ${entry.quantity}${entry.equipped ? ' · 已装备' : ''}` : `余额 ${entry.amount}${entry.unit ? ' ' + entry.unit : ''}`), make('span', ownerLabel(entry.ownerId), 'amin-meta')); box.append(heading);
@@ -292,7 +296,7 @@ export function mount(target, options = {}) {
         if (selected !== 'ledger') {
             const actions = toolbar(body);
             const add = button(actions, itemTab() ? '登记新物品' : '登记资源账户', () => itemTab() ? editItem() : editBalance(), { primary: true, kind: 'top' });
-            if (!characters.length) { add.disabled = true; bodyControls.find(row => row.control === add).base = true; body.append(make('p', '当前分支还没有人物。先在人物应用登记人物，即可将新物品与资源归到具体人物。', 'amin-empty')); }
+            if (!characters.length) { add.disabled = true; bodyControls.find(row => row.control === add).base = true; body.append(linkedEmpty(make, '当前分支还没有人物。先在人物卡登记人物，即可将新物品与资源归到具体人物。', 'characters', { onError: error => say(error.message, 'error') })); }
         }
         const filter = grid(body), refs = new Set([...state.items, ...state.balances, ...state.ledger.flatMap(entry => entry.entries ?? [])].map(entry => entry.ownerId));
         if (filters.owner) refs.add(filters.owner);
@@ -307,6 +311,8 @@ export function mount(target, options = {}) {
             const count = select(filter, '显示最近记录', [[50, '最近 50 条'], [100, '最近 100 条'], [200, '最近 200 条']], filters.count, 'filter');
             kind.addEventListener('change', () => { filters.kind = kind.value; drawEntries(); }); count.addEventListener('change', () => { filters.count = Number(count.value); drawEntries(); });
         }
+        // Search and filters appear once this tab has records; an empty tab shows only its empty state and add button.
+        filter.hidden = !(selected === 'ledger' ? state.ledger.length : itemTab() ? state.items.length : state.balances.length);
         list = make('div', '', 'amin-stack'); body.append(list); drawEntries();
     }
     function render() {

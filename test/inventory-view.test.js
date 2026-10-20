@@ -46,7 +46,7 @@ const coin = { name: '金币', ownerId: 'alice', amount: 100.5, unit: '枚', not
 
 test('inventory mount is idempotent, uses accessible controls, and disposes its surface', () => {
     const f = fixture(); assert.equal(mount(f.root, f.options), f.view); assert.equal(f.root.children.length, 1);
-    assert.match(f.root.textContent, /当前聊天.*inventory-chat-a/);
+    assert.match(f.root.textContent, /inventory-chat-a · 当前分支/);
     assert.equal(find(f.root, '物品').getAttribute('role'), 'tab');
     assert.ok(walk(f.root).filter(node => node.tagName === 'BUTTON').every(node => node.type === 'button'));
     find(f.root, '物品').dispatch('keydown', { key: 'End' }); assert.equal(find(f.root, '变更账本').getAttribute('aria-selected'), 'true');
@@ -121,7 +121,8 @@ test('switching chat cancels pending preview and retains a clearly invalid old e
 });
 
 test('empty state guides character creation, and filtering retains the active input node', async () => {
-    const empty = fixture({ characters: [] }); assert.equal(find(empty.root, '登记新物品').disabled, true); assert.match(empty.root.textContent, /先在人物应用登记人物/); empty.dispose();
+    const empty = fixture({ characters: [] }); assert.equal(find(empty.root, '登记新物品').disabled, true); assert.match(empty.root.textContent, /先在人物卡登记人物/); assert.ok(find(empty.root, '打开人物卡')); assert.equal(find(empty.root, '搜索名称、人物或备注', 'input'), undefined); empty.dispose();
+    const blank = fixture(); assert.equal(find(blank.root, '搜索名称、人物或备注', 'input'), undefined); assert.match(blank.root.textContent, /还没有物品/); blank.dispose();
     const f = fixture(); await f.seed('save-item', potion); await f.seed('save-item', { ...potion, name: '火把', ownerId: 'bob', notes: '照明' });
     const query = edit(f.root, '搜索名称、人物或备注', '玻璃'); assert.match(f.root.textContent, /治疗药水/); assert.doesNotMatch(f.root.textContent, /火把/); assert.equal(find(f.root, '搜索名称、人物或备注', 'input'), query);
     edit(f.root, '搜索名称、人物或备注', ''); edit(f.root, '筛选所属人物', 'bob', 'select'); assert.match(f.root.textContent, /火把/); assert.doesNotMatch(f.root.textContent, /治疗药水/); f.dispose();

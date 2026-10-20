@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createStore } from '../src/core/store.js';
 import { createDemoDocument } from '../src/core/demo.js';
 import { bindChatStore, STORAGE_KEY } from '../src/adapters/chat.js';
-import { BACKUP_KEY, MIGRATION_KEY, ROOTS } from '../../state2/storage.js';
+import { ROOTS } from '../../story-state/legacy-roots.js';
 
 function setup(save) {
     const records = new Map(), a = {}, b = {}; let metadata = a, id = 'a';
@@ -76,8 +76,8 @@ test('migrated State 2.0 map keeps projected chat state above newer or malformed
     const s = setup(), key = `dynamic-map.chat.test.${s.bridge.scope()}`;
     const projected = createDemoDocument(), stale = structuredClone(projected);
     stale.maps.world.currentLocation = 'qingyun_sect';
-    s.a[MIGRATION_KEY] = { version: 1, owner: 'amin-os/state2-v1', roots: Object.values(ROOTS), createdAt: '2026-09-23T00:00:00Z' };
-    s.a[BACKUP_KEY] = { version: 1, roots: {}, source: {} };
+    s.a.amin_os_state2_v1 = { version: 1, owner: 'amin-os/state2-v1', roots: Object.values(ROOTS), createdAt: '2026-09-23T00:00:00Z' };
+    s.a.amin_os_state2_backup_v1 = { version: 1, roots: {}, source: {} };
     s.a[STORAGE_KEY] = { updatedAt: 1, document: projected };
     s.records.set(key, JSON.stringify({ updatedAt: 99, document: stale, synced: false }));
     s.bridge.switchChat();
