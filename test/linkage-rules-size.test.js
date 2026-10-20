@@ -48,7 +48,7 @@ test('every common action is advertised; advanced actions only with the opt-in s
     }
     assert.ok(advancedCount >= 6);
     assert.ok(advanced.length > plain.length);
-    for (const name of ['save-rule', 'delete-rule', 'acknowledge-alert', 'settle-absence', 'draft_chronicle']) assert.ok(has(advanced, name), name);
+    for (const name of ['save-rule', 'delete-rule', 'acknowledge-alert', 'settle-absence', 'draft-chronicle']) assert.ok(has(advanced, name), name);
     assert.match(advanced, /monthLengths/); assert.doesNotMatch(plain, /monthLengths/);
 });
 

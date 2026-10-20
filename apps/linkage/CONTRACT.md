@@ -14,7 +14,16 @@ export const adapter = {
   // enables advanced descriptions; validation accepts them either way.
   // `sources` (source-floor fields) is shown to manual generation only, since
   // the unified coordinator binds the reply floor automatically.
-  spec: { notes: 'target=物品ID。', actions: [{ name: 'consume-item', args: 'quantity:int>0' }] },
+  // Action names are kebab-case: create-x / update-x / delete-x plus a few
+  // domain verbs (consume-item, move-to, settle-effect). `creates: kind` marks
+  // an action whose target is always a new `@new:` alias; `upserts: kind` one
+  // whose target may be. `aliases` lists legacy names (set_fact, add_node, …):
+  // parseUpdate maps them to `name`, rules never show them.
+  spec: { notes: 'target=物品ID。', actions: [
+    { name: 'create-item', creates: 'item', args: 'name,ownerId,quantity:int≥0' },
+    { name: 'update-item', aliases: ['save-item'], args: 'name?,quantity?' },
+    { name: 'consume-item', args: 'quantity:int>0' },
+  ] },
   contract: renderContract(spec), // full text, for manual generation prompts
   // Current branch JSON-safe data. Missing modules return a valid empty state.
   read(ctx) {},
@@ -38,4 +47,4 @@ Module settings are managed by the coordinator at `amin_os_linkage_v1`: master e
 
 New optional fields must remain backward-compatible with 0.13 snapshots and existing histories. Update the save adapters alongside changes to snapshot validation and restoration. Tests must cover real invariants, branch ownership and persistence/retry behavior.
 
-Explicit manual generation uses a separate coordinator with `manualModules`, restricted to characters, inventory, relationships, scene, journal and status. Status is update-only in the generation service, requires explicit chat floors, and permits only absolute `set` operations on existing typed fields. Its manual coordinator also enforces `set` plus the status module’s enabled/read/write policy, even when the background master is off. This scope is copied at construction, cannot change background settings or capture normal chat generations, and still validates every returned patch and reference. The generation service enforces mode, selected sources and permitted actions before staging. Manual confirmation appends the same persistence ledger without enabling background linkage.
+Explicit manual generation uses a separate coordinator with `manualModules`, restricted to characters, inventory, relationships, scene, journal and status. Status is update-only in the generation service, requires explicit chat floors, and permits only absolute `set-field` operations on existing typed fields. Its manual coordinator also enforces `set-field` plus the status module’s enabled/read/write policy, even when the background master is off. This scope is copied at construction, cannot change background settings or capture normal chat generations, and still validates every returned patch and reference. The generation service enforces mode, selected sources and permitted actions before staging. Manual confirmation appends the same persistence ledger without enabling background linkage.

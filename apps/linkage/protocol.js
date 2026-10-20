@@ -1,5 +1,7 @@
 import { MODULES, plain, validateJSON } from './policy.js';
 import { parseModelJSON } from '../../ai/json.js';
+import { getAdapter } from './registry.js';
+import { canonicalAction } from './contract.js';
 
 export const OPEN = '<amin_update>', CLOSE = '</amin_update>';
 // Accept Markdown escaping of delimiters only. Never unescape the JSON payload.
@@ -9,7 +11,10 @@ function tags(text) {
         index: match.index, length: match[0].length, closing: match[0].includes('/'),
     }));
 }
-export function parseUpdate(input) {
+/** Validate one update. Legacy action names (e.g. set_fact, add_node) are
+ * mapped to the adapter's current name unless `canonical:false` asks for the
+ * literal payload, as idempotency checks against old receipts need. */
+export function parseUpdate(input, { canonical = true } = {}) {
     let raw = input;
     if (typeof input === 'string') {
         if (input.length > 2 * 1024 * 1024) throw Error('一次联动更新超过 2 MiB。');
@@ -29,6 +34,8 @@ export function parseUpdate(input) {
         if (change.target !== undefined && (typeof change.target !== 'string' || !change.target || change.target.length > 300)) throw Error('更新 target 必须是已有对象标识或明确的新对象标识。');
         if (typeof change.reason !== 'string' || !change.reason.trim() || change.reason.length > 2000) throw Error('每项更新必须说明已经发生的剧情依据（最多 2000 字）。');
     }
-    return structuredClone(raw);
+    const update = structuredClone(raw);
+    if (canonical) for (const change of update.changes) change.action = canonicalAction(getAdapter(change.module)?.spec, change.action);
+    return update;
 }
 export function hasUpdate(text) { return typeof text === 'string' && tagPattern().test(text); }

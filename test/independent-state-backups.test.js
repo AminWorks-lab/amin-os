@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
-import { emptyState } from '../apps/story-state/schema.js';
+import { emptyState, stateHash, canonicalJSON } from '../apps/story-state/schema.js';
+import { sha256HexSync } from '../apps/tts/source-hash.js';
 import { createIndependentBackups, createIndependentBackupFileStore, BACKUP_TABLE, LEGACY_TABLE, backupKey, legacySourceKey } from '../apps/story-state/backups.js';
 import { chatIdentity } from '../apps/shared/operations.js';
 
@@ -20,20 +21,36 @@ function fixture() {
     return { get ctx() { return ctx; }, set ctx(value) { ctx = value; }, records, writes, files, service };
 }
 const state = revision => ({ ...emptyState({ updatedAt: '2026-10-10T00:00:00.000Z' }), revision });
-test('backup storage is separate, idempotent, bounded to five previous full snapshots', async () => {
+test('backup storage is separate, idempotent and bounded by the ring limit (default 10)', async () => {
     const f = fixture(), before = clone(f.ctx);
-    for (let revision = 0; revision < 8; revision++) await f.service.savePrevious(f.ctx, state(revision));
+    for (let revision = 0; revision < 12; revision++) await f.service.savePrevious(f.ctx, state(revision));
     const list = await f.service.list();
-    assert.deepEqual(list.map(entry => entry.revision), [7, 6, 5, 4, 3]);
+    assert.deepEqual(list.map(entry => entry.revision), [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+    assert.ok(list.every(entry => entry.kind === 'before-change' && Object.keys(entry).sort().join() === 'at,hash,id,kind,label,revision'));
     assert.equal(f.records.size, 1);
-    assert.equal(f.service.status().count, 5);
-    const saved = await f.service.savePrevious(f.ctx, state(7));
-    assert.equal(saved.duplicate, true); assert.equal(f.writes.length, 8);
-    assert.deepEqual(await f.service.load(f.ctx, list[0].id), state(7));
+    assert.equal(f.service.status().count, 10);
+    assert.equal(f.service.status().limit, 10);
+    const saved = await f.service.savePrevious(f.ctx, state(11));
+    assert.equal(saved.duplicate, true); assert.equal(f.writes.length, 12, 'the same revision is never stored twice');
+    const loaded = await f.service.load(f.ctx, list[0].id);
+    assert.equal(loaded.revision, 11); assert.deepEqual(loaded.snapshot.modules, state(11).modules);
     assert.deepEqual(f.ctx, before, 'backup writes never mirror or mutate canonical/chat metadata');
     const exported = await f.service.export();
-    assert.equal(exported.entries.length, 5); exported.entries[0].state.revision = 99;
-    assert.equal((await f.service.load(list[0].id)).revision, 7);
+    assert.equal(exported.entries.length, 10); exported.entries[0].revision = 99;
+    assert.equal((await f.service.load(list[0].id)).revision, 11);
+});
+test('a ring limit stored in the chat bounds every kind of backup', async () => {
+    const f = fixture(); f.ctx.chatMetadata.amin_os_saves_v1 = { version: 2, saves: [], ring: [], checkpointSettings: { enabled: true, limit: 3 } };
+    for (let revision = 0; revision < 5; revision++) await f.service.savePrevious(f.ctx, state(revision), { kind: revision % 2 ? 'auto' : 'before-change' });
+    assert.deepEqual((await f.service.list()).map(entry => entry.revision), [4, 3, 2]);
+});
+test('version 1 backup records stay readable as before-change entries', async () => {
+    const f = fixture(), key = backupKey(chatIdentity(f.ctx));
+    const hash = stateHash(state(4));
+    const old = { version: 1, owner: 'amin-os/independent-backups-v1', chat: chatIdentity(f.ctx), entries: [{ id: 'r4-' + hash.slice(7), hash, at: '2026-10-01T00:00:00.000Z', label: '旧备份', state: state(4) }] };
+    f.records.set(key, { ...old, hash: 'sha256:' + sha256HexSync(canonicalJSON(old)) });
+    const [entry] = await f.service.list();
+    assert.equal(entry.kind, 'before-change'); assert.equal(entry.revision, 4); assert.equal(entry.label, '旧备份');
 });
 test('two chat identities stay isolated and corrupt checksums refuse without rewriting', async () => {
     const f = fixture(); await f.service.savePrevious(f.ctx, state(1));
@@ -60,6 +77,7 @@ test('chat switch during a pending read rejects without writing a different chat
     const f = fixture(); let release;
     f.files.get = () => new Promise(resolve => { release = resolve; });
     const pending = f.service.savePrevious(f.ctx, state(1));
+    while (!release) await new Promise(resolve => setImmediate(resolve));
     f.ctx = { ...f.ctx, chatId: 'other', chatMetadata: {} }; release(null);
     await assert.rejects(pending, error => error.code === 'AMIN_BACKUP_CONTEXT_CHANGED');
     assert.equal(f.writes.length, 0);

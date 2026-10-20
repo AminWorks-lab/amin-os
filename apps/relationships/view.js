@@ -4,6 +4,7 @@ import { personLabel, renderRelationshipGraph } from './graph.js';
 import { evidenceMatches } from './model.js';
 import {contextLine} from '../shared/context-line.js';
 import {linkedEmpty} from '../shared/open-app.js';
+import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
 
@@ -15,6 +16,7 @@ export function mount(target, options = {}) {
     const make = (tag, text = '', className = '') => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
     const page = make('section', '', 'amin-page amin-app-page amin-relationships');
     const context = make('div', '', 'amin-context'), notice = make('div', '', 'amin-notice');
+    attachLinkageBadge(context, 'relationships', { getContext: () => api.context?.() });
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     const retryPanel = make('div', '', 'amin-stack'), review = make('div', '', 'amin-stack'), controls = make('div', '', 'amin-card amin-stack');
     const graphPanel = make('section', '', 'amin-card amin-stack'), editorHost = make('section', '', 'amin-stack');

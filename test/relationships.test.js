@@ -143,18 +143,19 @@ test('host hooks use pre-candidate facts for retries and clean up all injected r
     const callbacks = new Map(), prompts = new Map(); let count = 0;
     const names = ['GENERATION_AFTER_COMMANDS', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'CHAT_CHANGED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'MESSAGE_DELETED', 'MESSAGE_SENT', 'MESSAGE_RECEIVED'];
     const ctx = { chat: [{ name: '玩家', is_user: true, mes: '交谈' }], chatMetadata: {}, characterId: 1, getCurrentChatId: () => 'host', saveMetadata: async () => {},
-        eventTypes: Object.fromEntries(names.map(value => [value, value])), eventSource: { on(name, callback) { callbacks.set(name, callback); }, removeListener(name) { callbacks.delete(name); } },
+        eventTypes: Object.fromEntries(names.map(value => [value, value])), eventSource: { on(name, callback) { if (!callbacks.has(name)) callbacks.set(name, new Set()); callbacks.get(name).add(callback); }, removeListener(name, callback) { callbacks.get(name)?.delete(callback); if (!callbacks.get(name)?.size) callbacks.delete(name); } },
         setExtensionPrompt(name, value) { prompts.set(name, value); },
     };
+    const emit = (name, ...args) => { let result; for (const callback of [...(callbacks.get(name) ?? [])]) result = callback(...args); return result; };
     characters(ctx, [person('alice'), person('bob')]);
     const service = createRelationshipsService(() => ctx, { createId: () => `host_${++count}`, now: () => at });
     assert.equal(service.supported, true); service.saveRelationship(relationship()); await service.confirm(); service.stage('settings', { includeInContext: true }); await service.confirm();
     ctx.chat.push({ name: '人物', mes: '关系发生变化', swipe_id: 0 }); service.sync(); service.saveRelationship(relationship({ type: '怀疑' })); await service.confirm();
-    for (const type of ['regenerate', 'swipe']) { callbacks.get('GENERATION_AFTER_COMMANDS')(type); assert.match(prompts.get(PROMPT_KEY), /"type":"信任"/); assert.doesNotMatch(prompts.get(PROMPT_KEY), /"type":"怀疑"/); }
-    callbacks.get('GENERATION_AFTER_COMMANDS')('continue'); assert.match(prompts.get(PROMPT_KEY), /"type":"怀疑"/);
-    for (const args of [['quiet'], ['normal', {}, true], ['normal', { signal: { aborted: true } }]]) { callbacks.get('GENERATION_AFTER_COMMANDS')(...args); assert.equal(prompts.get(PROMPT_KEY), ''); }
+    for (const type of ['regenerate', 'swipe']) { emit('GENERATION_AFTER_COMMANDS', type); assert.match(prompts.get(PROMPT_KEY), /"type":"信任"/); assert.doesNotMatch(prompts.get(PROMPT_KEY), /"type":"怀疑"/); }
+    emit('GENERATION_AFTER_COMMANDS', 'continue'); assert.match(prompts.get(PROMPT_KEY), /"type":"怀疑"/);
+    for (const args of [['quiet'], ['normal', {}, true], ['normal', { signal: { aborted: true } }]]) { emit('GENERATION_AFTER_COMMANDS', ...args); assert.equal(prompts.get(PROMPT_KEY), ''); }
     for (const name of ['GENERATION_ENDED', 'GENERATION_STOPPED', 'CHAT_CHANGED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'MESSAGE_DELETED']) {
-        callbacks.get('GENERATION_AFTER_COMMANDS')('normal'); assert.ok(prompts.get(PROMPT_KEY)); callbacks.get(name)(); assert.equal(prompts.get(PROMPT_KEY), '');
+        emit('GENERATION_AFTER_COMMANDS', 'normal'); assert.ok(prompts.get(PROMPT_KEY)); emit(name); assert.equal(prompts.get(PROMPT_KEY), '');
     }
     service.dispose(); service.dispose(); assert.equal(callbacks.size, 0); assert.equal(prompts.get(PROMPT_KEY), '');
 });

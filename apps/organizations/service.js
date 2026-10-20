@@ -1,9 +1,8 @@
 import { saveChatMetadata } from '../shared/chat-save.js';
-import {ROOT,read,empty,clone,equal,validate,diff,enforceLocks} from './model.js';
-import {checkpointState} from '../status/state-checkpoint.js';
+import {ROOT,read,clone,equal,validate,diff,enforceLocks} from './model.js';
 import {createHistory} from '../status/history.js';
 import {subscribeStateChanges,chatIdentity as operationIdentity,acquireMetadataWrite} from '../shared/operations.js';
-import {getState2Runtime,state2HistoryMode} from '../state2/runtime.js';
+import {state2HistoryMode} from '../state2/runtime.js';
 import './story-state.js';
 import { isIndependent, readStoryRoot, writeStoryRoot, legacyModule, STATE_KEY, prepareIndependentManualWrite } from '../story-state/access.js';
 export const META='amin_os_organizations_v1',SETTINGS='amin_os_organizations_settings_v1';
@@ -28,23 +27,13 @@ export function createStore({context,setVariable,saveMetadata=ctx=>saveChatMetad
  const invalidate=()=>{epoch++;pending=null;controller?.abort();controller=null;requestToken=null;};
  const requireReady=()=>{const native=nativeState();if(native?.managed&&!native.ready)throw Error('正在恢复当前聊天的楼层变量，请等待恢复完成。');return native;};
  function compatible(){const c=context(),l=c.chatMetadata?.extensions?.LittleWhiteBox;if(isIndependent(c)||c.extensionSettings?.LittleWhiteBox?.variablesMode==='1.0')return;for(const k of ['stateCkptV2','stateLogV2'])if(l?.[k]&&(l[k].version??1)!==1)throw Error('小白X记录格式不兼容，未写入');}
- function writeDoc(doc,{checkpoint=true}={}){
+ function writeDoc(doc){
   const c=context();requireReady();compatible();const value=validate(doc);if(isIndependent(c))writeStoryRoot(c,ROOT,JSON.stringify(value));else setVariable(ROOT,JSON.stringify(value));
   if(!equal(readDoc(),value))throw Error('变量写入后校验失败');
-  if(checkpoint)checkpointState(c);accepted=clone(value);
+  accepted=clone(value);
  }
  const history=createHistory({context,historyKey:'amin_os_organizations_history_v1',messageKey:'amin_org_message_id',allowGroups:true,
-  nativeState,
-  externalRead:async index=>{
-   const runtime=getState2Runtime();
-   if(typeof runtime?.readStoryFloor!=='function')throw Error('外置楼层读取尚未就绪。');
-   if(isIndependent(context()))return {doc:readDoc(),assessment:clone(view().assessment)};
-   const snapshot=await runtime.readStoryFloor(index);
-   return {doc:read(snapshot.variables?.[ROOT]),assessment:null};
-  },
-  read:()=>({doc:readDoc(),assessment:clone(view().assessment)}),
-  write:value=>{writeDoc(value?.doc??empty(),{checkpoint:false});meta().assessment=clone(value?.assessment??null);},
-  beforeRestore:()=>{invalidate();accepted=null;},warn:message=>{lastError=message;notify();},changed:()=>notify()});
+  read:()=>({doc:readDoc(),assessment:clone(view().assessment)}),changed:()=>notify()});
  function sync(){
   if(disposed||busy)return;
   try{

@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {defaultTiles,normalizeTiles,moveTile,migrateTiles,loadTiles,saveTiles,TILE_KEY,LEGACY_TILE_KEY,PREVIOUS_TILE_KEY,TILE_COLUMNS,TILE_SPANS,moveTileToCell,canPlaceTile,loadTileGrid,saveTileGrid,normalizeTileGrid} from '../tile-layout.js';
 test('release applications appear once while later user removals remain removed',()=>{
  const data=new Map([[TILE_KEY,JSON.stringify({version:2,tiles:[{id:'mine',target:'map',label:'我的地图',size:'wide'}]})]]),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
- const migrated=loadTiles(storage);assert.deepEqual(migrated.map(t=>t.target),['map','characters','inventory','relationships','saves']);assert.equal(migrated[0].label,'我的地图');
+ const migrated=loadTiles(storage);assert.deepEqual(migrated.map(t=>t.target),['map','characters','inventory','relationships','saves','linkage']);assert.equal(migrated[0].label,'我的地图');
  assert.deepEqual(loadTiles(storage),migrated);saveTiles(storage,migrated.filter(t=>t.target!=='saves'));assert.equal(loadTiles(storage).some(t=>t.target==='saves'),false);
 });
 test('corrupt or old layouts retain every application exactly once',()=>{
  assert.deepEqual(normalizeTiles(null),defaultTiles());
  const normalized=migrateTiles([{id:'reply',size:'wide'},{id:'reply',size:'small'},{id:'map',size:'huge'},{id:'unknown',size:'wide'},null]);
- assert.deepEqual(normalized.map(t=>t.id),['reply','map','characters','inventory','relationships','saves','scene','journal','dice','status','organizations','information','effects','worldbooks','tts','ai','settings']);
+ assert.deepEqual(normalized.map(t=>t.id),['reply','map','characters','inventory','relationships','saves','scene','journal','dice','status','organizations','information','effects','worldbooks','tts','ai','settings','linkage']);
  assert.equal(normalized[0].size,'wide');assert.equal(normalized[1].size,'wide');
 });
 test('drag moves before or after target, keeping sizes and source immutable',()=>{
@@ -40,7 +40,7 @@ test('storage migration preserves legacy order and customized layouts survive re
 
 test('portrait tiles retain footprint through persistence, copies and reordering',()=>{
  const layout=[{id:'long',target:'map',label:'竖向地图',size:'tall'},...defaultTiles()];
- assert.equal(normalizeTiles(layout)[0].size,'tall');assert.equal(moveTile(layout,'long','settings',true).at(-1).size,'tall');
+ assert.equal(normalizeTiles(layout)[0].size,'tall');assert.equal(moveTile(layout,'long','linkage',true).at(-1).size,'tall');
  const data=new Map(),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};saveTiles(storage,layout);assert.deepEqual(loadTiles(storage),normalizeTiles(layout));
 });
 
@@ -107,4 +107,24 @@ test('legacy layouts default to six columns and invalid grid settings fall back 
  for(const scale of [0,69,101,NaN,Infinity,'80',null])assert.deepEqual(normalizeTileGrid({columns:4,scale}),{columns:4,scale:100});
  assert.deepEqual(normalizeTileGrid({columns:4,scale:70.4}),{columns:4,scale:70});
  saveTiles(storage,loadTiles(storage),{columns:4,scale:75});const saved=JSON.parse(data.get(TILE_KEY));assert.deepEqual(saved.grid,{columns:4,scale:75});assert.equal(saved.version,3);
+});
+
+test('saved layouts gain the linkage tile once, below the last row, without moving existing tiles',()=>{
+ const data=new Map(),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
+ const saved=[{id:'map',target:'map',label:'',size:'wide',x:0,y:0},{id:'dice',target:'dice',label:'',size:'small',x:5,y:3}];
+ const knownTargets=defaultTiles().map(t=>t.target).filter(t=>t!=='linkage');
+ data.set(TILE_KEY,JSON.stringify({version:3,knownTargets,grid:{columns:6,scale:100},tiles:saved}));
+ const loaded=loadTiles(storage),linkage=loaded.filter(t=>t.target==='linkage');
+ assert.equal(linkage.length,1);assert.equal(loaded.at(-1).target,'linkage');
+ assert.deepEqual(loaded.slice(0,2).map(({id,x,y})=>({id,x,y})),[{id:'map',x:0,y:0},{id:'dice',x:5,y:3}]);
+ // The gap beside the map is free, but the new tile goes below the bottom row (dice ends at row 4).
+ assert.deepEqual({x:linkage[0].x,y:linkage[0].y,size:linkage[0].size},{x:0,y:4,size:'slimWide'});
+ assert.ok(JSON.parse(data.get(TILE_KEY)).knownTargets.includes('linkage'));
+ saveTiles(storage,loaded.filter(t=>t.target!=='linkage'));assert.equal(loadTiles(storage).some(t=>t.target==='linkage'),false);
+});
+test('version 2 layouts without known targets also gain the linkage tile at the end',()=>{
+ const data=new Map([[PREVIOUS_TILE_KEY,JSON.stringify({version:2,tiles:defaultTiles().filter(t=>t.target!=='linkage')})]]),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
+ const loaded=loadTiles(storage),bottom=Math.max(...defaultTiles().filter(t=>t.target!=='linkage').map(t=>t.y+TILE_SPANS[t.size].h));
+ assert.equal(loaded.at(-1).target,'linkage');assert.equal(loaded.at(-1).y,bottom);
+ assert.equal(loaded.filter(t=>t.target==='linkage').length,1);
 });

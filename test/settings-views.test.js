@@ -68,7 +68,7 @@ test('appearance drafts survive tabs and global reset preserves staged effects',
  globalThis.document=documentStub;
  const target=new Element('div'),view=mountAppearance(target),original=appearance.snapshot();
  edit(control(target,'字号（11–20）'),'17');click(target,'背景与动效');edit(control(target,'背景遮罩深浅 %（0–90）'),'37');
- click(target,'剧情存储');assert.match(target.textContent,/extensions.store/);assert.ok(!descendants(target).some(node=>node.tagName==='BUTTON'&&node.textContent==='保存并应用'));
+ click(target,'剧情存储');assert.match(target.textContent,/Amin 剧情存储/);assert.ok(!descendants(target).some(node=>node.tagName==='BUTTON'&&node.textContent==='保存并应用'));
  click(target,'整体外观');view.open();assert.equal(Number(control(target,'字号（11–20）').value),17);assert.deepEqual(appearance.snapshot(),original);
  click(target,'恢复本页默认');assert.deepEqual(appearance.snapshot(),original);click(target,'保存并应用');
  assert.equal(appearance.snapshot().global.fontSize,original.global.fontSize);assert.equal(appearance.snapshot().desktop.effects.shade,37);

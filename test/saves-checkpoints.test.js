@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createSavesService } from '../apps/saves/service.js';
 import { KEY, validateSnapshot, validateStore } from '../apps/saves/model.js';
 import { chatIdentity, publishExternalMetadataChange } from '../apps/shared/operations.js';
+import { memoryFiles } from './fixtures/memory-backups.mjs';
+import { createIndependentBackups } from '../apps/story-state/backups.js';
 
 const clone = value => structuredClone(value);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -22,8 +24,9 @@ function fixture({ automatic = false, loadBranchHost } = {}) {
         const next = { ...ctx, chatId: 'original - Branch #' + branches, chat: clone(ctx.chat.slice(0, index + 1)), chatMetadata: clone(ctx.chatMetadata) };
         ctx = next; eventSource.emit('chat'); return next.chatId;
     } };
-    const api = createSavesService(() => ctx, { createId: () => 'save-' + (++seq), now: () => '2026-09-23T00:00:00.000Z', loadBranchHost: loadBranchHost ?? (async () => host), autoCheckpoints: automatic });
-    return { api, get ctx() { return ctx; }, get original() { return original; }, host, eventSource, writes: () => writes, branches: () => branches, fail: value => { fail = value; },
+    const files = memoryFiles(), backups = createIndependentBackups(() => ctx, { files });
+    const api = createSavesService(() => ctx, { createId: () => 'save-' + (++seq), now: () => '2026-09-23T00:00:00.000Z', loadBranchHost: loadBranchHost ?? (async () => host), autoCheckpoints: automatic, backups });
+    return { api, files, get ctx() { return ctx; }, get original() { return original; }, host, eventSource, writes: () => writes, branches: () => branches, fail: value => { fail = value; },
         replace: value => { ctx = value; }, listenerCount: () => [...callbacks.values()].reduce((sum, set) => sum + set.size, 0),
         hp(value) { ctx.chatMetadata.variables.状态栏 = JSON.stringify({ 版本: 1, 项目: { 主角: { 生命: value } } }); },
     };
@@ -34,19 +37,20 @@ test('checkpoints capture only the actual tail and keep candidate and content re
     const first = await h.api.captureCheckpoint(); assert.equal(first.source.floor, 1); assert.equal(first.source.path.length, 1);
     assert.equal(h.api.read().checkpoints.length, 1);
     assert.equal((await h.api.captureCheckpoint()).id, first.id); assert.equal(h.writes(), 1, 'no duplicate persistence');
-    h.hp(7); await h.api.captureCheckpoint(); assert.equal(h.api.read().checkpoints.length, 1); assert.equal(h.api.read().checkpoints[0].modules.status.项目.主角.生命, 7);
+    h.hp(7); await h.api.captureCheckpoint(); assert.equal(h.api.read().checkpoints.length, 2); assert.equal(h.api.read().checkpoints.at(-1).modules.status.项目.主角.生命, 7);
     h.ctx.chat[0].swipe_id = 1; h.ctx.chat[0].mes = '来到市场'; await h.api.captureCheckpoint();
-    assert.equal(h.api.read().checkpoints.length, 2); assert.equal(h.api.branchAvailability(first.id).available, false);
+    assert.equal(h.api.read().checkpoints.length, 3); assert.equal(h.api.branchAvailability(first.id).available, false);
     h.ctx.chat[0].swipe_id = 0; h.ctx.chat[0].mes = '来到客房'; assert.equal(h.api.branchAvailability(first.id).available, true);
     h.ctx.chat.push({ name: '玩家', is_user: true, mes: '休息' }); await h.api.captureCheckpoint();
-    assert.equal(h.api.read().checkpoints.length, 3); assert.equal(h.api.branchAvailability(first.id).available, true);
+    assert.equal(h.api.read().checkpoints.length, 4); assert.equal(h.api.branchAvailability(first.id).available, true);
     h.ctx.chat[0].mes = '已修改'; assert.match(h.api.branchAvailability(first.id).reason, /编辑/); h.api.dispose();
 });
 
 test('old stores and snapshots remain usable without pretending to have historical source proof', async () => {
     const h = fixture(); h.api.stageSave({ name: '旧存档' }); await h.api.confirm();
     const saved = clone(h.api.read().saves[0]); delete saved.source.path; delete saved.source.candidateBinding;
-    h.ctx.chatMetadata[KEY] = { version: 1, saves: [saved], backups: [] };
+    // A 0.18 chat on a host without the external store: every record is inline in metadata.
+    h.files.enabled = false; h.ctx.chatMetadata[KEY] = { version: 1, saves: [saved], backups: [] };
     assert.equal(h.api.read().checkpointSettings.enabled, true); assert.deepEqual(h.api.read().checkpoints, []);
     assert.match(h.api.branchAvailability(saved.id).reason, /旧版/); assert.throws(() => h.api.stageBranch(saved.id), /旧版/);
     h.api.stageRestore(saved.id); await h.api.confirm();
@@ -99,7 +103,7 @@ test('branch import, unsupported hosts, stale candidates and wrong destination f
     const h = fixture({ loadBranchHost: async () => ({}) }), saved = await h.api.captureCheckpoint();
     h.api.stageBranch(saved.id); const before = clone(h.ctx.chatMetadata);
     await assert.rejects(h.api.confirm(), /未提供兼容/); assert.deepEqual(h.ctx.chatMetadata, before); assert.equal(h.api.busy(), false);
-    h.api.discard(); h.ctx.chatId = 'other'; assert.throws(() => h.api.stageBranch(saved.id), /原聊天/); h.api.dispose();
+    h.api.discard(); h.ctx.chatId = 'other'; assert.throws(() => h.api.stageBranch(saved.id), /原聊天|外置存储/); h.api.dispose();
     const other = fixture(), record = await other.api.captureCheckpoint(); other.api.stageBranch(record.id); other.ctx.chat[0].swipe_id = 2;
     await assert.rejects(other.api.confirm(), /变化/); assert.equal(other.branches(), 0); other.api.dispose();
     const wrong = fixture({ loadBranchHost: async () => ({ branchChat: async () => 'wrong' }) }), checkpoint = await wrong.api.captureCheckpoint();
@@ -116,7 +120,11 @@ test('loading the native branch adapter cannot cause duplicate concurrent confir
 
 test('background checkpoint listeners follow actual messages and committed state and dispose cleanly', async () => {
     const h = fixture({ automatic: true });
-    await delay(450); assert.equal(h.api.read().checkpoints.length, 1);
+    await delay(450); assert.equal(h.api.read().checkpoints.length, 0, 'opening a chat records nothing');
+    assert.equal(h.writes(), 0); assert.equal(h.ctx.chatMetadata[KEY], undefined);
+    h.eventSource.emit('message'); await delay(450);
+    assert.equal(h.api.read().checkpoints.length, 0, 'a chat without Amin data or saves is left untouched');
+    await h.api.captureCheckpoint(); assert.equal(h.api.read().checkpoints.length, 1);
     h.ctx.chat.push({ name: '角色', mes: '新一楼' }); h.eventSource.emit('message'); await delay(450);
     assert.deepEqual(h.api.read().checkpoints.map(saved => saved.source.floor), [1, 2]);
     h.hp(4); publishExternalMetadataChange(() => h.ctx, [['variables', '状态栏']], { phase: 'saved' }); await delay(450);

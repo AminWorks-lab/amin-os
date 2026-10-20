@@ -4,7 +4,7 @@ import { createStoryStateRuntime, LEGACY_STORY_KEYS } from '../apps/story-state/
 import { STATE_KEY, STATE_FORMAT, emptyState, validateState } from '../apps/story-state/schema.js';
 import { createIndependentBackups } from '../apps/story-state/backups.js';
 import { createOperationService } from '../apps/shared/operations.js';
-import { ROOTS } from '../apps/state2/storage.js';
+import { ROOTS } from '../apps/story-state/legacy-roots.js';
 import * as Characters from '../apps/characters/model.js';
 import * as Effects from '../apps/effects/model.js';
 import { LIBRARY_KEY, emptyLibrary } from '../apps/effects/library.js';
@@ -131,28 +131,30 @@ test('failed first import save retries the same canonical state and exact static
   } finally { f.dispose(); }
 });
 
-test('runtime saves only the last five previous snapshots in one memory record and save retry adds none', async () => {
+test('runtime keeps previous snapshots in one ring bounded by the default limit and save retry adds none', async () => {
   const files = memoryFiles(), f = fixture({ independent: true, files });
   try {
-    for (let revision = 1; revision <= 7; revision++) await changeNotes(f, `revision ${revision}`);
-    assert.equal(f.ctx.chatMetadata[STATE_KEY].revision, 7);
+    for (let revision = 1; revision <= 12; revision++) await changeNotes(f, `revision ${revision}`);
+    assert.equal(f.ctx.chatMetadata[STATE_KEY].revision, 12);
     const recent = await f.runtime.listBackups();
-    assert.deepEqual(recent.map(entry => entry.revision), [6, 5, 4, 3, 2]);
+    assert.deepEqual(recent.map(entry => entry.revision), [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+    assert.ok(recent.every(entry => entry.kind === 'before-change'));
     assert.equal(files.records.size, 1);
-    assert.equal(files.writes, 7);
-    assert.equal(new Set(recent.map(entry => entry.id)).size, 5);
+    assert.equal(files.writes, 12);
+    assert.equal(new Set(recent.map(entry => entry.id)).size, 10);
+    assert.equal(f.runtime.status().backupLimit, 10);
     const backupPreview = await f.runtime.previewBackup(recent[0].id);
     assert.equal(backupPreview.valid, true);
-    assert.equal(f.ctx.chatMetadata[STATE_KEY].revision, 7, 'backup preview does not restore live state');
-    f.failSave = true; await assert.rejects(changeNotes(f, 'revision 8'), /offline/);
+    assert.equal(f.ctx.chatMetadata[STATE_KEY].revision, 12, 'backup preview does not restore live state');
+    f.failSave = true; await assert.rejects(changeNotes(f, 'revision 13'), /offline/);
     const committed = copy(f.ctx.chatMetadata), records = copy([...files.records]), writes = files.writes;
-    assert.equal(committed[STATE_KEY].revision, 8);
-    assert.deepEqual((await f.runtime.listBackups()).map(entry => entry.revision), [7, 6, 5, 4, 3]);
+    assert.equal(committed[STATE_KEY].revision, 13);
+    assert.deepEqual((await f.runtime.listBackups()).map(entry => entry.revision), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
     f.failSave = false; await f.runtime.retrySave();
     assert.deepEqual(f.ctx.chatMetadata, committed);
     assert.deepEqual([...files.records], records);
     assert.equal(files.writes, writes, 'host save retry must not create or rotate another previous snapshot');
-    assert.equal(f.calls.saves.length, 9);
+    assert.equal(f.calls.saves.length, 14);
     f.assertProtected();
   } finally { f.dispose(); }
 });

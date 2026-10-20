@@ -1,7 +1,7 @@
 import { createDemoDocument } from '../core/demo.js';
 import { validateDocument } from '../core/protocol.js';
 import { createOperationService, subscribeStateChanges, acquireMetadataWrite, chatIdentity as operationIdentity } from '../../../shared/operations.js';
-import { nativeState2Status, prepareState2ManualWrite } from '../../../state2/runtime.js';
+import { prepareState2ManualWrite } from '../../../state2/runtime.js';
 import { saveChatMetadata } from '../../../shared/chat-save.js';
 import { isIndependent, legacyModule, registerModuleCodec, STATE_KEY } from '../../../story-state/access.js';
 
@@ -57,7 +57,9 @@ export function bindChatStore(store, { getContext, storage, namespace, report = 
                 let raw = null;
                 try { raw = storage.getItem(keyFor(id)); } catch { /* Metadata remains usable. */ }
                 binding.raw = { metadata: saved ?? null, localRaw: raw };
-                const native = isIndependent(ctx) || nativeState2Status(ctx).migrated;
+                // A 0.16 State 2.0 chat (amin_os_state2_v1) projected the map into
+                // metadata; that copy stays authoritative over a browser cache.
+                const native = isIndependent(ctx) || Object.hasOwn(ctx.chatMetadata, 'amin_os_state2_v1');
                 const cached = !native && raw ? JSON.parse(raw) : null;
                 // A migrated State 2.0 root is authoritative after branch restore.
                 // A newer browser cache belongs to an earlier view of the chat.

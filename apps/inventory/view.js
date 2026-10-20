@@ -5,6 +5,7 @@ import { createInventoryService, getSharedInventoryService } from './service.js'
 import { WEAR_SLOTS, WEAR_LAYERS } from './model.js';
 import {contextLine} from '../shared/context-line.js';
 import {linkedEmpty,takeAppRequest} from '../shared/open-app.js';
+import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
 const TABS = { items: '物品', wear: '穿戴与外观', balances: '资源与货币', ledger: '变更账本' };
@@ -20,6 +21,7 @@ export function mount(target, options = {}) {
     const { make, select, checkbox, grid, toolbar } = formControls;
     const page = make('section', '', 'amin-ui amin-page amin-app-page amin-inventory');
     const context = make('div', '', 'amin-context'), tabs = make('nav', '', 'amin-tabs'), notice = make('div', '', 'amin-notice');
+    attachLinkageBadge(context, 'inventory', { getContext: () => api.context?.() });
     const review = make('section', '', 'amin-stack'), body = make('section', '', 'amin-stack');
     const instance = 'amin-inventory-' + uuid();
     tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '背包与资源页面');

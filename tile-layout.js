@@ -15,6 +15,7 @@ const tileDefaults=()=>[
  {id:'dice',target:'dice',label:'',size:'medium'},
  {id:'map',target:'map',label:'',size:'wide'},{id:'status',target:'status',label:'',size:'medium'},{id:'organizations',target:'organizations',label:'',size:'wide'},{id:'reply',target:'reply',label:'',size:'medium'},
  {id:'information',target:'information',label:'',size:'wide'},{id:'effects',target:'effects',label:'',size:'wide'},{id:'worldbooks',target:'worldbooks',label:'',size:'medium'},{id:'tts',target:'tts',label:'',size:'medium'},{id:'ai',target:'ai',label:'',size:'small'},{id:'settings',target:'settings',label:'',size:'small'},
+ {id:'linkage',target:'linkage',label:'',size:'slimWide'},
 ];
 export const defaultTiles=(columns=TILE_COLUMNS)=>normalizeTiles(tileDefaults(),columns);
 const validCell=(x,y,size,columns=TILE_COLUMNS)=>{const {w,h}=tileSpan(size);return Number.isInteger(x)&&Number.isInteger(y)&&x>=0&&y>=0&&x+w<=gridColumns(columns)&&y+h<=TILE_MAX_ROWS;};
@@ -43,6 +44,12 @@ export function normalizeTiles(value,columns=TILE_COLUMNS){
  }
  const included=new Set(placed.map(t=>t.id));return cleaned.filter(t=>included.has(t.id));
 }
+// New applications join a saved layout below its last row instead of filling an earlier gap.
+export function appendBelow(tiles,tile,columns=TILE_COLUMNS){
+ columns=gridColumns(columns);const placed=normalizeTiles(tiles,columns),bottom=Math.max(0,...placed.map(t=>t.y+tileSpan(t.size).h));
+ for(let y=bottom;y<TILE_MAX_ROWS;y++)for(let x=0;x<columns;x++)if(canPlaceTile(placed,tile.id,x,y,tile.size,columns))return {...tile,x,y};
+ return {...tile};
+}
 export function migrateTiles(value){
  const defaults=tileDefaults(),seen=new Set(),result=[];
  for(const t of Array.isArray(value)?value:[]){const d=defaults.find(d=>d.id===t?.id);if(!d||seen.has(t.id))continue;seen.add(t.id);result.push({...d,size:Object.hasOwn(TILE_SPANS,t.size)?t.size:d.size});}
@@ -54,10 +61,10 @@ export function loadTiles(storage){
  try{
   const data=readSaved(storage,TILE_KEY)??readSaved(storage,PREVIOUS_TILE_KEY);
   if(data){
-   const grid=normalizeTileGrid(data.grid),tiles=normalizeTiles(data.tiles,grid.columns),introduced=['characters','inventory','relationships','saves'];
+   const grid=normalizeTileGrid(data.grid),tiles=normalizeTiles(data.tiles,grid.columns),introduced=['characters','inventory','relationships','saves','linkage'];
    const known=Array.isArray(data.knownTargets)?data.knownTargets:tileDefaults().map(t=>t.target).filter(id=>!introduced.includes(id));
    const missing=tileDefaults().filter(t=>!known.includes(t.target)&&!tiles.some(item=>item.target===t.target));
-   const ids=new Set(tiles.map(t=>t.id));for(const tile of missing){let id=tile.id;while(ids.has(id))id+='-new';ids.add(id);tiles.push({...tile,id});}
+   const ids=new Set(tiles.map(t=>t.id));for(const tile of missing){let id=tile.id;while(ids.has(id))id+='-new';ids.add(id);tiles.push(appendBelow(tiles,{...tile,id},grid.columns));}
    const normalized=normalizeTiles(tiles,grid.columns);try{saveTiles(storage,normalized,grid);}catch{}return normalized;
   }
   // Keep the older keys intact so a failed storage write never destroys the source layout.

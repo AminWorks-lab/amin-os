@@ -24,7 +24,7 @@ const stubs = {
     './retired-data.js': { cleanupRetiredData: () => ({ errors: [] }) },
     './apps/extra-floor-ui.js': { installExtraFloorButtons: register },
     './apps/reply/floor-ui.js': { installReplyFloorButtons: () => register('reply-floor') },
-    './settings/appearance.js': { initializeAppearance() {}, installAppearance() {} },
+    './settings/appearance.js': { initializeAppearance() {}, installAppearance() {}, getAppearance() {} },
     './ui/tabs.js': { installTabScroll() {} },
     './ai/service.js': { initializeAI() {} },
     './shell.js': { createShell: () => shell },
@@ -32,6 +32,8 @@ const stubs = {
     './apps/linkage/service.js': { getSharedService: () => ({ reportHost() {} }) },
     './apps/linkage/host.js': { createLinkageHost: () => ({ status: () => ({}) }) },
     './apps/linkage/prompt.js': { buildUpdateRules() {}, buildDataPrompt() {} },
+    './apps/linkage/open.js': { setLinkageOpener() {} },
+    './tile-live-feed.js': { createLiveTileFeed: () => ({}) },
 };
 function synthetic(exports) {
     return new vm.SyntheticModule(Object.keys(exports), function () {

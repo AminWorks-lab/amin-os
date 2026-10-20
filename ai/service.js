@@ -4,7 +4,7 @@ import {waitForSignal} from './signal.js';
 import {currentPrompt} from '../apps/effects/model.js';
 import {currentPrompt as currentJournalPrompt} from '../apps/journal/model.js';
 import {currentPrompt as currentScenePrompt} from '../apps/scene/model.js';
-import { createApiSettings, createApiProfiles, generateText } from './transport.js';
+import { createApiSettings, createApiProfiles, createStructuredSupport, generateText } from './transport.js';
 import { createPresetLibrary, compilePreset } from './presets.js';
 import { parseRequestBody } from './request-body.js';
 import {createHostRoutes} from './host-settings.js';
@@ -55,6 +55,8 @@ function previewText(captured, request, messages) {
     const limits = [['max_tokens', pick('max_tokens', config.maxTokens)], ['max_completion_tokens', pick('max_completion_tokens')]].filter(([, value]) => value !== undefined).map(([key, value]) => `${key} ${value}`).join(' / ');
     const header = `最终请求体：模型 ${pick('model', config.enabled ? config.model : '由酒馆配置决定') ?? '已删除（请求会失败）'} · 输出上限 ${limits || '未设置'} · 流式 ${stream === undefined ? '未设置' : stream ? '开' : '关'}`;
     const lines = [header];
+    if (request.schema && config.structuredOutput) lines.push(Object.hasOwn(overrides, 'response_format') ? '结构化输出：自定义 response_format 覆盖了应用的 JSON Schema。'
+        : `结构化输出：response_format=json_schema（${request.schema.name}）；接口以 400 拒绝该字段时会去掉它重试一次，并记住此渠道不支持。`);
     if (custom.length) lines.push(`自定义字段 ${custom.map(key => overrides[key] === null ? `${key}（已删除）` : `${key}=${shortValue(overrides[key])}`).join('、')}`);
     if (replaced && (!Array.isArray(sent) || !sent.length)) { lines.push('自定义 messages 必须是非空数组；这个请求会被拒绝，请修正自定义请求参数。'); return lines.join('\n\n'); }
     if (replaced) lines.push('自定义 requestBody 覆盖了 messages：以下就是实际发送的内容，应用组装的上下文不会被发送。');
@@ -83,6 +85,7 @@ export function createAI(storage, namespace, {resolveConnection=resolveHostConne
     const settings = createApiSettings(storage, scope);
     const profiles = createApiProfiles(storage, scope);
     const hostRoutes = createHostRoutes(storage, namespace);
+    const structured = createStructuredSupport(storage, scope);
     const presets = createPresetLibrary(storage, scope);
     const initialPreset=presets.list().find(p=>p.id==='default');
     if(initialPreset?.name==='默认地图预设')presets.save({...initialPreset,name:'默认共享预设'});
@@ -92,6 +95,8 @@ export function createAI(storage, namespace, {resolveConnection=resolveHostConne
     const notify = () => listeners.forEach(f => f());
     return {
         settings, profiles, presets,
+        // Channels (endpoint + model) that rejected response_format; reset() lets them be probed again.
+        structured: { list: structured.list, reset() { structured.reset(); notify(); } },
         selected: () => selected,
         select(id) { if (!presets.list().some(p => p.id === id)) throw Error('预设不存在'); storage.setItem(selectionKey, id); selected = id; notify(); },
         hostRoutes() { const ctx=getHostContext();observeHostGeneration(ctx);return getHostRouteOptions(ctx); },
@@ -144,7 +149,9 @@ export function createAI(storage, namespace, {resolveConnection=resolveHostConne
                 if(captured.route?.mode==='tavern-current'||captured.route?.mode==='tavern-profile') {
                     const timer=setTimeout(()=>controller.abort(new Error('酒馆生成等待超时，未应用结果')),captured.config.timeoutSeconds*1000);
                     try {
-                        const result=await runHostGeneration({ctx,route:captured.route,request,messages,sharedPrompt,maxTokens:captured.config.maxTokens,signal:controller.signal,getContext:getHostContext});
+                        // Tavern routes assemble their own request; the JSON Schema only goes to the independent API.
+                        const {schema, ...hostRequest} = request;
+                        const result=await runHostGeneration({ctx,route:captured.route,request:hostRequest,messages,sharedPrompt,maxTokens:captured.config.maxTokens,signal:controller.signal,getContext:getHostContext});
                         task.state='完成';return result;
                     } finally {clearTimeout(timer);}
                 }
@@ -152,7 +159,7 @@ export function createAI(storage, namespace, {resolveConnection=resolveHostConne
                 const timer=setTimeout(()=>controller.abort(new Error('读取 API 配置超时，未应用生成结果')),captured.config.timeoutSeconds*1000);
                 let connection;
                 try {connection=await waitForSignal(()=>connections.get(captured),controller.signal);}finally{clearTimeout(timer);}
-                const text = await generateText(ctx, connection, {...request, messages, responseLength:captured.config.maxTokens}, {signal:controller.signal, targetKey:scope, fetchImpl});
+                const text = await generateText(ctx, connection, {...request, messages, responseLength:captured.config.maxTokens}, {signal:controller.signal, targetKey:scope, fetchImpl, structured});
                 task.state = '完成'; return text;
             } catch(error) { task.state = controller.signal.aborted ? '已取消' : '失败'; throw error; }
             finally { signal?.removeEventListener('abort', abort); notify(); }
