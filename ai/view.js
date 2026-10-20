@@ -3,6 +3,7 @@ import {parseRequestBody} from '../apps/map/src/adapters/request-body.js';
 import {fetchModels} from './models.js';
 import {getAI,AI_APPS} from './service.js';
 import {renderPresetEditor} from '../apps/map/src/ui/generation-presets.js';
+import {globalContextLine} from '../apps/shared/context-line.js';
 
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 const input=(value='',type='text')=>{const e=el('input');e.type=type;e.value=value;return e;};
@@ -19,7 +20,7 @@ export function mount(target){
  function draw(){
   modelController?.abort();unsubscribe?.();
   target.replaceChildren();
-  const heading=el('header',null,'amin-context');heading.append(el('h2','AI 设置'),el('p','管理模型连接、应用渠道和生成预设。保存后在下一次生成时生效。'));target.append(heading);
+  const heading=el('header',null,'amin-context');heading.append(el('p',globalContextLine('模型连接、应用渠道与生成预设','保存后下一次生成生效')));target.append(heading);
   const tabs=el('nav',null,'amin-tabs');tabs.setAttribute('aria-label','AI 设置分类');target.append(tabs);
   const notice=el('p',feedback,'amin-result');notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');notice.dataset.state=feedbackState;notice.hidden=!feedback;target.append(notice);
   const report=(text,state='success')=>{feedback=text;feedbackState=state;notice.textContent=text;notice.dataset.state=state;notice.hidden=!text;};

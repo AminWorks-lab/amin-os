@@ -1,7 +1,7 @@
 const listeners=new Map();
 const events=Object.fromEntries(['GENERATION_AFTER_COMMANDS','GENERATION_STOPPED','APP_INITIALIZED','CHAT_CHANGED','MESSAGE_SENT','MESSAGE_RECEIVED','MESSAGE_DELETED','MESSAGE_SWIPED','MESSAGE_UPDATED','GENERATION_ENDED','CHARACTER_MESSAGE_RENDERED'].map(x=>[x,x]));
 const state=name=>JSON.stringify({版本:1,项目:{玩家:{姓名:name,生命:{当前:76,最大:100},金币:128,背包:['地图','恢复药剂']},世界:{地点:'星港 · 观测站',时间:'黄昏',天气:'微雨'}}});
-const contexts=['a','b'].map((id,i)=>({id,variables:{状态栏:state(i?'另一位旅人':'旅人')}}));let active=0;
+const contexts=['a','b'].map((id,i)=>({id,integrity:'amin-preview-'+id,variables:{状态栏:state(i?'另一位旅人':'旅人')}}));let active=0;
 const settings={dynamicMapNamespace:'amin-preview-only',world_status_hud_v1:{floorButtons:true}};
 const ctx={characterId:0,characters:[{avatar:'amin-preview.png',name:'向导',data:{description:'星港的向导',extensions:{}}}],chatMetadata:contexts[0],chat:[{name:'旅人',is_user:true,mes:'我来到观测站。',extra:{}},{name:'向导',is_user:false,mes:'我们一起出发吧。',extra:{}}],name1:'旅人',name2:'向导',extensionSettings:settings,worldInfoSettings:{world_info:{globalSelect:['演示技能']}},powerUserSettings:{persona_description:'探索未知的旅人'},eventTypes:events,event_types:events,getCurrentChatId:()=>contexts[active].id,
 eventSource:{on(e,f){if(!listeners.has(e))listeners.set(e,new Set());listeners.get(e).add(f);},removeListener(e,f){listeners.get(e)?.delete(f);},async emit(e,...args){for(const f of listeners.get(e)??[])await f(...args);}},
@@ -22,9 +22,13 @@ ctx.getPresetManager=()=>({getSelectedPresetName:()=> '演示酒馆预设（模�
 ctx.generateQuietPrompt=({quietPrompt})=>ctx.generateRaw({systemPrompt:quietPrompt,prompt:quietPrompt});
 ctx.ConnectionManagerRequestService={getSupportedProfiles:()=>[{id:'demo-profile',name:'演示连接（模拟）',api:'openai',model:'demo',preset:'演示参数预设'}],async sendRequest(_id,messages){return {content:await ctx.generateRaw({systemPrompt:messages[0]?.content,prompt:messages.map(m=>m.content).join('\n')})};}};
 globalThis.SillyTavern={getContext:()=>ctx};
+// Demo chats carry an initialized Amin story state (blank modules plus the demo world state), like a chat set up in 设置 → 剧情存储.
+const {emptyState,validateState,STATE_KEY}=await import('./apps/story-state/schema.js');
+const storyState=status=>{const value=emptyState();value.modules.status=status==null?null:JSON.parse(status);return validateState(value);};
+for(const chat of contexts)chat[STATE_KEY]=storyState(chat.variables.状态栏);
 document.getElementById('preview-switch').onclick=()=>{active=1-active;ctx.chatMetadata=contexts[active];ctx.chat=ctx.chat.map(m=>({...m,extra:{}}));ctx.eventSource.emit(events.CHAT_CHANGED);};
 document.getElementById('preview-group').onclick=()=>{ctx.groupId=ctx.groupId?undefined:'preview-group';ctx.groups=[{id:'preview-group',members:['amin-preview.png']}];ctx.eventSource.emit(events.CHAT_CHANGED);};
-document.getElementById('preview-empty').onclick=()=>{delete ctx.chatMetadata.variables.状态栏;ctx.eventSource.emit(events.CHAT_CHANGED);};
+document.getElementById('preview-empty').onclick=()=>{delete ctx.chatMetadata.variables.状态栏;ctx.chatMetadata[STATE_KEY]=storyState(null);ctx.eventSource.emit(events.CHAT_CHANGED);};
 document.getElementById('preview-send').onclick=async()=>{const input=document.getElementById('send_textarea'),text=input.value.trim();if(!text)return;const index=ctx.chat.length;ctx.chat.push({name:ctx.name1,is_user:true,mes:text,extra:{}});const row=document.createElement('article');row.className='mes';row.setAttribute('mesid',index);const block=document.createElement('div');block.className='mes_block';const name=document.createElement('small');name.textContent=ctx.name1;const body=document.createElement('div');body.className='mes_text';body.style.whiteSpace='pre-wrap';body.textContent=text;block.append(name,body);row.append(block);document.getElementById('chat').append(row);input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));await ctx.eventSource.emit(events.MESSAGE_SENT,index);await ctx.eventSource.emit(events.CHARACTER_MESSAGE_RENDERED,index);};
 const testButton=document.createElement('button');testButton.textContent='预览本轮持续提醒';testButton.onclick=()=>ctx.eventSource.emit(events.GENERATION_AFTER_COMMANDS,'normal',{},false);const prompt=document.createElement('pre');prompt.id='preview-effects-prompt';document.body.append(testButton,prompt);
 // Preview-only in-memory transport. Never installed into the actual host entry point.
@@ -34,3 +38,5 @@ initializeAI(localStorage,settings.dynamicMapNamespace,{
  fetchImpl:async(_url,options)=>{const body=JSON.parse(options.body);if(options.signal.aborted)throw Error('预览已取消');const content=await ctx.generateRaw({systemPrompt:body.messages[0].content,prompt:body.messages.map(m=>m.content).join('\n')});return {ok:true,json:async()=>({choices:[{message:{content},finish_reason:'stop'}]})};}
 });
 await import('./index.js');
+// The host announces a loaded chat with CHAT_CHANGED; chat-lifecycle only accepts a chat after it.
+await ctx.eventSource.emit(events.CHAT_CHANGED,ctx.getCurrentChatId());

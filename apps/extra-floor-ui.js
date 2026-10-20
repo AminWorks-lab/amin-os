@@ -14,6 +14,7 @@ import {mount as mountRelationships} from './relationships/view.js';
 import {mount as mountSaves} from './saves/view.js';
 import {observeChatFloors} from './floor-scheduler.js';
 import {messageVersion,persistAudioMessageId,audioMessageSource} from './floor-message.js';
+import {STORY_APPS,renderStoryGate} from './shared/story-readiness.js';
 
 export function installExtraFloorButtons(id){
  const getContext=()=>globalThis.SillyTavern?.getContext?.(),mounted=new Map(),owned=new Set();
@@ -34,7 +35,9 @@ export function installExtraFloorButtons(id){
    if(windowElement){close();return;}
    windowElement=node('section','amin-reply-floor-window amin-extra-floor-window');windowElement.setAttribute('aria-label','第 '+(index+1)+' 楼'+titleText);
    const bar=node('header','amin-reply-floor-header'),title=node('strong','',titleText+' · 第 '+(index+1)+' 楼'),collapse=node('button','','收起');collapse.type='button';collapse.onclick=close;bar.append(title,collapse);
-   const body=node('div','amin-reply-floor-body amin-ui');windowElement.append(bar,body);host.append(windowElement);
+   const body=node('div','amin-reply-floor-body amin-ui');windowElement.append(bar);
+   if(STORY_APPS.includes(id)){const gate=node('div','amin-story-gate amin-ui');gate.setAttribute('role','status');try{renderStoryGate(gate,getContext(),document);}catch{gate.hidden=true;}windowElement.append(gate);}
+   windowElement.append(body);host.append(windowElement);
    if(id!=='tts')body.append(node('p','amin-reply-floor-note','显示当前聊天的数据，操作与 OS 内应用共享；此入口不是历史楼层快照。'));
    const run=++epoch;
    try{const mount=async()=>{

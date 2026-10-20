@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAppearance,defaults,themeVariables,validate,resolveFloor,FLOOR_BUTTON_ORDER,normalizeFloorButtonOrder,mergeFloorToolbarDraft} from '../settings/appearance.js';
+import {createAppearance,defaults,themeVariables,validate,resolveFloor,FLOOR_BUTTON_ORDER,normalizeFloorButtonOrder,mergeFloorToolbarDraft,defaultMoreButtons} from '../settings/appearance.js';
 import {drawerPlacement,clampPosition} from '../window-state.js';
 test('appearance follows global defaults while explicit app overrides persist across reloads',()=>{
  const ctx={extensionSettings:{other:{keep:true}},saveSettingsDebounced(){}};const service=createAppearance(()=>ctx);
@@ -71,7 +71,7 @@ test('floor toolbar order sanitizes partial and obsolete records while keeping e
  assert.deepEqual(saved.floor.buttonOrder,['dice','status',...FLOOR_BUTTON_ORDER.filter(id=>!['dice','status'].includes(id))]);
  assert.deepEqual(saved.floor.moreButtons,['status','dice']);assert.equal(saved.floor.toolbarAlignment,'right');
  assert.deepEqual(normalizeFloorButtonOrder(null),FLOOR_BUTTON_ORDER);assert.deepEqual(normalizeFloorButtonOrder('dice'),FLOOR_BUTTON_ORDER);
- assert.deepEqual(validate({floor:{moreButtons:{status:true}}}).floor.moreButtons,[]);
+ assert.deepEqual(validate({floor:{moreButtons:{status:true}}}).floor.moreButtons,defaultMoreButtons());
  assert.throws(()=>validate({floor:{toolbarAlignment:'bad'}}));
 });
 
@@ -88,4 +88,14 @@ test('saving an unrelated settings draft preserves live toolbar changes and reta
  const merged=mergeFloorToolbarDraft(draft,current);assert.equal(merged.global.fontSize,16);assert.deepEqual(merged.floor.buttonOrder,current.floor.buttonOrder);assert.deepEqual(merged.floor.moreButtons,['tts']);assert.equal(merged.floor.toolbarAlignment,'right');
  draft.floor.moreButtons=['status'];const edited=mergeFloorToolbarDraft(draft,current,['moreButtons']);assert.deepEqual(edited.floor.moreButtons,['status']);assert.deepEqual(edited.floor.buttonOrder,current.floor.buttonOrder);
  edited.floor.buttonOrder.reverse();assert.notDeepEqual(edited.floor.buttonOrder,current.floor.buttonOrder);assert.deepEqual(draft.floor.buttonOrder,FLOOR_BUTTON_ORDER);
+});
+
+test('floor more buttons upgrade the untouched old default but keep explicit choices',()=>{
+ const fresh=defaults().floor;assert.deepEqual(fresh.moreButtons,FLOOR_BUTTON_ORDER.filter(id=>!['map','status','characters','reply'].includes(id)));assert.equal(fresh.latestOnly,true);assert.equal(fresh.moreButtonsCustomized,false);
+ assert.deepEqual(validate({floor:{moreButtons:[]}}).floor.moreButtons,defaultMoreButtons());
+ assert.deepEqual(validate({floor:{}}).floor.moreButtons,defaultMoreButtons());
+ const explicit=validate({floor:{moreButtons:[],moreButtonsCustomized:true}});assert.deepEqual(explicit.floor.moreButtons,[]);assert.equal(explicit.floor.moreButtonsCustomized,true);
+ const listed=validate({floor:{moreButtons:['tts']}});assert.deepEqual(listed.floor.moreButtons,['tts']);assert.equal(listed.floor.moreButtonsCustomized,true);
+ assert.equal(validate({floor:{latestOnly:false}}).floor.latestOnly,false);assert.equal(validate({}).floor.latestOnly,true);
+ const draft=defaults(),current=defaults();current.floor.moreButtons=[];current.floor.moreButtonsCustomized=true;assert.equal(mergeFloorToolbarDraft(draft,current).floor.moreButtonsCustomized,true);
 });

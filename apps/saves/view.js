@@ -1,4 +1,5 @@
 import { getSharedSavesService } from './service.js';
+import {contextLine} from '../shared/context-line.js';
 
 const mounted = new WeakMap();
 const tabs = { saves: '剧情存档', transfer: '导入 / 导出' };
@@ -244,12 +245,12 @@ export function mount(target, options = {}) {
         let store;
         try { store = api.read(); }
         catch (error) {
-            context.textContent = '剧情存档 · 当前聊天'; tablist.replaceChildren(); review.replaceChildren();
+            context.textContent = contextLine(getContext?.(), '存档不可读取'); tablist.replaceChildren(); review.replaceChildren();
             body.replaceChildren(make('p', error.message, 'amin-empty')); notice.textContent = ''; return;
         }
-        const ctx = getContext?.(); const chatId = ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? '当前聊天';
+        const ctx = getContext?.();
         if (observedMetadata !== ctx?.chatMetadata) { checkpointDraft = null; observedMetadata = ctx?.chatMetadata; }
-        context.textContent = `剧情存档 · ${chatId} · ${store.saves.length} 个命名存档 · ${store.backups.length} 个安全备份`;
+        context.textContent = contextLine(ctx, `${store.saves.length} 个命名存档`, `${store.backups.length} 个安全备份`);
         drawTabs(); drawReview(); body.replaceChildren(); drawRetry();
         if (selected === 'saves') drawSaves(store); else if (selected === 'checkpoints') drawCheckpoints(store); else drawTransfer();
         notice.textContent = failed ? message : (message || api.status()); notice.dataset.state = failed ? 'error' : api.busy() || ownAction ? 'busy' : '';

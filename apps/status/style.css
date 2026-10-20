@@ -28,8 +28,7 @@
 .wsh-workbench.amin-status-embedded{width:100%;height:100%;max-height:none;min-height:340px;border:0}
 .wsh-workbench .wsh-workbench-note{margin:0;color:var(--amin-muted,var(--wsh-muted));font-size:.9em;line-height:1.5}
 .wsh-workbench>:not(.wsh-body){flex-shrink:0}
-.wsh-workbench.amin-ui .wsh-tabs[role=tablist]{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;gap:6px;margin:0;padding:0 0 8px;border-bottom:1px solid var(--amin-line,var(--wsh-line))}
-.wsh-workbench.amin-ui .wsh-tabs[role=tablist]>button{flex:0 0 auto;white-space:nowrap}
+/* .wsh-tabs scrolls on one row through the shared tab-strip rule in ui/standard.css. */
 .wsh-workbench .wsh-actions{gap:8px;margin:0}
 .wsh-workbench .wsh-quick-status:empty{display:none}
 .wsh-workbench.amin-ui>.wsh-body{flex:1 1 260px;min-height:180px;overflow:hidden}

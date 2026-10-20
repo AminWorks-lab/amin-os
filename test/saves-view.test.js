@@ -118,7 +118,7 @@ function fixture() {
 test('save list exposes scope, source floor, version, modules, tab semantics and disposes cleanly', () => {
     const f = fixture();
     assert.equal(mount(f.root, { api: f.api, document: f.doc }), f.view, 'mount stays idempotent');
-    assert.match(f.root.textContent, /剧情存档 · chat-a · 1 个命名存档/);
+    assert.match(f.root.textContent, /chat-a · 1 个命名存档/);
     assert.match(f.root.textContent, /第 3 楼 · 第 2 个候选 · 格式 v1/);
     assert.match(f.root.textContent, /角色档案 v1、场景与时间 v1/);
     assert.doesNotMatch(f.root.textContent, /模块（3）|信息资料库/);

@@ -24,8 +24,13 @@ html[data-wsh-frame] :is(input[type=checkbox],input[type=radio]) {min-height:0}
 html[data-wsh-frame] footer {padding:12px 2px;font-size:11px}
 @media(max-width:600px),(pointer:coarse) {
   html[data-wsh-frame] #cards {grid-template-columns:minmax(0,1fr)}
-  html[data-wsh-frame] :is(button,select,input:not([type=checkbox]):not([type=radio])) {min-height:44px;font-size:16px}
-  html[data-wsh-frame] textarea {font-size:16px}
-  html[data-wsh-frame] .project-toggle {min-height:44px}
   html[data-wsh-frame] .row {flex-wrap:wrap}
 }
+/* Touch sizing inside Amin follows the host window (data-amin-touch); the frame's own width says nothing about the device. */
+@media(max-width:600px),(pointer:coarse) {
+  html[data-wsh-frame]:not([data-amin-surface]) :is(button,select,input:not([type=checkbox]):not([type=radio])) {min-height:44px;font-size:16px}
+  html[data-wsh-frame]:not([data-amin-surface]) textarea {font-size:16px}
+  html[data-wsh-frame]:not([data-amin-surface]) .project-toggle {min-height:44px}
+}
+html[data-wsh-frame][data-amin-surface][data-amin-touch=true] :is(button,select,input:not([type=checkbox]):not([type=radio])) {min-height:44px}
+html[data-wsh-frame][data-amin-surface][data-amin-touch=true] .project-toggle {min-height:44px}
