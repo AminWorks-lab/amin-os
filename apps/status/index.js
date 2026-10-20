@@ -195,7 +195,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   function refreshLegacyControls(){
     const enabled=linkageEnabled();
     rulesPage.refreshLinkageMode?.();
-    for(const message of dialog.querySelectorAll('[data-linkage-ownership]'))message.textContent=enabled?'世界状态已由统一联动接管。请在“联动更新”中管理规则与世界书条目。':'世界状态未加入统一联动，聊天中不会自动更新；可用“按当前剧情更新值”手动更新。';
+    for(const message of dialog.querySelectorAll('[data-linkage-ownership]'))message.textContent=enabled?'世界状态已由统一联动接管。更新规则请到“联动更新”中管理。':'世界状态未加入统一联动，聊天中不会自动更新；可用“按当前剧情更新值”手动更新。';
     for(const button of dialog.querySelectorAll('[data-linkage-quick-update]'))button.textContent='按现有剧情更新状态';
     for(const button of dialog.querySelectorAll('[data-linkage-quick-copy]'))button.textContent=isIndependent(context())?'复制 Amin 更新提示词':enabled?'查看统一更新提示词':'复制更新提示词';
   }
