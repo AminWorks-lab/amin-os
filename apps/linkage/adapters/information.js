@@ -1,5 +1,5 @@
 import { KEY, empty, read, current, validateRecord, fieldKey, path, diff } from '../../information/model.js';
-import { renderContract } from '../contract.js';
+import { renderContract, canonicalChange } from '../contract.js';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
@@ -52,10 +52,10 @@ function append(source, chat, record, reason, operationId, at) {
 const spec = {
     notes: 'target=面板ID。field={id,category,label,value:文本,status?:known|inferred|unknown}；不改已有字段的编号、分类、名称或面板类型。',
     actions: [
-        { name: 'create', args: 'name,kind:person|thing|world,fields:[field]' },
-        { name: 'add_field', args: 'field' },
-        { name: 'set_field', args: 'fieldId,value?,status?', note: '至少一项' },
-        { name: 'remove_field', args: 'fieldId' },
+        { name: 'create-panel', creates: 'record', aliases: ['create'], args: 'name,kind:person|thing|world,fields:[field]' },
+        { name: 'create-field', aliases: ['add_field'], args: 'field' },
+        { name: 'update-field', aliases: ['set_field'], args: 'fieldId,value?,status?', note: '至少一项' },
+        { name: 'delete-field', aliases: ['remove_field'], args: 'fieldId' },
     ],
 };
 
@@ -76,15 +76,16 @@ export const adapter = {
             removed: (record.removed ?? []).map(field => ({ category: field.category, label: field.label })),
         })) : [] };
     },
-    apply(ctx, change, { operationId, now } = {}) {
-        if (change?.module !== 'information' || !['create', 'add_field', 'set_field', 'remove_field'].includes(change.action)) throw Error('不支持的信息面板联动操作。');
+    apply(ctx, input, { operationId, now } = {}) {
+        const change = canonicalChange(spec, input);
+        if (change?.module !== 'information' || !['create-panel', 'create-field', 'update-field', 'delete-field'].includes(change.action)) throw Error('不支持的信息面板联动操作。');
         if (typeof change.target !== 'string' || !change.target) throw Error('信息面板目标 ID 无效。');
         if (typeof operationId !== 'string' || !operationId || !Number.isFinite(Date.parse(now))) throw Error('信息面板操作标识或时间无效。');
         text(change.reason, '更新依据', 4000, false);
         const source = store(ctx), records = current(source, ctx?.chat);
         if (source.history.some(event => event.id === operationId)) throw Error('此信息面板操作已经应用，不能重复提交。');
         let record = records.find(item => item.id === change.target);
-        if (change.action === 'create') {
+        if (change.action === 'create-panel') {
             exact(change.data, ['name', 'kind', 'fields']);
             if (!safeId(change.target) || record) throw Error('新面板 ID 无效或已存在。');
             if (records.length >= 1000 || !Array.isArray(change.data.fields) || change.data.fields.length > 80) throw Error('信息面板或字段数量超过上限。');
@@ -92,16 +93,16 @@ export const adapter = {
         } else {
             if (!record) throw Error('信息面板不存在于当前剧情分支。');
             record = clone(record);
-            if (change.action === 'add_field') {
+            if (change.action === 'create-field') {
                 exact(change.data, ['field']);
                 const field = validateField(change.data.field);
                 if (record.fields.length >= 80 || record.fields.some(item => item.id === field.id)) throw Error('字段 ID 已存在或字段数量超过上限。');
                 record.fields.push(field);
             } else {
-                exact(change.data, change.action === 'set_field' ? ['fieldId', 'value', 'status'] : ['fieldId']);
+                exact(change.data, change.action === 'update-field' ? ['fieldId', 'value', 'status'] : ['fieldId']);
                 const index = record.fields.findIndex(item => item.id === change.data.fieldId);
                 if (index < 0) throw Error('信息面板字段不存在。');
-                if (change.action === 'remove_field') record.fields.splice(index, 1);
+                if (change.action === 'delete-field') record.fields.splice(index, 1);
                 else {
                     if (!Object.hasOwn(change.data, 'value') && !Object.hasOwn(change.data, 'status')) throw Error('信息字段没有提供待修改内容。');
                     if (Object.hasOwn(change.data, 'value')) record.fields[index].value = text(change.data.value, '字段内容');

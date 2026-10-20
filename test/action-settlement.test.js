@@ -5,11 +5,6 @@ import { createEffects } from '../apps/effects/service.js';
 import { KEY, appendSnapshot, emptyStore, resolveStat } from '../apps/characters/model.js';
 import { KEY as INVENTORY, change, emptyStore as emptyInventory, readInventory } from '../apps/inventory/model.js';
 import { KEY as SCENE, emptyState, chatPath, readCurrentScene } from '../apps/scene/model.js';
-import { createState2Runtime } from '../apps/state2/runtime.js';
-import { createStoryStorage } from '../apps/state2/story-storage.js';
-import { createStoryStateGraph } from '../apps/shared/story-state-graph.js';
-import { indexedState } from '../apps/shared/story-chat-index.js';
-import { ROOTS } from '../apps/state2/storage.js';
 function fixture() {
     const ctx = { chat: [{ name: '甲', mes: '开始', is_user: true }], chatMetadata: {}, getCurrentChatId: () => 'a', saveMetadata: async () => {} };
     const stats = ['hp', 'mp'].map(id => ({ id, label: id, binding: `甲.${id}`, component: 'current', check: 'none' }));
@@ -63,22 +58,4 @@ test('result isolation works without host events and pending actions reject chat
     ctx.chat[0].swipe_id = 0; api.stageAction({ ...input(), delta: -1 }); ctx.chat[0].swipe_id = 1;
     await assert.rejects(api.confirmAction(), /聊天或回复版本已变化/);
     ctx = fixture(); await assert.rejects(api.confirmAction(), /聊天或回复版本已变化/); api.dispose();
-});
-test('action transaction writes canonical State2 variables and external snapshot together', async () => {
-    const ctx = fixture(), nodes = new Map();
-    ctx.extensionSettings = { LittleWhiteBox: { variablesMode: '2.0' } }; ctx.saveChat = async () => {}; ctx.saveMetadataDebounced = () => {};
-    ctx.chatMetadata.LWB_RULES_V2 = {};
-    const graph = createStoryStateGraph({ async get(id) { return structuredClone(nodes.get(id) ?? null); }, async put(id, node) { nodes.set(id, structuredClone(node)); } });
-    const story = createStoryStorage(() => ctx, { graph, restoreState: async (_floor, snapshot) => { ctx.chatMetadata.variables = structuredClone(snapshot.variables); ctx.chatMetadata.LWB_RULES_V2 = structuredClone(snapshot.rules); return { restored: true, stale: false }; } });
-    const runtime = createState2Runtime(() => ctx, { host: { LWB_StateV2: { applyText() { throw Error('must not execute native AI update'); } } }, storyStorage: story, interval: 0, report() {} });
-    const api = createEffects(() => ctx);
-    try {
-        await runtime.migrate(); api.stageAction({ ...input(), cost: { kind: 'item', itemId: 'potion' }, costAmount: 1 }); await api.confirmAction();
-        const parse = value => typeof value === 'string' ? JSON.parse(value) : value;
-        assert.equal(parse(ctx.chatMetadata.variables[ROOTS.inventory]).items[0].quantity, 1);
-        assert.equal(parse(ctx.chatMetadata.variables.状态栏).项目.甲.hp.当前, 8);
-        const index = await graph.load(ctx.chatMetadata.amin_os_story_storage_v2.indexId), snapshot = await graph.load(indexedState(index, ctx.chat[0]));
-        assert.equal(parse(snapshot.variables[ROOTS.inventory]).items[0].quantity, 1);
-        assert.equal(parse(snapshot.variables.状态栏).项目.甲.hp.当前, 8);
-    } finally { api.dispose(); runtime.destroy(); }
 });

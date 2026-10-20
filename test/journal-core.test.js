@@ -19,10 +19,11 @@ function host({ ai, chat = conversation() } = {}) {
         saveMetadata: async () => { saves++; },
         setExtensionPrompt: (...args) => prompts.push(args),
         eventTypes: Object.fromEntries(eventNames.map(name => [name, name])),
-        eventSource: { on: (name, fn) => handlers.set(name, fn), removeListener: name => handlers.delete(name) },
+        // Real hosts keep several listeners per event; the shared prompt injector adds its own.
+        eventSource: { on(name, callback) { if (!handlers.has(name)) handlers.set(name, new Set()); handlers.get(name).add(callback); }, removeListener(name, callback) { handlers.get(name)?.delete(callback); if (!handlers.get(name)?.size) handlers.delete(name); } },
     };
     const api = createJournal(() => ctx, { ai: () => ai });
-    return { api, ctx, prompts, handlers, saves: () => saves, emit: (name, ...args) => handlers.get(name)?.(...args) };
+    return { api, ctx, prompts, handlers, saves: () => saves, emit: (name, ...args) => { let result; for (const callback of [...(handlers.get(name) ?? [])]) result = callback(...args); return result; } };
 }
 
 const saveRecord = (h, value, op = 'create', token = h.api.capture()) => h.api.save(token, (store, ctx) => change(store, ctx.chat, op, value, token.operationId));

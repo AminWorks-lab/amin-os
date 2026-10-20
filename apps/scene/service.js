@@ -4,6 +4,7 @@ import { KEY, readStore, readCurrentScene, visibleEvents, transition, appendEven
 import { acquireMetadataWrite, publishExternalMetadataChange, subscribeStateChanges } from '../shared/operations.js';
 import { prepareState2ManualWrite } from '../state2/runtime.js';
 import { isIndependent, legacyModule } from '../story-state/access.js';
+import { promptInjectors } from '../linkage/injectors.js';
 export const PROMPT_KEY = 'amin-os-scene-time';
 const clone = value => structuredClone(value);
 const identity = ctx => JSON.stringify([ctx?.groupId != null ? ['group', ctx.groupId] : ['character', ctx?.characters?.[ctx?.characterId]?.avatar ?? ctx?.characterId ?? null], ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? null]);
@@ -14,7 +15,8 @@ export function createSceneService(getContext = () => globalThis.SillyTavern?.ge
     const listeners = new Set(), dirty = new WeakSet(), removers = [];
     let pending = null, busy = false, disposed = false, lastScope = null, lastMessage = '', epoch = 0, publishing = false;
     const notify = () => { for (const callback of listeners) { try { callback(); } catch { /* A view must not interrupt persistence. */ } } };
-    const clearPrompt = () => getContext()?.setExtensionPrompt?.(PROMPT_KEY, '', 1, 0, false);
+    let injector = null;
+    const clearPrompt = () => injector.clear();
     function capture() {
         const ctx = getContext();
         if (disposed) throw Error('场景服务已关闭。');
@@ -100,27 +102,28 @@ export function createSceneService(getContext = () => globalThis.SillyTavern?.ge
         catch (error) { lastMessage = error.message; throw error; }
         finally { release(); busy = false; sync(); notify(); }
     }
-    function start(type = 'normal', options = {}, dryRun = false) {
-        clearPrompt();
-        if (disposed || dryRun || options?.signal?.aborted || !['normal', 'regenerate', 'swipe', 'continue'].includes(type)) return;
+    const enabled = (type = 'normal', options = {}, dryRun = false) => !(disposed || dryRun || options?.signal?.aborted || !['normal', 'regenerate', 'swipe', 'continue'].includes(type));
+    function build(type = 'normal') {
+        let prompt = null;
         try {
             if (busy) throw Error('场景与时间正在保存，本轮未附加场景。');
             const ctx = getContext();
-            if (!loaded(ctx)) return;
+            if (!loaded(ctx)) return null;
             let chat = ctx.chat ?? [];
             // The replaced assistant candidate must not contribute facts to its own retry.
             if (['regenerate', 'swipe'].includes(type) && chat.length && !chat.at(-1).is_user) chat = chat.slice(0, -1);
-            const prompt = currentPrompt({ ...ctx, chat });
-            ctx.setExtensionPrompt(PROMPT_KEY, prompt, 1, 0, false);
+            prompt = currentPrompt({ ...ctx, chat });
             lastMessage = prompt ? `已附加 ${prompt.length} 字符已确认场景与时间。` : '当前分支没有开启读取的场景与时间。';
-        } catch (error) { lastMessage = error.message; }
+        } catch (error) { prompt = null; lastMessage = error.message; }
         notify();
+        return prompt;
     }
     const initial = getContext(), source = initial?.eventSource, types = initial?.eventTypes ?? initial?.event_types ?? {};
-    const supported = !!(initial?.setExtensionPrompt && source?.on && types.GENERATION_AFTER_COMMANDS && types.CHAT_CHANGED);
+    injector = promptInjectors(getContext).register(PROMPT_KEY, { build, enabled, onError: error => { lastMessage = error.message; notify(); } });
+    const supported = injector.supported;
     const clearAndSync = () => { clearPrompt(); sync(); };
-    const handlers = { CHAT_CHANGED: clearAndSync, MESSAGE_SENT: clearAndSync, MESSAGE_RECEIVED: clearAndSync, MESSAGE_UPDATED: clearAndSync, MESSAGE_DELETED: clearAndSync, MESSAGE_SWIPED: clearAndSync, GENERATION_ENDED: clearAndSync, GENERATION_STOPPED: clearAndSync };
-    if (supported) handlers.GENERATION_AFTER_COMMANDS = start;
+    // With host prompt support the shared injector clears on chat switches.
+    const handlers = { CHAT_CHANGED: supported ? () => sync() : clearAndSync, MESSAGE_SENT: clearAndSync, MESSAGE_RECEIVED: clearAndSync, MESSAGE_UPDATED: clearAndSync, MESSAGE_DELETED: clearAndSync, MESSAGE_SWIPED: clearAndSync, GENERATION_ENDED: clearAndSync, GENERATION_STOPPED: clearAndSync };
     for (const [name, callback] of Object.entries(handlers)) if (types[name] && source?.on) {
         source.on(types[name], callback); removers.push(() => source.removeListener ? source.removeListener(types[name], callback) : source.off?.(types[name], callback));
     }
@@ -141,7 +144,7 @@ export function createSceneService(getContext = () => globalThis.SillyTavern?.ge
         discard() { pending = null; lastMessage = '已取消预览。'; notify(); },
         status: () => lastMessage, busy: () => busy, dirty: () => !!getContext()?.chatMetadata && dirty.has(getContext().chatMetadata),
         subscribe(callback) { listeners.add(callback); return () => listeners.delete(callback); },
-        dispose() { disposed = true; pending = null; clearPrompt(); clearInterval(timer); for (const remove of removers) remove(); listeners.clear(); },
+        dispose() { disposed = true; pending = null; injector.dispose(); clearInterval(timer); for (const remove of removers) remove(); listeners.clear(); },
     };
 }
 let shared;

@@ -134,7 +134,7 @@ test('create and restore remain previews until explicit confirmation and restore
     await click(f.root, '预览创建存档'); assert.equal(f.store.saves.length, 1); assert.match(f.root.textContent, /待确认 · 建立当前剧情存档/);
     await click(f.root, '确认创建存档'); assert.equal(f.store.saves.length, 2); assert.equal(f.api.stats().createApplies, 1);
     await click(f.root, '预览恢复'); assert.equal(f.store.backups.length, 0); assert.equal(f.api.stats().restoreApplies, 0);
-    assert.match(f.root.textContent, /确认时创建的安全备份/); assert.match(f.root.textContent, /此备份尚未写入/); assert.match(f.root.textContent, /最近 5 份/);
+    assert.match(f.root.textContent, /确认时创建的安全备份/); assert.match(f.root.textContent, /此备份尚未写入/); assert.match(f.root.textContent, /最近 10 份/);
     assert.match(f.root.textContent, /聊天消息、回复候选和正文不会回退或删除/); assert.match(f.root.textContent, /从此处新开分支/);
     assert.match(f.root.textContent, /场景与时间/); assert.match(f.root.textContent, /当前：黄昏 · 门厅/); assert.match(f.root.textContent, /应用后：清晨 · 古堡外/);
     assert.match(f.root.textContent, /数量摘要相同，但模块内容有变化/); assert.match(f.root.textContent, /characters\.char-1\.stats\.hp/);

@@ -5,6 +5,7 @@ import { contextExpiryPreview } from '../effects/model.js';
 import { periodicPreview } from '../effects/settlement.js';
 import { mountTravel, appendExpiryPreview } from './travel-view.js';
 import {contextLine} from '../shared/context-line.js';
+import { attachLinkageBadge } from '../linkage/badge.js';
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text != null) el.textContent = text; if (className) el.className = className; return el; };
 const LABELS = { 'set-time': '设置游戏时间', 'advance-time': '推进游戏时间', activity: '按活动规则推进', 'time-rules': '保存活动耗时', 'save-schedule': '保存人物日程', 'delete-schedule': '删除人物日程', 'confirm-presence': '确认场景人物', 'save-absence-rule': '保存离场规则', 'delete-absence-rule': '删除离场规则', 'settle-absence': '确认离场变化', travel: '旅行', periods: '保存时段划分', 'save-scene': '保存场景资料', 'switch-scene': '进入场景', 'leave-scene': '离开当前场景', settings: '保存读取设置' };
 const ACTIVITY_LABELS = { dialogue: '一次对话', shortRest: '短休', longRest: '长休', travel: '无地图路线的旅行' };
@@ -17,6 +18,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
     const peopleFor = () => api.characterReferences?.() ?? characterReferences(api.context());
     const absenceFor = () => api.absencePreview?.() ?? absencePreview(validateState(api.read()));
     const page = node('div', null, 'amin-page amin-app-page amin-scene'), intro = node('div', null, 'amin-context'), tabs = node('nav', null, 'amin-tabs');
+    attachLinkageBadge(intro, 'scene', { getContext: () => api.context?.() });
     const notice = node('div', null, 'amin-notice'), review = node('section', null, 'amin-stack'), body = node('section', null, 'amin-stack');
     tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '场景与时间页面');
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');

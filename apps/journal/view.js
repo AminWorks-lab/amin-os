@@ -9,6 +9,7 @@ import { readInventory } from '../inventory/model.js';
 import { readCharacters } from '../characters/model.js';
 import {contextLine} from '../shared/context-line.js';
 import {linkedEmpty} from '../shared/open-app.js';
+import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
 const tabNames = { task: '任务', clue: '线索', hook: '伏笔', chronicle: '编年史', memory: '事实与记忆', auto: '自动整理', prior: '前作参考', references: '引用预览', transfer: '导入 / 导出' };
@@ -22,6 +23,7 @@ export function mount(target, options = {}) {
     const { make, select, checkbox, grid, toolbar } = formControls;
     const instance = 'journal-' + uuid();
     const page = make('section', '', 'amin-page amin-app-page amin-journal'), context = make('div', '', 'amin-context');
+    attachLinkageBadge(context, 'journal', { getContext: () => api.context?.() });
     const tabs = make('div', '', 'amin-tabs'), notice = make('div', '', 'amin-notice'), body = make('section', '', 'amin-stack');
     tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '剧情档案页面');
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');

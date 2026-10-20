@@ -12,10 +12,12 @@ export const retryNote = error => `上次输出无法解析：${error?.message ?
  * `channel` is the app whose route is captured (defaults to `app`). A caller that
  * must freeze the route earlier passes its own `snapshot`. `include` forwards the
  * generate() include* flags. `cancelled(signal)` builds the error thrown after an abort.
+ * `schema` ({name, schema}) asks the independent API channel for json_schema output
+ * when that channel enables structured output; other channels ignore it.
  */
 export async function runTask(app, {
     ai = getAI(), ctx, system, payload, parse = text => text, signal, check = () => {},
-    retryOnParseError = true, channel = app, snapshot, include = {},
+    retryOnParseError = true, channel = app, snapshot, include = {}, schema,
     cancelled = () => Error('已取消生成'), emptyMessage = 'AI 返回空内容，未应用结果',
 } = {}) {
     if (!ai?.capture || !ai?.generate) throw Error('共享 AI 尚未就绪，请检查 AI 设置。');
@@ -23,7 +25,7 @@ export async function runTask(app, {
     const captured = snapshot ?? ai.capture(channel);
     const guard = () => { check(); if (signal?.aborted) throw cancelled(signal); };
     const ask = async request => {
-        const raw = await ai.generate(app, ctx, { systemPrompt: system, prompt: request }, { ...include, signal, snapshot: captured, data: { request } });
+        const raw = await ai.generate(app, ctx, { systemPrompt: system, prompt: request, ...(schema ? { schema } : {}) }, { ...include, signal, snapshot: captured, data: { request } });
         guard();
         if (typeof raw !== 'string' || !raw.trim()) throw Error(emptyMessage);
         return raw;

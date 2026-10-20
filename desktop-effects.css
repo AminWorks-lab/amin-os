@@ -5,7 +5,7 @@
   #amin-os {
     --amin-fx-paper-grain:#946c3410;--amin-fx-paper-light:#fff5d9;--amin-fx-paper-dark:#b48b58;
     --amin-fx-aurora-glow:#03aca875;--amin-fx-aurora-band:#103344;--amin-fx-aurora-deep:#031323;--amin-fx-aurora-mid:#143655;--amin-fx-aurora-night:#071525;
-    --amin-fx-image-shade:#0009;--amin-fx-image-fade:#0002;--amin-fx-tile-shadow:#0005;--amin-fx-tile-label:#fff;
+    --amin-fx-image-shade:#0009;--amin-fx-image-fade:#0002;--amin-fx-live-shadow:#000c;--amin-fx-tile-shadow:#0005;--amin-fx-tile-label:#fff;
     --amin-fx-petal-light:#fff0f7;--amin-fx-petal-dark:#e992b7;--amin-fx-petal-glow:#ffbed970;
   }
   #amin-os .amin-home[data-backdrop=paper],

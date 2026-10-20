@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSavesService } from '../apps/saves/service.js';
 import { createOperationService, subscribeStateChanges } from '../apps/shared/operations.js';
+import { memoryBackups } from './fixtures/memory-backups.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function fixture() {
@@ -13,10 +14,12 @@ function fixture() {
     };
     const ctx = { chatId: 'story', getCurrentChatId() { return this.chatId; }, characterId: 0, characters: [{ avatar: 'hero.png' }],
         chat: [{ name: '角色', is_user: false, mes: '开场', swipe_id: 0 }],
-        chatMetadata: { variables: { 状态栏: JSON.stringify({ 版本: 1, 项目: { 主角: { 生命: 8 } } }) } },
+        // The user already keeps saves in this chat, so automatic checkpoints are allowed here.
+        chatMetadata: { variables: { 状态栏: JSON.stringify({ 版本: 1, 项目: { 主角: { 生命: 8 } } }) }, amin_os_saves_v1: { version: 2, saves: [], ring: [], checkpointSettings: { enabled: true, limit: 10 } } },
         async saveMetadata() { writes++; if (slow) await slow(); },
         eventSource, eventTypes: { CHAT_CHANGED: 'chat', MESSAGE_RECEIVED: 'received', USER_MESSAGE_RENDERED: 'user', GENERATION_STARTED: 'started', GENERATION_ENDED: 'ended', GENERATION_STOPPED: 'stopped' } };
-    const api = createSavesService(() => ctx, { createId: (() => { let n = 0; return () => 'id-' + (++n); })(), autoCheckpoints: true });
+    const { backups } = memoryBackups(() => ctx);
+    const api = createSavesService(() => ctx, { createId: (() => { let n = 0; return () => 'id-' + (++n); })(), autoCheckpoints: true, backups });
     return { api, ctx, eventSource, writes: () => writes, slow: fn => { slow = fn; } };
 }
 // A follow-up writer such as the linkage auto update.
@@ -32,11 +35,12 @@ test('a background checkpoint whose save goes stale does not leave the chat dirt
     const h = fixture(), phases = [];
     const off = subscribeStateChanges(detail => phases.push(detail.phase));
     try {
-        await delay(450); assert.equal(h.api.read().checkpoints.length, 1);
-        // The user message is rendered before the host starts its reply in this run.
+        await delay(450); assert.equal(h.api.read().checkpoints.length, 0, 'opening a chat records nothing');
+        h.eventSource.emit('received'); await delay(450); assert.equal(h.api.read().checkpoints.length, 1);
+        // The host appends its reply while the checkpoint is being saved.
         h.ctx.chat.push({ name: '玩家', is_user: true, mes: '继续', swipe_id: 0 });
         h.slow(async () => { h.ctx.chat.push({ name: '角色', is_user: false, mes: '回复', swipe_id: 0 }); await delay(5); });
-        h.eventSource.emit('user'); await delay(450); h.slow(null);
+        h.eventSource.emit('received'); await delay(450); h.slow(null);
         assert.ok(phases.includes('stale'), 'the checkpoint save observed a changed chat');
         assert.equal(h.api.dirty(), false, 'a disposable checkpoint must not hold the chat dirty');
         assert.equal(h.api.checkpointStatus(), '');
@@ -48,9 +52,9 @@ test('a background checkpoint whose save goes stale does not leave the chat dirt
 test('automatic checkpoints wait for an active generation and are rebuilt after it ends', async () => {
     const h = fixture();
     try {
-        await delay(450); const before = h.writes();
+        h.eventSource.emit('received'); await delay(450); const before = h.writes();
         h.eventSource.emit('started', 'normal', {}, false);
-        h.ctx.chat.push({ name: '玩家', is_user: true, mes: '继续', swipe_id: 0 }); h.eventSource.emit('user');
+        h.ctx.chat.push({ name: '玩家', is_user: true, mes: '继续', swipe_id: 0 }); h.eventSource.emit('received');
         await delay(450); assert.equal(h.writes(), before, 'no checkpoint while generating');
         h.ctx.chat.push({ name: '角色', is_user: false, mes: '回复', swipe_id: 0 });
         h.eventSource.emit('ended'); await delay(450);

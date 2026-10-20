@@ -1,6 +1,7 @@
 import { uuid } from '../../../../uuid.js';
 import { legacyModule, isIndependent } from '../../../story-state/access.js';
 import { mapIntegrationPrompt } from './integration-prompt.js';
+import { attachLinkageBadge } from '../../../linkage/badge.js';
 import {mountWorldbookSources} from '../../../worldbook-source-ui.js';
 import {sourceSettings,saveSourceSettings} from '../../../worldbook-sources.js';
 import {getAI} from '../../../../ai/service.js';
@@ -98,7 +99,7 @@ export function createPanel(store,persistence,preferences,options={}){
         page.replaceChildren();savebar.replaceChildren();feedback.textContent=notice;
         if(collapsed)return;
         const key=`${persistence.scope()}:${tab}:${map.id}`;if(key!==cameraKey){camera=null;selected=null;unlocked=false;dragMode='move';cameraKey=key;selectedCells=[];brushCells=false;}
-        const context=el('section',undefined,'dm-map-context amin-context');
+        const context=el('section',undefined,'dm-map-context amin-context');attachLinkageBadge(context,'map',{document:panel.ownerDocument});
         context.append(el('p',tab==='settings'?'地图设置':tab==='view'?'当前已保存地图':'正在编辑地图草稿','dm-browse-label'),el('h2',map.name),el('p','📍 角色位置：'+locationPath(saved),'dm-role-location'));page.append(context);
         const mapNavigation=el('div',undefined,'dm-actions');
         if(map.parentMap)mapNavigation.append(button('返回上级：'+document.maps[map.parentMap].name,()=>navigateMap(map.parentMap)));

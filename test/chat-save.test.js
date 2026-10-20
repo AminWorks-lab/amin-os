@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { markChatIdsDirty, saveChatMetadata, registerChatSavePreparation } from '../apps/shared/chat-save.js';
-import { createHistory } from '../apps/status/history.js';
 
 const fixture = () => {
   let chatSaves = 0, metadataSaves = 0;
@@ -43,25 +42,6 @@ test('an ID assigned during an in-flight full save remains pending', async () =>
   finishFirst(); await first;
   assert.equal(await saveChatMetadata(t.ctx), 'chat');
   assert.equal(calls, 2); assert.equal(t.metadataSaves(), 0);
-});
-
-test('an external update persists history and its message IDs together across reload', async () => {
-  const t = fixture(); let state = { hp: 8 }, saved;
-  t.ctx.saveChat = async () => {
-    saved = { chat: structuredClone(t.ctx.chat), chatMetadata: structuredClone(t.ctx.chatMetadata) };
-  };
-  const history = createHistory({ context: () => t.ctx, read: () => state, write: value => { state = value; } });
-  history.sync();
-  assert.equal(saved, undefined); assert.equal(t.metadataSaves(), 0);
-  state = { hp: 17 }; history.adoptExternal();
-  assert.equal(await saveChatMetadata(t.ctx), 'chat');
-  assert.ok(saved.chat[0].extra.wsh_message_id);
-  const restored = { ...t.ctx, ...saved, saveChat: async () => {}, saveMetadata: async () => {} };
-  const reloaded = createHistory({ context: () => restored, read: () => ({ hp: 17 }), write: () => {} });
-  reloaded.sync();
-  assert.deepEqual(reloaded.list()[0].state, { hp: 17 });
-  assert.equal(t.metadataSaves(), 0);
-  history.dispose(); reloaded.dispose();
 });
 
 test('the final check blocks a stale candidate after preparations without dispatching either save', async () => {

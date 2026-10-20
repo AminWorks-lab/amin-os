@@ -18,6 +18,7 @@ const APPS=[
     {id:'effects',name:'能力面板',sub:'世界书技能与当前生效记录',icon:'✧',color:'lavender'},
     {id:'map',name:'地图',sub:'记录地点，探索你的世界',icon:'⌘',color:'mint'},
     {id:'status',name:'世界状态',sub:'角色、关系与剧情的此刻',icon:'◈',color:'lavender'},
+    {id:'linkage',name:'联动更新',sub:'跨应用资料、读写权限与更新审核',icon:'⇄',color:'mint'},
     {id:'organizations',name:'势力概览',sub:'组织、联盟、地区与局势评估',icon:'◎',color:'mint'},
     {id:'reply',name:'回复选项',sub:'拟写下一句，由你决定',icon:'≋',color:'peach'},
     {id:'ai',name:'AI 设置',sub:'共享 API、异步预设与任务',icon:'✧',color:'mint'},
@@ -30,7 +31,7 @@ function icon(id){
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
     for(const [key,value]of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.5','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))svg.setAttribute(key,value);
     if(id==='settings')paths.settings='M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6';
-    Object.assign(paths,{characters:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M4 21v-2a8 8 0 0 1 16 0v2',inventory:'M8 7V4h8v3 M4 7h16v14H4z M4 12h16 M10 12v3h4v-3',relationships:'M6 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4 M18 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4 M12 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4 M8 7h8 M7 9l4 7 M17 9l-4 7',saves:'M4 3h13l3 3v15H4z M8 3v6h8V3 M8 21v-8h8v8'});
+    Object.assign(paths,{characters:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M4 21v-2a8 8 0 0 1 16 0v2',inventory:'M8 7V4h8v3 M4 7h16v14H4z M4 12h16 M10 12v3h4v-3',relationships:'M6 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4 M18 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4 M12 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4 M8 7h8 M7 9l4 7 M17 9l-4 7',saves:'M4 3h13l3 3v15H4z M8 3v6h8V3 M8 21v-8h8v8',linkage:'M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1 M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1'});
     if(id==='dice')paths.dice='M5 3h14l2 2v14l-2 2H5l-2-2V5z M8 8h.01 M16 8h.01 M12 12h.01 M8 16h.01 M16 16h.01';
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',paths[id]);svg.append(path);return svg;
 }
@@ -91,11 +92,11 @@ export function createShell(){
     function select(id){active=id;nav.hidden=id==='home';appHeading.textContent=APPS.find(a=>a.id===id)?.name??'';home.hidden=id!=='home';for(const [key,pane]of Object.entries(panes)){pane.hidden=key!==id;tabs[key].setAttribute('aria-current',key===id?'page':'false');}homeButton.setAttribute('aria-current',id==='home'?'page':'false');notice.hidden=true;updateStoryGate();}
     function updateStoryGate(){if(!STORY_APPS.includes(active)){storyGate.hidden=true;return;}try{renderStoryGate(storyGate,globalThis.SillyTavern?.getContext?.(),document);}catch{storyGate.hidden=true;}}
     function showHome(){epoch++;select('home');open();if(blocked){message.textContent=blocked;retry.hidden=true;notice.hidden=false;}}
-    async function showApp(id){
+    async function showApp(id,section){
         if(!panes[id])return;
         if(blocked){showHome();return;}
         tileDesktop?.leave();select(id);open();const ticket=++epoch;message.textContent='正在打开…';retry.hidden=true;notice.hidden=false;
-        try{if(!handlers[id])throw Error('应用仍在加载，请稍后重试。');await handlers[id]();if(ticket===epoch)notice.hidden=true;}
+        try{if(!handlers[id])throw Error('应用仍在加载，请稍后重试。');await handlers[id](section);if(ticket===epoch)notice.hidden=true;}
         catch(error){if(ticket===epoch){message.textContent=error.message||'打开失败，请重试。';retry.hidden=false;notice.hidden=false;}}
     }
     const resume=()=>active==='home'?open():showApp(active);
@@ -110,5 +111,5 @@ export function createShell(){
     getAppearance()?.subscribe(()=>{const next=getAppearance().snapshot().window.height;if(next!==configuredHeight){configuredHeight=next;manualHeight=null;save();}place();});
     window.addEventListener('resize',place);window.visualViewport?.addEventListener('resize',place);window.visualViewport?.addEventListener('scroll',place);place();select('home');
     tileDesktop=createTileDesktop({home,cards,apps:APPS,createIcon:icon,openApp:showApp,onLayout:place});
-    return {panes,open:resume,close,home:showHome,showApp,register(id,fn){handlers[id]=fn;},refreshActive(){if(opened&&active!=='home')showApp(active);},setBlocked(text){blocked=text;cards.querySelectorAll('button').forEach(b=>b.disabled=true);message.textContent=text;retry.hidden=true;notice.hidden=false;}};
+    return {panes,open:resume,close,home:showHome,showApp,setLiveTiles(summaries){tileDesktop?.setLive(summaries);},register(id,fn){handlers[id]=fn;},refreshActive(){if(opened&&active!=='home')showApp(active);},setBlocked(text){blocked=text;cards.querySelectorAll('button').forEach(b=>b.disabled=true);message.textContent=text;retry.hidden=true;notice.hidden=false;}};
 }

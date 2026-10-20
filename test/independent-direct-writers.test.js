@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkpointState } from '../apps/status/state-checkpoint.js';
 import { createHistory } from '../apps/status/history.js';
 import { generateStatus } from '../apps/status/generator.js';
 import { createStore as createOrganizations } from '../apps/organizations/service.js';
@@ -35,11 +34,6 @@ function canonicalPreparation(f) {
   const runtime=createStoryStateRuntime(()=>f.ctx,{backups:{available:()=>true,status:()=>({available:true}),savePrevious:async()=>{}}});
   return ()=>runtime.destroy();
 }
-
-test('independent checkpoints ignore incompatible LittleWhiteBox internals and do not mutate them',()=> {
-  const f=fixture({status:status(9)}),before=structuredClone(f.ctx.chatMetadata.extensions);
-  assert.equal(checkpointState(f.ctx),false);assert.deepEqual(f.ctx.chatMetadata.extensions,before);assert.equal(f.saves,0);
-});
 
 test('independent history observation and Swipe changes allocate no IDs, snapshots or saves',()=> {
   const f=fixture({status:status(9)}),before=structuredClone(f.ctx.chatMetadata);

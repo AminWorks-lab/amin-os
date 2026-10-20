@@ -245,29 +245,6 @@ try {
     await evaluate(`(()=>{const root=pane('relationships'),node=root.querySelector('[data-person-id="p0"]'),before=node.getAttribute('transform'),rect=node.getBoundingClientRect();const fire=(type,x,y)=>node.dispatchEvent(new PointerEvent(type,{bubbles:true,pointerId:19,clientX:x,clientY:y,button:0}));node.setPointerCapture=()=>{};fire('pointerdown',rect.x+24,rect.y+24);fire('pointermove',rect.x+54,rect.y+54);fire('pointerup',rect.x+54,rect.y+54);if(node.getAttribute('transform')===before)throw Error('network drag did not move');})()`);
 
     checks.push('mobile list first; dense graph scrolls without overflow and selected relation detail wraps');
-    await evaluate(`AminOS.openApp('settings')`);
-    await evaluate(`(async()=>{
-      const {createStoryStateGraph}=await import('/apps/shared/story-state-graph.js');
-      const {createStoryLibraryService}=await import('/apps/shared/story-library-service.js');
-      const {mountStoryLibrary}=await import('/settings/story-library-view.js');
-      const nodes=new Map(),store={list:async()=>[...nodes.keys()],get:async id=>structuredClone(nodes.get(id)),put:async(id,v)=>nodes.set(id,structuredClone(v))};
-      const graph=createStoryStateGraph(store),state=n=>({version:2,variables:{n},rules:{},jsonStringRoots:[]});
-      const base=await graph.save(state(0));await graph.save(state(1));
-      const capabilities=()=>({scope:'registered-chats-and-backups',maintenanceLock:false,globalDiskCoverage:false,reason:'缺少全局维护锁，永久删除不可用。'});
-      const entries=['chat','backup'].map(kind=>({id:kind,label:kind+' 测试长名称'.repeat(8),kind,documentBytes:1000,chatMetadata:{amin_os_story_storage_v2:{version:2,owner:'amin-os/story-v2',baseStateId:base}},chat:[]}));
-      window.libraryFixture=createStoryLibraryService({store,hostAdapter:{capabilities,census:async()=>({complete:true,entries,issues:[],fingerprint:'unchanged',capabilities:capabilities()})}});
-      const target=document.createElement('section');target.className='amin-page amin-app-page';pane('settings').replaceChildren(target);
-      window.libraryScanCalls=0;
-      mountStoryLibrary(target,{getRuntime:()=>({scanStoryLibrary:o=>{window.libraryScanCalls++;return libraryFixture.scan(o);},exportStoryLibraryCandidates:(r,o)=>libraryFixture.exportCandidates(r,o)})});
-    })()`);
-    await click('settings','扫描全库剧情文件');
-    assert.equal(await evaluate('libraryScanCalls'),1,'the scan button must dispatch exactly once');
-    await waitFor("pane('settings').innerText.includes('扫描不完整')",'read only incomplete census');
-    await click('settings','预览候选文件');
-    await evaluate("pane('settings').querySelectorAll('details').forEach(d=>d.open=true)");
-    await layoutsAt('settings','global-storage-analysis');
-    assert.ok((await notice('settings')).includes('不等于可删除'));
-    checks.push('global storage real scanner with isolated files reports shared bytes and provisional orphan; no deletion');
     assert.deepEqual(errors,[]); assert.deepEqual(consoleErrors,[]);
     assert.deepEqual(layoutIssues,[]);
     fs.writeFileSync(path.join(artifacts,'report.json'),JSON.stringify({passed:true,checks,layouts,layoutIssues,runtimeErrors:errors,consoleErrors},null,2));

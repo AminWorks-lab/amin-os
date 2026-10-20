@@ -1,4 +1,4 @@
-import { ROOTS, nativeState2Status } from '../state2/storage.js';
+import { ROOTS } from '../story-state/legacy-roots.js';
 import { timingStatus } from '../effects/timing.js';
 import { sameMessageRevision, messageRevision } from '../shared/message-revision.js';
 import { isIndependent, readModule } from '../story-state/access.js';
@@ -223,12 +223,8 @@ export function collectLinkedContext(ctx, settings = {}) {
         return empty();
     }
     if (!isIndependent(ctx)) {
-        let status;
-        try { status = nativeState2Status(ctx); } catch { /* Invalid ownership is displayed as unavailable. */ }
-        if (!status?.enabled || !status?.migrated || !status?.owned) {
-            warnings.push('当前聊天的 Amin 剧情资料尚未接入可读取的小白变量 2.0。');
-            return empty();
-        }
+        warnings.push('当前聊天尚未导入或开始 Amin 剧情资料，关联资料暂不读取。');
+        return empty();
     }
     const known = new Set(LINKED_SOURCES.map(source => source.id));
     const requested = Array.isArray(settings?.linkedSources) ? settings.linkedSources : DEFAULT_LINKED_SOURCES;

@@ -17,7 +17,6 @@ import { registerMapRuntime } from '../apps/map/src/integrations/runtime.js';
 import * as Linkage from '../apps/linkage/policy.js';
 import { chatIdentity, chatPath } from '../apps/shared/operations.js';
 import { branchAvailability, assertOpenedBranch } from '../apps/saves/branch.js';
-import { STORY_STORAGE_KEY } from '../apps/state2/storage.js';
 
 const at='2026-09-23T00:00:00.000Z';
 function fixture({populated=true}={}){
@@ -125,9 +124,9 @@ test('restore checks live map draft on preview and again before confirmation',as
     assert.throws(()=>h.api.stageRestore(saved.id),/未保存/);dirty=false;h.api.stageRestore(saved.id);dirty=true;
     const before=structuredClone(h.ctx.chatMetadata);assert.throws(()=>h.api.confirm(),/未保存/);assert.deepEqual(h.ctx.chatMetadata,before);release();h.api.dispose();
 });
-test('delete is staged and automatic pre-restore backups retain the latest five',async()=>{
+test('delete is staged and without external storage only two pre-restore backups stay inline',async()=>{
     const h=fixture({populated:false}),saved=await save(h);for(let i=0;i<7;i++){h.api.stageRestore(saved.id);await h.api.confirm();}
-    assert.equal(h.api.read().backups.length,5);h.api.stageDelete(saved.id);assert.equal(h.api.read().saves.length,1);h.api.discard();assert.equal(h.api.read().saves.length,1);h.api.stageDelete(saved.id);await h.api.confirm();assert.equal(h.api.read().saves.length,0);h.api.dispose();
+    assert.equal(h.api.read().backups.length,2);assert.equal(h.ctx.chatMetadata[KEY].ring.filter(item=>item.snapshot).length,2);h.api.stageDelete(saved.id);assert.equal(h.api.read().saves.length,1);h.api.discard();assert.equal(h.api.read().saves.length,1);h.api.stageDelete(saved.id);await h.api.confirm();assert.equal(h.api.read().saves.length,0);h.api.dispose();
 });
 test('present malformed legacy roots are rejected without overwriting original data',async()=>{
     for(const key of [Journal.KEY,Info.KEY,Effects.KEY,Scene.KEY,'amin_os_dice_v1','dynamicMapV1',Info.LIBRARY_KEY,'amin_os_organizations_v1'])for(const value of [null,false,0,'']){
@@ -149,21 +148,6 @@ test('restoring into a clean initial map view may establish saved map metadata',
     const source=fixture(),saved=await save(source),target=fixture({populated:false});
     const release=registerMapRuntime({context:()=>target.ctx,persistence:{ensureActive(){},saving:()=>false},draft:{status:()=>({dirty:false})},store:{snapshot:()=>createDemoDocument()}});
     target.api.stageRestore(saved);await target.api.confirm();assert.deepEqual(target.ctx.chatMetadata.dynamicMapV1.document,saved.modules.map);release();source.api.dispose();target.api.dispose();
-});
-
-test('external story history pauses automatic full checkpoints while preserving manual saves', async () => {
-    const h = fixture({ populated: false });
-    h.ctx.chatMetadata[STORY_STORAGE_KEY] = { version: 2 };
-    const before = structuredClone(h.ctx.chatMetadata);
-    assert.equal(await h.api.captureCheckpoint({ automatic: true }), null);
-    assert.deepEqual(h.ctx.chatMetadata, before);
-    assert.equal(h.writes(), 0);
-    assert.match(h.api.checkpointStatus(), /自动完整检查点已暂停/);
-    await h.api.captureCheckpoint();
-    assert.equal(h.api.read().checkpoints.length, 1);
-    await save(h, '手工存档');
-    assert.equal(h.api.read().saves.length, 1);
-    h.api.dispose();
 });
 
 test('linked appearance, schedule, memories, relationship reminders and effect rules survive one complete restore',async()=>{

@@ -54,11 +54,11 @@ function hostSetup() {
     const callbacks = new Map(), prompts = new Map(); let count = 0;
     const types = Object.fromEntries(['GENERATION_AFTER_COMMANDS', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'CHAT_CHANGED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'MESSAGE_SENT', 'MESSAGE_RECEIVED'].map(name => [name, name]));
     const ctx = { chat: [{ name: '玩家', is_user: true, mes: '出发' }], chatMetadata: {}, characterId: 0, getCurrentChatId: () => 'hook', saveMetadata: async () => {}, eventTypes: types,
-        eventSource: { on(name, callback) { callbacks.set(name, callback); }, removeListener(name) { callbacks.delete(name); } },
+        eventSource: { on(name, callback) { if (!callbacks.has(name)) callbacks.set(name, new Set()); callbacks.get(name).add(callback); }, removeListener(name, callback) { callbacks.get(name)?.delete(callback); if (!callbacks.get(name)?.size) callbacks.delete(name); } },
         setExtensionPrompt(name, prompt) { prompts.set(name, prompt); },
     };
     const service = createSceneService(() => ctx, { createId: () => 'hook_' + (++count) });
-    return { ctx, service, emit: (name, ...args) => callbacks.get(name)?.(...args), prompt: () => prompts.get(PROMPT_KEY), callbacks };
+    return { ctx, service, emit: (name, ...args) => { let result; for (const callback of [...(callbacks.get(name) ?? [])]) result = callback(...args); return result; }, prompt: () => prompts.get(PROMPT_KEY), callbacks };
 }
 test('host prompt is off by default and normal generation receives only confirmed opted-in facts', async () => {
     const t = hostSetup(); assert.equal(t.service.supported, true);

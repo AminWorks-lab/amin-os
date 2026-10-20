@@ -1,7 +1,6 @@
 import { nativeState2Status, getState2Runtime } from '../state2/runtime.js';
 import { uuid } from '../../uuid.js';
 import { createOperationService, subscribeStateChanges, chatIdentity, chatPath } from '../shared/operations.js';
-import { checkpointState } from '../status/state-checkpoint.js';
 import { adapters as allAdapters } from './registry.js';
 import { KEY, MODULES, SCOPE_TEMPLATE_KEY, scopeTemplate, readScopeTemplate, readLinkageState, readLinkageSettings, validateLinkageState, compactLinkageReceipts, modulePolicy, moduleAvailable, mayWrite, mayManuallyUpdateStatus, plain, validateJSON } from './policy.js';
 import { parseUpdate, hasUpdate } from './protocol.js';
@@ -13,8 +12,6 @@ import { allocateUpdateEntityIds } from './entity-ids.js';
 
 const clone = value => structuredClone(value), same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
-const checkpointPath = ['extensions','LittleWhiteBox','stateCkptV2'];
-const checkpointDependencies = [['variables'], ['LWB_RULES_V2'], ['extensions','LittleWhiteBox']];
 // These archives are derived from canonical state and are never read by the
 // reference index or a model-facing projection. Host observers may append the
 // current floor asynchronously. Guard them only when an adapter actually writes
@@ -76,7 +73,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const ctx = options.candidate ? ensureGeneration(options.candidate) : context();
         const settings = readLinkageState(ctx);
         if (!settings.enabled && !manualScope) throw Error('请先启用统一联动更新。');
-        const input = parseUpdate(raw), independent = isIndependent(ctx);
+        const input = parseUpdate(raw), literal = parseUpdate(raw, { canonical: false }), independent = isIndependent(ctx);
         const currentData = independent ? rawData(ctx) : null;
         const existingIds = independent ? [...buildReferenceIndex(currentData).entities.map(entity => entity.id),
             ...(currentData.relationships?.thresholdRules ?? []).map(rule => `relationships:${rule.id}`)] : [];
@@ -84,12 +81,12 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const parsed = allocated?.update ?? input;
         if (!parsed.changes.length) throw Error('本次没有需要更新的内容。');
         const source = options.candidate?.source ?? sourceFor(ctx);
-        if (settings.applied.some(record => !record.archived && sourceEqual(record.source, source) && (options.candidate || changesEqual(record, input.changes)))) throw Error('这次来源的更新已经应用，不会重复执行。');
-        let token = operation.capture(independent ? [...paths, [STATE_KEY]] : paths);
+        if (settings.applied.some(record => !record.archived && sourceEqual(record.source, source) && (options.candidate || changesEqual(record, input.changes) || changesEqual(record, literal.changes)))) throw Error('这次来源的更新已经应用，不会重复执行。');
+        const token = operation.capture(independent ? [...paths, [STATE_KEY]] : paths);
         const operationId = createId(), at = now(), sandbox = independent ? toLegacyContext(ctx) : { ...ctx, chatMetadata: clone(ctx.chatMetadata) };
         const touched = [], descriptions = [], changes = [], beforeData = rawData(sandbox);
         for (const [index, change] of parsed.changes.entries()) {
-            if (manualScope && change.module === 'status' && change.action !== 'set') throw Error('手动状态更新仅允许设置已有字段的最终值。');
+            if (manualScope && change.module === 'status' && change.action !== 'set-field') throw Error('手动状态更新仅允许设置已有字段的最终值。');
             if (!canWrite(ctx,change.module)) throw Error(`${MODULES[change.module][0]} 未在本次操作的更新范围内。`);
             const adapter = adapters.find(a => a.id === change.module);
             if (!adapter?.apply) throw Error('这个模块目前只支持读取。');
@@ -107,15 +104,6 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const priorMissing = new Set(beforeRefs.unresolved.map(referenceKey));
         const newMissing = afterRefs.unresolved.filter(item => !priorMissing.has(referenceKey(item)));
         if (newMissing.length) throw Error('这批更新会产生新的无效引用：' + newMissing.map(item => `${item.from} → ${item.to}`).join('；'));
-        if (!independent && touched.some(path => path[0] === 'variables')) {
-            const checkpointCtx = { ...sandbox, saveMetadataDebounced() {} };
-            if (checkpointState(checkpointCtx)) {
-                touched.push(checkpointPath);
-                // State 2.0 checkpoints include every variable and rule. Protect
-                // those wider inputs only when this batch actually creates one.
-                token = operation.capture([...paths, ...checkpointDependencies]);
-            }
-        }
         const nextSettings = clone(settings);
         if (independent) {
             nextSettings.applied = compactLinkageReceipts(nextSettings).applied.slice(-63);

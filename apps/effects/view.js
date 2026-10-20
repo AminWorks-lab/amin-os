@@ -11,11 +11,13 @@ import {durationFields,appendTiming,timingLabel} from './timing-view.js';
 import {ruleFields,appendRules} from './rules-view.js';
 import {ACTION_TEMPLATES,actionTaskFields} from './action-fields.js';
 import {contextLine} from '../shared/context-line.js';
+import {attachLinkageBadge} from '../linkage/badge.js';
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 export function mount(target,options={}){
  const instanceId='amin-'+uuid();
  const api=options.api??getSharedService();
  const page=node('div',null,'amin-page amin-app-page amin-effects'),context=node('div',contextLine(api.context(),'能力发动与持续效果'),'amin-context');
+ attachLinkageBadge(context,'effects',{getContext:()=>api.context?.()});
  const tabs=node('div',null,'amin-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','持续效果页面');
  const status=node('div',null,'amin-notice');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  const recovery=node('section',null,'amin-card amin-stack');recovery.hidden=true;

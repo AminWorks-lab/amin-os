@@ -6,6 +6,7 @@ import { createDiceService, getSharedDiceService } from '../dice/service.js';
 import { KNOWLEDGE_STATES } from '../journal/model.js';
 import {contextLine} from '../shared/context-line.js';
 import {linkedEmpty} from '../shared/open-app.js';
+import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
 const componentNames = { value: '数值', current: '当前值', max: '最大值' };
@@ -23,6 +24,7 @@ export function mount(target, options = {}) {
     const { make, select, grid, toolbar } = formControls;
     const page = make('section', '', 'amin-ui amin-app-page amin-characters');
     const context = make('div', '', 'amin-context'), notice = make('div', '', 'amin-notice');
+    attachLinkageBadge(context, 'characters', { document: doc, getContext: () => api.context() });
     const body = make('div', '', 'amin-stack'), recovery = make('div', '', 'amin-toolbar');
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     page.append(context, notice, body, recovery); target.append(page);

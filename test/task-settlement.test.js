@@ -5,11 +5,6 @@ import { KEY, empty, changeWithContext, currentEntries, readStore, restoreJourna
 import { KEY as INVENTORY, change, emptyStore, readInventory } from '../apps/inventory/model.js';
 import { KEY as CHARACTERS, appendSnapshot, emptyStore as emptyCharacters } from '../apps/characters/model.js';
 import { createEffects } from '../apps/effects/service.js';
-import { createState2Runtime } from '../apps/state2/runtime.js';
-import { createStoryStorage } from '../apps/state2/story-storage.js';
-import { createStoryStateGraph } from '../apps/shared/story-state-graph.js';
-import { indexedState } from '../apps/shared/story-chat-index.js';
-import { ROOTS } from '../apps/state2/storage.js';
 import { adapter as journal } from '../apps/linkage/adapters/journal.js';
 
 function fixture() {
@@ -65,27 +60,6 @@ test('task receipt and reward stay single when a failed save is retried', async 
     } finally { api.dispose(); }
 });
 
-
-
-test('receipt and rewards are recorded in the same canonical State2 external snapshot', async () => {
-    const ctx = fixture(), nodes = new Map();
-    ctx.extensionSettings = { LittleWhiteBox: { variablesMode: '2.0' } }; ctx.saveChat = async () => {}; ctx.saveMetadataDebounced = () => {};
-    ctx.chatMetadata.variables = {}; ctx.chatMetadata.LWB_RULES_V2 = {};
-    const graph = createStoryStateGraph({ async get(id) { return structuredClone(nodes.get(id) ?? null); }, async put(id, node) { nodes.set(id, structuredClone(node)); } });
-    const story = createStoryStorage(() => ctx, { graph, restoreState: async (_floor, snapshot) => { ctx.chatMetadata.variables = structuredClone(snapshot.variables); ctx.chatMetadata.LWB_RULES_V2 = structuredClone(snapshot.rules); return { restored: true, stale: false }; } });
-    const runtime = createState2Runtime(() => ctx, { host: { LWB_StateV2: { applyText() { throw Error('must not execute native AI update'); } } }, storyStorage: story, interval: 0, report() {} });
-    const api = createEffects(() => ctx);
-    try {
-        await runtime.migrate(); api.stageAction(input()); await api.confirmAction();
-        const parse = value => typeof value === 'string' ? JSON.parse(value) : value;
-        const variables = ctx.chatMetadata.variables;
-        assert.equal(parse(variables[ROOTS.inventory]).items[0].quantity, 5);
-        assert.ok(parse(variables[ROOTS.journal]).entries[0].rewardClaim.operationId);
-        const index = await graph.load(ctx.chatMetadata.amin_os_story_storage_v2.indexId), snapshot = await graph.load(indexedState(index, ctx.chat[0]));
-        assert.deepEqual(parse(snapshot.variables[ROOTS.journal]).entries[0].rewardClaim, parse(variables[ROOTS.journal]).entries[0].rewardClaim);
-        assert.equal(parse(snapshot.variables[ROOTS.inventory]).items[0].quantity, 5);
-    } finally { api.dispose(); runtime.destroy(); }
-});
 
 
 test('existing balance and bound stat rewards use their native bounds atomically', () => {

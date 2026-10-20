@@ -4,7 +4,7 @@ import { uuid } from './uuid.js';
 import {cleanupRetiredData} from './retired-data.js';
 import {installExtraFloorButtons} from './apps/extra-floor-ui.js';
 import {installReplyFloorButtons} from './apps/reply/floor-ui.js';
-import {initializeAppearance,installAppearance} from './settings/appearance.js';
+import {initializeAppearance,installAppearance,getAppearance} from './settings/appearance.js';
 import {initializeAI} from './ai/service.js';
 import {installTabScroll} from './ui/tabs.js';
 import { createShell } from './shell.js';
@@ -12,6 +12,8 @@ import { views } from './apps/views.js';
 import { getSharedService as getLinkageService } from './apps/linkage/service.js';
 import { createLinkageHost } from './apps/linkage/host.js';
 import { buildUpdateRules, buildDataPrompt } from './apps/linkage/prompt.js';
+import { setLinkageOpener } from './apps/linkage/open.js';
+import { createLiveTileFeed } from './tile-live-feed.js';
 
 let instance;
 let surfaceLoads;
@@ -68,7 +70,7 @@ export function initialize() {
         inventory:()=>import('./apps/inventory/service.js').then(m=>m.getSharedInventoryService()),
         relationships:()=>import('./apps/relationships/service.js').then(m=>m.getSharedRelationshipsService()),
         saves:()=>import('./apps/saves/service.js').then(m=>m.getSharedSavesService()),
-        scene:()=>Promise.all([import('./apps/scene/service.js'),import('./apps/map/travel.js')]).then(([scene,travel])=>{scene.getSharedSceneService();travel.getSharedTravelService();}),
+        scene:()=>Promise.all([import('./apps/scene/service.js'),import('./apps/map/travel.js')]).then(([scene,travel])=>{travel.getSharedTravelService();return scene.getSharedSceneService();}),
         journal:()=>import('./apps/journal/service.js').then(m=>m.getSharedService()),
         dice:()=>import('./apps/dice/service.js').then(m=>m.getSharedDiceService()),
         worldbooks:()=>import('./apps/worldbooks/runtime.js').then(m=>m.getManager()),
@@ -82,7 +84,7 @@ export function initialize() {
     const ready={},mounted={};
     for(const id of new Set([...Object.keys(background),...Object.keys(views)])){
         if(background[id])ready[id]=settle(background[id]());
-        shell.register(id,async()=>{
+        shell.register(id,async section=>{
             if(ready[id]){
                 let result=await ready[id];
                 if(result.error){ready[id]=settle(background[id]());result=await ready[id];}
@@ -91,10 +93,14 @@ export function initialize() {
             }
             // Mount once; a failed load or mount is retried on the next open.
             mounted[id]??=views[id]().then(m=>m.mount(shell.panes[id])).catch(error=>{mounted[id]=null;throw error;});
-            await (await mounted[id])?.open?.();
+            await (await mounted[id])?.open?.(section);
         });
     }
     surfaceLoads = [ready.map, ready.status];
+    setLinkageOpener(section=>shell.showApp('linkage',section));
+    createLiveTileFeed({getContext:()=>globalThis.SillyTavern?.getContext?.(),apply:summaries=>shell.setLiveTiles(summaries),
+        services:Object.fromEntries(['characters','inventory','relationships','scene','journal'].map(id=>[id,ready[id]])),
+        enabled:()=>getAppearance()?.snapshot().desktop.liveTiles!==false,subscribeSettings:fn=>getAppearance()?.subscribe(fn)});
     installReplyFloorButtons();
     for(const id of ['characters','inventory','relationships','saves','dice','scene','journal','organizations','effects','information','worldbooks','tts'])installExtraFloorButtons(id);
     const ev=ctx.eventTypes??ctx.event_types??{};
