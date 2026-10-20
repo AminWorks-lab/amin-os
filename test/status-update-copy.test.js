@@ -27,13 +27,13 @@ function fixture({independent=true,statusWrite=true,master=true}={}) {
 function actualCopyButton(ctx,{checkIdentity=()=>{}}={}) {
   const source=readFileSync(new URL('../apps/status/index.js',import.meta.url),'utf8');
   const helperStart=source.indexOf('function statusUpdateCopyPrompt()'),helperEnd=source.indexOf('\nconst defaults =',helperStart);
-  const buttonStart=source.indexOf('  copy.onclick = async () =>'),buttonEnd=source.indexOf('\n  quickActions.append(update, copy);',buttonStart);
+  const buttonStart=source.indexOf('  copy.onclick = async () =>'),buttonEnd=source.indexOf('\n  // Linkage settings live in their own app',buttonStart);
   assert.ok(helperStart>=0&&helperEnd>helperStart&&buttonStart>=0&&buttonEnd>buttonStart);
   const copied=[],navigated=[],copy={},quickStatus={textContent:''};
   const sandbox={context:()=>ctx,KEY:'world_status_hud_v1',isIndependent,mayWrite,buildDataPrompt,buildUpdateRules,
     buildUpdatePrompt,compileRules,readCurrent:()=>JSON.parse(ctx.chatMetadata.variables.状态栏),
     linkageEnabled:()=>managesModule(ctx,'status'),copy,quickStatus,checkIdentity,id:{},dialog:{},
-    selectPage:page=>navigated.push(page),linkageView:{open:page=>navigated.push(page)},
+    async openLinkageApp(section){navigated.push('linkage',section);},
     async copyPrompt(text){copied.push(text);return true;}};
   vm.runInNewContext(source.slice(helperStart,helperEnd)+'\n'+source.slice(buttonStart,buttonEnd),sandbox);
   return {copied,navigated,quickStatus,click:()=>copy.onclick()};

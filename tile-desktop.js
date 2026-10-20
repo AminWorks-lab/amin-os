@@ -3,13 +3,14 @@ import {installDesktopEffects} from './desktop-effects.js';
 import {mediaURL} from './desktop-effects-model.js';
 import {defaultTiles,loadTiles,loadTileGrid,saveTiles,normalizeTiles,moveTileToCell,canPlaceTile,tileSpan,TILE_MAX_ROWS} from './tile-layout.js';
 import {createTileColorEditor,applyTileColors} from './tile-colors.js';
+import {isSmallTile} from './tile-live.js';
 
 export function createTileDesktop({home,cards,apps,createIcon,openApp,onLayout}){
  const make=(tag,cls,text)=>{const e=document.createElement(tag);e.className=cls;if(text)e.textContent=text;return e;};
  let grid=loadTileGrid(localStorage);
  let layout;try{layout=loadTiles(localStorage);}catch{layout=defaultTiles(grid.columns);}
  let editing=false,selected=layout[0]?.id??'',gesture=null,hold=null,preview=null,extraRows=4,suppress=false,suppressTimer=null,undo=null;
- const buttons=new Map();
+ const buttons=new Map();let live={};
  const top=make('div','amin-start-heading'),title=make('h2','','开始'),edit=make('button','amin-edit-tiles','编辑布局');
  edit.type='button';edit.setAttribute('aria-pressed','false');top.append(title,edit);home.prepend(top);
  const editor=make('div','amin-tile-editor');editor.hidden=true;
@@ -38,11 +39,21 @@ export function createTileDesktop({home,cards,apps,createIcon,openApp,onLayout})
  function syncSelection(){columns.value=String(grid.columns);scale.value=String(grid.scale);scaleValue.value=grid.scale+'%';scale.setAttribute('aria-valuetext',grid.scale+'%');positionX.max=String(grid.columns);const t=layout.find(t=>t.id===selected);choice.value=selected;sizes.value=t?.size??'medium';target.value=t?.target??apps[0].id;name.value=t?.label??'';image.value=t?.image??'';positionX.value=t?String(t.x+1):'';positionY.value=t?String(t.y+1):'';colors.sync(t);for(const e of [choice,sizes,target,name,image,positionX,positionY,copy,remove,up,down,left,right])e.disabled=!t;buttons.forEach((b,id)=>b.classList.toggle('is-selected',editing&&id===selected));restore.disabled=!undo;}
  function gridRows(){return Math.min(TILE_MAX_ROWS,Math.max(1,...layout.map(t=>t.y+tileSpan(t.size).h))+(editing?extraRows:0));}
  function measure(){const stage=cards.parentElement;if(stage?.classList.contains('amin-tile-stage')){stage.style.width=grid.scale+'%';stage.style.alignSelf='center';}cards.style.gridTemplateColumns=`repeat(${grid.columns},minmax(0,1fr))`;const width=cards.clientWidth,gap=parseFloat(getComputedStyle(cards).columnGap)||6;if(width>0){cards.style.setProperty('--amin-tile-unit',Math.max(1,(width-gap*(grid.columns-1))/grid.columns)+'px');}cards.style.gridTemplateRows=`repeat(${gridRows()},var(--amin-tile-unit))`;}
+ // Live summaries: two lines on large tiles, one number or short word on small ones.
+ function paintLive(b,t,label=labelFor(t)){
+  const value=live[t.target],text=b.querySelector('.amin-card-copy');let node=text?.querySelector('.amin-tile-live');
+  b.setAttribute('aria-label',value?`打开${label}，${value.lines.join('，')}`:`打开${label}`);
+  if(!value){b.dataset.live='false';node?.remove();return;}
+  const lines=isSmallTile(t.size)?[value.short]:value.lines,signature=JSON.stringify([t.size,lines]);
+  b.dataset.live='true';if(node?.dataset.signature===signature)return;
+  if(!node){node=make('span','amin-tile-live');node.setAttribute('aria-hidden','true');text.append(node);}
+  node.dataset.signature=signature;node.replaceChildren(...lines.map(line=>{const e=make('span','amin-tile-live-line',line);e.title=line;return e;}));
+ }
  function render(){
   if(!layout.some(t=>t.id===selected))selected=layout[0]?.id??'';
   for(const [id,b]of buttons)if(!layout.some(t=>t.id===id)){b.remove();buttons.delete(id);}
   choice.replaceChildren();
-  for(const [i,t]of layout.entries()){const app=appFor(t),label=labelFor(t);let b=buttons.get(t.id);if(!b){b=make('button','amin-app-card');b.type='button';b.dataset.tile=t.id;buttons.set(t.id,b);}b.dataset.image=String(!!t.image);b.style.setProperty('--amin-tile-image',t.image?`url(${JSON.stringify(t.image)})`:'none');b.dataset.target=t.target;b.dataset.size=t.size;b.dataset.x=String(t.x);b.dataset.y=String(t.y);const span=tileSpan(t.size);b.style.gridColumn=`${t.x+1} / span ${span.w}`;b.style.gridRow=`${t.y+1} / span ${span.h}`;applyTileColors(b,t);b.setAttribute('aria-label',`打开${label}`);b.title=`${label} → ${app.name}`;const icon=make('span','amin-app-icon'),text=make('span','amin-card-copy');icon.append(createIcon(t.target));text.append(make('strong','',label));b.replaceChildren(icon,text);cards.append(b);const o=make('option','',`${i+1}. ${label}`);o.value=t.id;choice.append(o);}
+  for(const [i,t]of layout.entries()){const app=appFor(t),label=labelFor(t);let b=buttons.get(t.id);if(!b){b=make('button','amin-app-card');b.type='button';b.dataset.tile=t.id;buttons.set(t.id,b);}b.dataset.image=String(!!t.image);b.style.setProperty('--amin-tile-image',t.image?`url(${JSON.stringify(t.image)})`:'none');b.dataset.target=t.target;b.dataset.size=t.size;b.dataset.x=String(t.x);b.dataset.y=String(t.y);const span=tileSpan(t.size);b.style.gridColumn=`${t.x+1} / span ${span.w}`;b.style.gridRow=`${t.y+1} / span ${span.h}`;applyTileColors(b,t);b.title=`${label} → ${app.name}`;const icon=make('span','amin-app-icon'),text=make('span','amin-card-copy');icon.append(createIcon(t.target));text.append(make('strong','',label));b.replaceChildren(icon,text);paintLive(b,t,label);cards.append(b);const o=make('option','',`${i+1}. ${label}`);o.value=t.id;choice.append(o);}
   measure();syncSelection();onLayout();
  }
  function setEditing(value){clearGesture();editing=value;home.classList.toggle('amin-tiles-editing',value);editor.hidden=!value;edit.textContent=value?'完成':'编辑布局';edit.setAttribute('aria-pressed',String(value));hint.textContent=value?'小格是定位单位：落点作为左上角，绿色可放，红色被占用；方向键移动一格。':'长按磁贴可调整布局';measure();syncSelection();onLayout();}
@@ -92,5 +103,5 @@ export function createTileDesktop({home,cards,apps,createIcon,openApp,onLayout})
  window.addEventListener('amin-os:reset-tiles',()=>{clearGesture();suppress=false;grid=loadTileGrid(localStorage);layout=loadTiles(localStorage);undo=null;selected=layout[0]?.id??'';render();save();});
  window.addEventListener('blur',clearGesture);
  installDesktopEffects(home,cards);render();
- return {leave(){clearGesture();setEditing(false);}};
+ return {leave(){clearGesture();setEditing(false);},setLive(next){live=next&&typeof next==='object'?next:{};for(const t of layout){const b=buttons.get(t.id);if(b)paintLive(b,t);}}};
 }

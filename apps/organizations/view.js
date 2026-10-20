@@ -5,6 +5,7 @@ import {GROUPS,LABELS,FIELDS,LINKS,entity,uid,clone,deleteEntity,rankMetrics} fr
 import {generate,followPrompt} from './ai.js';
 import {syncWorldbook} from './lorebook.js';
 import {isIndependent} from '../story-state/access.js';
+import {attachLinkageBadge} from '../linkage/badge.js';
 const el=(tag,text='',cls='')=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e;};
 const show=v=>v===null||v===undefined||v===''?'未明确':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 const storyReference=m=>JSON.stringify([m?.extra?.amin_story_v2??null,m?.swipe_info?.[m.swipe_id??0]?.extra?.amin_story_v2??null]);
@@ -13,6 +14,7 @@ const mounted=new WeakMap();
 export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
  mounted.get(target)?.dispose();const api=provided??await getStore();mounted.get(target)?.dispose();
  const page=el('div','','amin-page amin-app-page amin-organizations'),header=el('header','','amin-context amin-stack'),tabs=el('div','','amin-tabs'),actions=el('div','','amin-stack'),notice=el('div','','amin-notice'),body=el('section','','amin-stack'),viewId='amin-organizations-'+uid();
+ attachLinkageBadge(header,'organizations');
  notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','势力资料页面');body.id=viewId+'-panel';body.setAttribute('role','tabpanel');body.tabIndex=0;page.append(header,tabs,actions,notice,body);target.append(page);
  let selected='overview',chosen={},search='',editing=false,disposed=false,historyIndex=null,historyRecord=null,historyMetadata=null,historyRequest=0,lastIdentity='',requesting=false;
  const say=t=>{notice.textContent=t;};

@@ -98,7 +98,7 @@ async function application(f, runtime = { archiveStory: () => f.service.capture(
     copyPrompt() {}, buildUpdatePrompt() {}, generateStatus() {}, hostSetLocalVariable: f.setLocalVariable,
     isIndependent, readStoryRoot, writeStoryRoot, STATE_KEY, prepareIndependentManualWrite,
     mountGeneration: (_target, options) => {const view={options,opens:0,disposed:false,open(){this.opens++;},dispose(){this.disposed=true;}};generationViews.push(view);return view;},
-    mountLinkage: () => ({ open() {}, dispose() {} }), getLinkageService: () => ({ subscribe: () => () => {} }),
+    attachLinkageBadge: () => null, openLinkageApp: async () => {}, getLinkageService: () => ({ subscribe: () => () => {} }),
     managesModule: () => !!f.ctx.chatMetadata.amin_os_linkage_v1?.enabled, getState2Runtime: () => runtime, state2HistoryMode: () => ({ managed: true }),
   };
   const source = readFileSync(new URL('../apps/status/index.js', import.meta.url), 'utf8')

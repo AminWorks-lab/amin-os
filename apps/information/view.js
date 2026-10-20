@@ -4,11 +4,13 @@ import {getSharedService} from './service.js';
 import {current,apply,diff,compile,matches,path,fieldKey,groupRecords,resetRecord,archive} from './model.js';
 import {catalog,searchEndpoint} from './sources.js';
 import {generateRecord,simulate} from './generator.js';
+import {attachLinkageBadge} from '../linkage/badge.js';
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 const STATUS={known:'资料记载',inferred:'待确认推测',invented:'新增设定',unknown:'未知',edited:'手动改写'};
 export function mount(target){
  const instanceId='amin-'+uuid();
  const api=getSharedService();const page=node('div',null,'amin-page amin-app-page amin-information'),intro=node('div','信息档案 · 收纳资料，编辑设定，预览后应用到当前剧情。','amin-context'),tabs=node('nav',null,'amin-tabs'),notice=node('div',null,'amin-notice'),body=node('section',null,'amin-stack');tabs.setAttribute('aria-label','信息面板页面');tabs.setAttribute('role','tablist');notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');body.id=instanceId+'-body';body.setAttribute('role','tabpanel');page.append(intro,tabs,notice,body);target.append(page);
+ attachLinkageBadge(intro,'information');
  let tab='资料面板',draft=null,base=null,token=null,editing=false,fieldEditing=false,fieldSession=null,review=false,simulation=null,search=null,controller=null,epoch=0,bookList=[],loaded=false,selectedId='',drafts=new Map();
  const options={name:'',kind:'person',requirement:'',allowInvent:false,scope:'local',books:[],includeCard:true,includeChat:true,keywords:'',sourceLimit:90000,webQuery:'',webKey:'',webEndpoint:'https://api.tavily.com/search'};
  const chatDrafts=new Map();

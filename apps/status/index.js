@@ -18,7 +18,8 @@ import { generateStatus } from './generator.js';
 import './story-state.js';
 import { isIndependent, readStoryRoot, writeStoryRoot, STATE_KEY, prepareIndependentManualWrite } from '../story-state/access.js';
 import { mountGeneration } from '../generation/view.js';
-import { mount as mountLinkage } from '../linkage/view.js';
+import { openLinkage as openLinkageApp } from '../linkage/open.js';
+import { attachLinkageBadge } from '../linkage/badge.js';
 import { getSharedService as getLinkageService } from '../linkage/service.js';
 import { managesModule, mayWrite } from '../linkage/policy.js';
 import { buildDataPrompt, buildUpdateRules } from '../linkage/prompt.js';
@@ -160,7 +161,7 @@ function createLorebookControl() {
   const result = node('p', '', 'wsh-quick-status'); result.setAttribute('role', 'status');
   button.onclick = async () => { button.disabled = true; try { checkIdentity(displayedIdentity); if (boundWorldbook(context()) !== name) throw Error('世界书绑定已改变，请重新打开窗口后再写入。'); result.textContent = '正在读取并写入绑定世界书…'; result.textContent = await writeUpdateWorldbook(); } catch (e) { result.textContent = e.message; } finally { button.disabled = false; } };
   const managed = node('p', '', 'wsh-note'); managed.dataset.linkageOwnership='true';
-  const openLinkage=node('button','打开联动更新','menu_button');openLinkage.type='button';openLinkage.onclick=()=>selectHudPage?.('linkage');
+  const openLinkage=node('button','打开联动更新','menu_button');openLinkage.type='button';openLinkage.onclick=()=>openLinkageApp().catch(e=>{result.textContent=e.message;});
   section.append(node('h3', '变量更新提示词'), node('p', '当前主世界书：' + name), managed, button, openLinkage, result,
     node('p', '添加常驻条目，动态读取当前“状态栏”变量。重复点击更新本插件条目。其他共用这本世界书的角色也会使用该规则。', 'wsh-note'));
   return section;
@@ -189,6 +190,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   const heading = node('div', undefined, 'wsh-panel-heading');
   const title=node('strong','世界状态 · 当前剧情');title.title=context().characters[context().characterId].name+' · 当前状态工作台';
   heading.append(title);
+  attachLinkageBadge(heading,'status',{getContext:context});
   if (!embedded) heading.append(close);
   const tabs = node('div', undefined, 'wsh-tabs'); tabs.setAttribute('role', 'tablist');
   const stateTab = node('button', '状态栏', 'wsh-tab');
@@ -197,7 +199,6 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   const historyTab = node('button', '楼层记录', 'wsh-tab'); historyTab.id = 'wsh-history-tab';
   const displayTab = node('button', '设置', 'wsh-tab'); displayTab.id = 'wsh-display-tab';
   const templateTab = node('button', '模板', 'wsh-tab'); templateTab.type = 'button'; templateTab.id = 'wsh-template-tab';
-  const linkageTab = node('button', '联动更新', 'wsh-tab'); linkageTab.type = 'button'; linkageTab.id = 'wsh-linkage-tab';
   stateTab.type = generateTab.type = 'button';
   stateTab.id = 'wsh-state-tab'; generateTab.id = 'wsh-generate-tab';
   const body = node('div', undefined, 'wsh-body');
@@ -236,9 +237,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   const rulesPage = createRulesPage({ context, settingsKey: KEY, node, check: () => {checkIdentity(id);validate();}, syncWorldbook: writeUpdateWorldbook, isUnified:linkageEnabled }); rulesPage.id = 'wsh-rules-page';
   for(const button of rulesPage.querySelectorAll('button'))if(button.textContent==='同步到世界书')button.dataset.legacyUpdateEntry='true';
   const displayPage = createDisplaySettings(); displayPage.id = 'wsh-display-page';
-  const linkagePage=node('section',undefined,'wsh-generation-page wsh-linkage-page');linkagePage.id='wsh-linkage-page';
   const linkageApi=getLinkageService();
-  const linkageView=mountLinkage(linkagePage,{api:linkageApi,getContext:context,check:()=>{checkIdentity(id);validate();}});
   function refreshLegacyControls(){
     const enabled=linkageEnabled();
     rulesPage.refreshLinkageMode?.();
@@ -248,20 +247,17 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
     for(const button of dialog.querySelectorAll('[data-linkage-quick-copy]'))button.textContent=isIndependent(context())?'复制 Amin 更新提示词':enabled?'查看统一更新提示词':'复制更新提示词';
   }
   const unsubscribeLinkage=linkageApi.subscribe(refreshLegacyControls);
-  for (const [tab, page] of [[historyTab, historyPage], [displayTab, displayPage], [rulesTab, rulesPage], [linkageTab,linkagePage]]) { tab.type = 'button'; tab.setAttribute('aria-controls', page.id); page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', tab.id); }
+  for (const [tab, page] of [[historyTab, historyPage], [displayTab, displayPage], [rulesTab, rulesPage]]) { tab.type = 'button'; tab.setAttribute('aria-controls', page.id); page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', tab.id); }
   rulesTab.onclick = () => selectPage('rules');
   historyTab.onclick = () => selectPage('history'); displayTab.onclick = () => selectPage('display');
-  linkageTab.onclick=()=>selectPage('linkage');
   function selectPage(value) {
     if (value === undefined) value = selectedPage;
-    selectedPage = ['generate', 'templates', 'history', 'display', 'rules', 'linkage'].includes(value) ? value : 'state';
+    selectedPage = ['generate', 'templates', 'history', 'display', 'rules'].includes(value) ? value : 'state';
     if (selectedPage === 'state' && readyHtml && !frameLoaded) { frame.srcdoc = readyHtml; frameLoaded = true; }
     rulesPage.hidden = selectedPage !== 'rules';
-    linkagePage.hidden = selectedPage !== 'linkage';
-    if(selectedPage==='linkage')linkageView.open();
     historyPage.hidden = selectedPage !== 'history'; displayPage.hidden = selectedPage !== 'display';
     frame.hidden = selectedPage !== 'state'; generationPage.hidden = selectedPage !== 'generate'; templatePage.hidden = selectedPage !== 'templates';
-    for (const [b, name] of [[stateTab, 'state'], [generateTab, 'generate'], [templateTab, 'templates'], [historyTab, 'history'], [displayTab, 'display'], [rulesTab, 'rules'], [linkageTab,'linkage']]) {
+    for (const [b, name] of [[stateTab, 'state'], [generateTab, 'generate'], [templateTab, 'templates'], [historyTab, 'history'], [displayTab, 'display'], [rulesTab, 'rules']]) {
       b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(selectedPage === name));
       b.tabIndex = selectedPage === name ? 0 : -1;
     }
@@ -269,11 +265,11 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   stateTab.onclick = () => selectPage('state'); generateTab.onclick = () => selectPage('generate'); templateTab.onclick = () => selectPage('templates');
   tabs.addEventListener('keydown', e => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-    e.preventDefault(); const pages = ['state', 'linkage', 'generate', 'templates', 'rules', 'history', 'display']; const i = pages.indexOf(selectedPage);
+    e.preventDefault(); const pages = ['state', 'generate', 'templates', 'rules', 'history', 'display']; const i = pages.indexOf(selectedPage);
     const j = e.key === 'Home' ? 0 : e.key === 'End' ? pages.length-1 : (i + (e.key === 'ArrowRight' ? 1 : pages.length-1)) % pages.length;
-    selectPage(pages[j]); [stateTab, linkageTab, generateTab, templateTab, rulesTab, historyTab, displayTab][j].focus();
+    selectPage(pages[j]); [stateTab, generateTab, templateTab, rulesTab, historyTab, displayTab][j].focus();
   });
-  selectHudPage = selectPage; tabs.append(stateTab, linkageTab, generateTab, templateTab, rulesTab, historyTab, displayTab); body.append(frame, linkagePage, generationPage, templatePage, historyPage, displayPage, rulesPage); selectPage(page);
+  selectHudPage = selectPage; tabs.append(stateTab, generateTab, templateTab, rulesTab, historyTab, displayTab); body.append(frame, generationPage, templatePage, historyPage, displayPage, rulesPage); selectPage(page);
   frame.title = '世界状态栏编辑器';
   // Only the bundled frame may use this variable bridge; commands are allowlisted.
   const token = uuid();
@@ -339,7 +335,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   };
   addEventListener('message', listener);
   let closed=false;
-  dialog.close=()=>{if(closed)return;closed=true;recordsView.dispose();statusGeneration.dispose();linkageView.dispose();unsubscribeLinkage();removeEventListener('message',listener);frame.srcdoc='';restorePanel?.remove();restorePanel=null;if(generationForm?.parentElement===generationPage)formHome?.append(generationForm);dialog.remove();mapLink.destroy();if(hudPanel===dialog){hudPanel=null;selectHudPage=null;openStatusUpdate=null;invalidateStatusFrame=null;}onClose();};
+  dialog.close=()=>{if(closed)return;closed=true;recordsView.dispose();statusGeneration.dispose();unsubscribeLinkage();removeEventListener('message',listener);frame.srcdoc='';restorePanel?.remove();restorePanel=null;if(generationForm?.parentElement===generationPage)formHome?.append(generationForm);dialog.remove();mapLink.destroy();if(hudPanel===dialog){hudPanel=null;selectHudPage=null;openStatusUpdate=null;invalidateStatusFrame=null;}onClose();};
   close.onclick = closeHud;
   const quickActions = node('div', undefined, 'wsh-actions');
   const quickStatus = node('p', '', 'wsh-quick-status'); quickStatus.setAttribute('role', 'status');
@@ -352,11 +348,14 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   const copy = node('button', '复制更新提示词', 'menu_button'); copy.type = 'button'; copy.title=isIndependent(context()) ? '复制当前 Amin 资料、模块权限与 amin_update 更新协议' : '复制当前状态、字段路径和模型更新要求';
   copy.dataset.linkageQuickCopy='true';
   copy.onclick = async () => {
-    if(!isIndependent(context()) && linkageEnabled()){selectPage('linkage');linkageView.open('prompt');return;}
+    if(!isIndependent(context()) && linkageEnabled()){try{await openLinkageApp('prompt');}catch(e){quickStatus.textContent=e.message;}return;}
     try { checkIdentity(id); const text = statusUpdateCopyPrompt(); const ok = await copyPrompt(text,{mount:dialog}); quickStatus.textContent = ok ? isIndependent(context()) ? '已复制当前 Amin 资料与允许更新模块的 amin_update 协议，可粘贴到对话。' : '已复制当前变量、路径与更新要求，可粘贴到对话。' : '请在工作台下方的文本框中手动复制。'; }
     catch (e) { quickStatus.textContent = e.message; }
   };
-  quickActions.append(update, copy);
+  // Linkage settings live in their own app; this opens it instead of keeping a second copy here.
+  const linkageSettings = node('button', '打开联动设置', 'menu_button'); linkageSettings.type = 'button';
+  linkageSettings.onclick = () => openLinkageApp().catch(e => { quickStatus.textContent = e.message; });
+  quickActions.append(update, copy, linkageSettings);
   const mapLink=createMapLink({check:()=>{checkIdentity(id);validate();}});
   dialog.append(heading,node('p','编辑将更新当前剧情状态，历史快照仅供浏览。','wsh-workbench-note'), tabs, quickActions, quickStatus, body);
   displayPage.append(mapLink.element);
@@ -537,7 +536,7 @@ function mount() {
   const ctx = context(); const events = ctx.eventTypes || ctx.event_types || {};
   subscribeStateChanges((change,metadata) => {
     if(change.phase!=='applied'||metadata!==context()?.chatMetadata||change.identity!==chatIdentity(context())||!change.paths.some(path=>path[0]===STATE_KEY||path[0]==='variables'&&path[1]==='状态栏'))return;
-    running?.abort();if(hudPanel&&['linkage','generate'].includes(selectedPage))invalidateStatusFrame?.();else closeHud();
+    running?.abort();if(hudPanel&&selectedPage==='generate')invalidateStatusFrame?.();else closeHud();
     history.adoptExternal();floorButtons.refresh();
   });
   for (const name of ['CHAT_CHANGED', 'MESSAGE_SENT', 'MESSAGE_RECEIVED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'MESSAGE_UPDATED', 'GENERATION_ENDED', 'CHARACTER_MESSAGE_RENDERED']) { if (events[name]) ctx.eventSource?.on(events[name], syncHistory); }

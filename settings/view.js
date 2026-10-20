@@ -28,9 +28,10 @@ export function mount(target){
   if(page==='story'){
    storyView=mountStoryStorage(body,report);
   }else if(page==='global'){
-   const desktop=section('主页与窗口','自动模式为 Windows 10 磁贴搭配深色直角窗口。'),desktopGrid=grid(desktop);
+   const desktop=section('主页与窗口','自动模式为 Windows 10 磁贴搭配深色直角窗口。实时信息在磁贴上显示地点、生命、游戏时间等当前剧情摘要。'),desktopGrid=grid(desktop);
    select(desktopGrid,'主页磁贴风格',[['classic','风格 1 · 跟随主题'],['win10','风格 2 · Windows 10']],draft.desktop.style,v=>draft.desktop.style=v);
    select(desktopGrid,'窗口主题',[['auto','自动搭配磁贴风格'],['current','保留原有主题'],['win10','Windows 10 深色'],['win10light','Windows 10 浅色']],draft.desktop.windowTheme,v=>draft.desktop.windowTheme=v);
+   const liveRow=el('label',null,'amin-field amin-check'),liveCheck=el('input');liveCheck.type='checkbox';liveCheck.checked=draft.desktop.liveTiles!==false;liveCheck.onchange=()=>draft.desktop.liveTiles=liveCheck.checked;liveRow.append(liveCheck,el('span','磁贴显示实时信息'));desktopGrid.append(liveRow);
    const appearance=section('全局外观','应用默认使用这里的设置，也可在“单个应用”中覆盖。');fields(grid(appearance),draft.global);
    const dimensions=section('侧栏尺寸','屏幕空间不足时自动缩小，位置保持在可见范围内。'),dimensionsGrid=grid(dimensions);
    numeric(dimensionsGrid,'桌面侧栏宽度',draft.window.width,340,800,v=>draft.window.width=v);numeric(dimensionsGrid,'侧栏最大高度',draft.window.height,400,1000,v=>draft.window.height=v);
@@ -82,7 +83,7 @@ export function mount(target){
   if(page!=='story'){
    const actions=toolbar(body);
    button(actions,'保存并应用',()=>{service.save(mergeFloorToolbarDraft(draft,service.snapshot(),editedToolbarFields));draft=service.snapshot();editedToolbarFields.clear();report('已应用所有分页的修改。打开的窗口同步更新。');draw();}).className='amin-primary';
-   button(actions,'恢复本页默认',()=>{const d=defaults();if(page==='global'){draft.global=d.global;draft.window=d.window;draft.desktop.style=d.desktop.style;draft.desktop.windowTheme=d.desktop.windowTheme;}else if(page==='apps')draft.apps={};else if(page==='effects')draft.desktop.effects=d.desktop.effects;else{draft.floor=d.floor;for(const key of ['buttonOrder','moreButtons','toolbarAlignment'])editedToolbarFields.add(key);}message='本页已恢复默认，点击“保存并应用”生效。';messageState='';draw();});
+   button(actions,'恢复本页默认',()=>{const d=defaults();if(page==='global'){draft.global=d.global;draft.window=d.window;draft.desktop.style=d.desktop.style;draft.desktop.windowTheme=d.desktop.windowTheme;draft.desktop.liveTiles=d.desktop.liveTiles;}else if(page==='apps')draft.apps={};else if(page==='effects')draft.desktop.effects=d.desktop.effects;else{draft.floor=d.floor;for(const key of ['buttonOrder','moreButtons','toolbarAlignment'])editedToolbarFields.add(key);}message='本页已恢复默认，点击“保存并应用”生效。';messageState='';draw();});
   }
  }
  draw();return {open(){},dispose(){storyView?.dispose();noticeNode=null;target.replaceChildren();}};
