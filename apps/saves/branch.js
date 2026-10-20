@@ -2,7 +2,7 @@ import { chatIdentity, chatPath, pathBelongs } from '../shared/operations.js';
 
 /** A saved current state is not historical proof unless its complete prefix is recorded. */
 export function branchAvailability(ctx, snapshot) {
-    if (!snapshot?.source?.path) return { available: false, reason: '旧版存档未记录完整消息修订，只能恢复应用状态。' };
+    if (!snapshot?.source?.path) return { available: false, reason: '旧版存档没有记下完整的聊天楼层，只能恢复资料，不能新开分支。' };
     if (!snapshot.source.floor) return { available: false, reason: '聊天开始前的存档没有可创建分支的楼层。' };
     if (snapshot.source.identity !== chatIdentity(ctx)) return { available: false, reason: '请回到此检查点所属的原聊天创建分支。' };
     if (!pathBelongs(snapshot.source.path, chatPath(ctx?.chat))) return { available: false, reason: '来源消息已编辑、删除或切换候选；请先恢复对应候选。' };

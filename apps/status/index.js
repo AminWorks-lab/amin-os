@@ -16,6 +16,7 @@ import { isIndependent, readStoryRoot, writeStoryRoot, STATE_KEY, prepareIndepen
 import { mountGeneration } from '../generation/view.js';
 import { openLinkage as openLinkageApp } from '../linkage/open.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
+import { collapseTabs } from '../../ui/tabs.js';
 import { getSharedService as getLinkageService } from '../linkage/service.js';
 import { managesModule, mayWrite } from '../linkage/policy.js';
 import { buildDataPrompt, buildUpdateRules } from '../linkage/prompt.js';
@@ -48,6 +49,7 @@ let selectHudPage = null;
 let requestUpdate = null;
 let openStatusUpdate = null;
 let invalidateStatusFrame = null;
+let notifyStatusFrame = null;
 const linkageEnabled = () => managesModule(context(),'status');
 function statusUpdateCopyPrompt() {
   const ctx = context();
@@ -111,7 +113,7 @@ async function persistStatusChange(write) {
 }
 function syncHistory() {
   try {
-    history.sync(); floorButtons.refresh();
+    history.sync(); floorButtons.refresh(); notifyStatusFrame?.();
   } catch (e) { console.warn('[世界状态栏] 记录同步失败', e); }
 }
 function createDisplaySettings() {
@@ -208,6 +210,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   for (const [tab, page] of [[historyTab, historyPage], [displayTab, displayPage], [rulesTab, rulesPage]]) { tab.type = 'button'; tab.setAttribute('aria-controls', page.id); page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', tab.id); }
   rulesTab.onclick = () => selectPage('rules');
   historyTab.onclick = () => selectPage('history'); displayTab.onclick = () => selectPage('display');
+  let tabOverflow = null;
   function selectPage(value) {
     contextNote.textContent = contextLine(context(), '当前剧情状态', '历史快照仅供浏览');
     if (value === undefined) value = selectedPage;
@@ -220,6 +223,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
       b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(selectedPage === name));
       b.tabIndex = selectedPage === name ? 0 : -1;
     }
+    tabOverflow?.update();
   }
   stateTab.onclick = () => selectPage('state'); generateTab.onclick = () => selectPage('generate'); templateTab.onclick = () => selectPage('templates');
   tabs.addEventListener('keydown', e => {
@@ -228,10 +232,12 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
     const j = e.key === 'Home' ? 0 : e.key === 'End' ? pages.length-1 : (i + (e.key === 'ArrowRight' ? 1 : pages.length-1)) % pages.length;
     selectPage(pages[j]); [stateTab, generateTab, templateTab, rulesTab, historyTab, displayTab][j].focus();
   });
-  selectHudPage = selectPage; tabs.append(stateTab, generateTab, templateTab, rulesTab, historyTab, displayTab); body.append(frame, generationPage, templatePage, historyPage, displayPage, rulesPage); selectPage(page);
+  selectHudPage = selectPage; tabs.append(stateTab, generateTab, templateTab, rulesTab, historyTab, displayTab);
+  tabOverflow = collapseTabs(tabs, { keep: ['状态栏', '生成设置', '状态规则', '楼层记录'], label: '更多世界状态页面' }); body.append(frame, generationPage, templatePage, historyPage, displayPage, rulesPage); selectPage(page);
   frame.title = '世界状态栏编辑器';
   // Only the bundled frame may use this variable bridge; commands are allowlisted.
   const token = uuid();
+  let shownState; // What the frame last read; see notifyStatusFrame.
   const bridge = `<script>
   window.WSH_CARD_KEY=${JSON.stringify(encodeURIComponent(context().characters[context().characterId].avatar || 'current'))};
   const token=${JSON.stringify(token)};let seq=0;const pending=new Map();
@@ -250,7 +256,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
       checkIdentity(id);
       validate();
       let value;
-      if (command === '/getvar 状态栏') value = parseState(readStoryRoot(context(), '状态栏'));
+      if (command === '/getvar 状态栏') { value = parseState(readStoryRoot(context(), '状态栏')); shownState = JSON.stringify(value ?? null); }
       else if (typeof command === 'string' && command.startsWith('/amin-status-relocate ')) {
         if (running) throw Error('状态栏生成中，请完成后再编辑。');
         const operation = JSON.parse(command.slice('/amin-status-relocate '.length));
@@ -290,7 +296,7 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   };
   addEventListener('message', listener);
   let closed=false;
-  dialog.close=()=>{if(closed)return;closed=true;recordsView.dispose();statusGeneration.dispose();unsubscribeLinkage();removeEventListener('message',listener);frame.srcdoc='';restorePanel?.remove();restorePanel=null;if(generationForm?.parentElement===generationPage)formHome?.append(generationForm);dialog.remove();mapLink.destroy();if(hudPanel===dialog){hudPanel=null;selectHudPage=null;openStatusUpdate=null;invalidateStatusFrame=null;}onClose();};
+  dialog.close=()=>{if(closed)return;closed=true;recordsView.dispose();statusGeneration.dispose();unsubscribeLinkage();removeEventListener('message',listener);frame.srcdoc='';restorePanel?.remove();restorePanel=null;if(generationForm?.parentElement===generationPage)formHome?.append(generationForm);dialog.remove();mapLink.destroy();if(hudPanel===dialog){hudPanel=null;selectHudPage=null;openStatusUpdate=null;invalidateStatusFrame=null;notifyStatusFrame=null;}onClose();};
   close.onclick = closeHud;
   const quickActions = node('div', undefined, 'wsh-actions');
   const quickStatus = node('p', '', 'wsh-quick-status'); quickStatus.setAttribute('role', 'status');
@@ -319,6 +325,9 @@ async function showHud(page = selectedPage, {target = embeddedMount, onClose = (
   if(embedded)dialog.classList.add('amin-status-embedded');
   hudPanel = dialog; readyHtml = html;
   invalidateStatusFrame=()=>{frameLoaded=false;if(selectedPage==='state')selectPage('state');};
+  // The frame no longer polls. syncHistory runs on chat events and the existing sync tick and calls this;
+  // it only messages the frame when the stored value differs from what the frame last read.
+  notifyStatusFrame=()=>{if(closed||!frameLoaded||!frame.contentWindow)return;let raw;try{checkIdentity(id);raw=JSON.stringify(parseState(readStoryRoot(context(),'状态栏'))??null);}catch{return;}if(raw!==shownState)frame.contentWindow.postMessage({wsh:token,event:'changed'},'*');};
   selectPage(selectedPage);refreshLegacyControls();
   return {element:dialog,selectPage,dispose:()=>dialog.close()};
 }

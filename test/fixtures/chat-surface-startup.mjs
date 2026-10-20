@@ -24,6 +24,7 @@ const stubs = {
     './retired-data.js': { cleanupRetiredData: () => ({ errors: [] }) },
     './apps/extra-floor-ui.js': { installExtraFloorButtons: register },
     './apps/reply/floor-ui.js': { installReplyFloorButtons: () => register('reply-floor') },
+    './apps/linkage/floor-turns.js': { installTurnSummaries: () => register('linkage-turns') },
     './settings/appearance.js': { initializeAppearance() {}, installAppearance() {}, getAppearance() {} },
     './ui/tabs.js': { installTabScroll() {} },
     './ai/service.js': { initializeAI() {} },
@@ -66,9 +67,9 @@ if (mode === 'failure') {
     await pending;
     assert.ok(participants.includes('./apps/status/index.js'));
     assert.ok(participants.includes('./apps/map/index.js'));
-    assert.equal(participants.length, 15);
+    assert.equal(participants.length, 16);
     frozen = true;
     await entry.namespace.registerChatSurface();
     for (const callback of callbacks) callback();
-    assert.equal(participants.length, 15);
+    assert.equal(participants.length, 16);
 }

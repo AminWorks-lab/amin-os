@@ -94,8 +94,12 @@ function sceneFixture() {
     const listeners = new Set(), metadata = {}, state = { version: 1, clock: clock(), periods: [{ name: '上午', startMinute: 0 }], scenes: {}, activeSceneId: null, settings: { enabled: true, includeInContext: false } };
     let pending = null; const service = {
         context: () => ({ chat: [], chatMetadata: metadata }), capture: () => ({ identity: 'chat', metadata, path: '[]', basis: 'scene' }), read: () => structuredClone(state),
-        stage(op, data) { if (op === 'advance-time') pending = { op, reason: data.reason, details: { beforeTime: clock(), afterTime: clock(10) }, state: { ...structuredClone(state), clock: clock(10) } }; for (const listener of listeners) listener(); },
-        preview: () => structuredClone(pending), confirm: async () => { pending = null; }, discard: () => { pending = null; }, retrySave: async () => {}, mapReferences: () => [], history: () => [], sync() {},
+        stage(op, data) {
+            if (op === 'advance-time') pending = { op, reason: data.reason, details: { beforeTime: structuredClone(state.clock), afterTime: clock(10) }, state: { ...structuredClone(state), clock: clock(10) } };
+            if (op === 'set-time') pending = { op, reason: data.reason, details: { beforeTime: structuredClone(state.clock), afterTime: data.clock }, state: { ...structuredClone(state), clock: data.clock } };
+            service.staged.push(op); for (const listener of listeners) listener();
+        },
+        staged: [], preview: () => structuredClone(pending), confirm: async () => { if (pending) state.clock = pending.state.clock; pending = null; for (const listener of listeners) listener(); }, discard: () => { pending = null; }, retrySave: async () => {}, mapReferences: () => [], history: () => [], sync() {},
         status: () => '', busy: () => false, dirty: () => false, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     }; return service;
 }
@@ -112,7 +116,11 @@ test('scene clock keeps all editor tabs and shows ordinary advance expiry withou
     try {
         for (const label of ['时钟', '场景', '旅行', '记录', '设置']) assert.ok(button(target, label), `missing scene tab ${label}`);
         await click(target, '10 分钟'); assert.deepEqual(checkedAfter, clock(10));
+        assert.deepEqual(service.staged, ['advance-time'], 'quick advance runs without a separate confirmation');
+        assert.match(target.textContent, /已推进 · 10 分钟/); assert.doesNotMatch(target.textContent, /待确认/);
         assert.match(target.textContent, /照明术 · 队伍 · 光照/); assert.match(target.textContent, /不再附加剧情提醒/); assert.match(target.textContent, /不调用模型/);
+        await click(target, '撤销'); assert.deepEqual(service.staged, ['advance-time', 'set-time']); assert.deepEqual(service.read().clock, clock());
+        assert.doesNotMatch(target.textContent, /已推进 · 10 分钟/);
         await click(target, '场景'); assert.ok(labelledField(target, '场景名称'), 'existing full scene editor remains available');
         await click(target, '旅行'); assert.match(target.textContent, /请先在地图应用保存当前聊天地图/);
     } finally { view.dispose(); assert.equal(target.children.length, 0); globalThis.document = previousDocument; if (!previousCrypto) delete globalThis.crypto; }

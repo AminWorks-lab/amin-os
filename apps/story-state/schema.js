@@ -62,7 +62,7 @@ export function validateState(input) {
         || input.version !== 1 || !Number.isSafeInteger(input.revision) || input.revision < 0
         || typeof input.updatedAt !== 'string' || !Number.isFinite(Date.parse(input.updatedAt))
         || !plain(input.modules) || MODULE_NAMES.some(name => !Object.hasOwn(input.modules, name)))
-        throw failure('AMIN_STATE_INVALID', 'Amin 当前状态格式、版本、修订或时间无效，原资料未改写。');
+        throw failure('AMIN_STATE_INVALID', 'Amin 当前状态格式、版本、编号或时间无效，原资料未改写。');
     return { version: 1, revision: input.revision, updatedAt: input.updatedAt, modules: normalizeModules(input.modules) };
 }
 export const cloneValidatedState = validateState;

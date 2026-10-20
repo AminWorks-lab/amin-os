@@ -7,6 +7,8 @@ import { mountTravel, appendExpiryPreview } from './travel-view.js';
 import {contextLine} from '../shared/context-line.js';
 import { extractStoryTime } from './extract-time.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
+import { collapseTabs } from '../../ui/tabs.js';
+import { infoNote } from '../../ui/forms.js';
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text != null) el.textContent = text; if (className) el.className = className; return el; };
 const LABELS = { 'set-time': '设置游戏时间', 'advance-time': '推进游戏时间', activity: '按活动规则推进', 'time-rules': '保存活动耗时', 'save-schedule': '保存人物日程', 'delete-schedule': '删除人物日程', 'confirm-presence': '确认场景人物', 'save-absence-rule': '保存离场规则', 'delete-absence-rule': '删除离场规则', 'settle-absence': '确认离场变化', travel: '旅行', periods: '保存时段划分', 'save-scene': '保存场景资料', 'switch-scene': '进入场景', 'leave-scene': '离开当前场景', settings: '保存读取设置' };
 const ACTIVITY_LABELS = { dialogue: '一次对话', shortRest: '短休', longRest: '长休', travel: '无地图路线的旅行' };
@@ -24,11 +26,13 @@ export function mount(target, { service = getSharedSceneService(), travelService
     tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '场景与时间页面');
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     body.id = instance + '-body'; body.setAttribute('role', 'tabpanel'); page.append(intro, tabs, notice, review, body); target.append(page);
+    const overflow = collapseTabs(tabs, { keep: ['时钟', '场景', '日程', '旅行'], label: '更多场景页面' });
     const generationView = mountGeneration(page, { modules: ['scene'], getContext: () => api.context(), service: generationService, ai });
     const travelHost = node('div', null, 'amin-stack'), travelView = mountTravel(travelHost, { service: travelService, periods: () => api.read().periods });
     let tab = '时钟', token = null, selected = '', clockDraft = null, sceneDraft = null, periodsDraft = '', settingDraft = null, disposed = false;
     let timeReason = '', sceneReason = '', advanceReason = '', amount = 10, unit = 'minutes', message = '', error = false;
     let scheduleId = '', scheduleDraft = null, characterFilter = '', absenceId = '', absenceDraft = null, timeRulesDraft = null, floorDraft = null;
+    let lastAdvance = null;
     let customCalendar = false, calendarLengths = '', calendarNames = '', calendarWeek = '', calendarEpoch = 0;
     const say = (value, failed = false) => { message = value; error = failed; notice.textContent = value; notice.dataset.state = failed ? 'error' : api.busy() ? 'busy' : ''; };
     const action = fn => async () => { try { error = false; await fn(); } catch (e) { say(e.message, true); } };
@@ -58,7 +62,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
         sceneReason = scene ? '更新场景资料' : '建立场景资料';
     }
     function resetDrafts(state, moved) {
-        if (moved) { selected = state.activeSceneId ?? ''; message = ''; error = false; advanceReason = ''; amount = 10; unit = 'minutes'; scheduleId = ''; absenceId = ''; characterFilter = ''; floorDraft = api.context()?.chat?.length ?? 0; }
+        if (moved) { lastAdvance = null; selected = state.activeSceneId ?? ''; message = ''; error = false; advanceReason = ''; amount = 10; unit = 'minutes'; scheduleId = ''; absenceId = ''; characterFilter = ''; floorDraft = api.context()?.chat?.length ?? 0; }
         if (selected && !state.scenes[selected]) selected = '';
         clockDraft = structuredClone(state.clock ?? { year: 1, month: 1, day: 1, hour: 8, minute: 0, calendarLabel: '' });
         periodsDraft = formatPeriods(state.periods); settingDraft = { ...state.settings }; loadScene(state);
@@ -71,6 +75,37 @@ export function mount(target, { service = getSharedSceneService(), travelService
         timeReason = state.clock ? '校正游戏时间' : '设置故事起始时间';
     }
     function stage(op, data) { api.stage(op, data, token); }
+    // Advancing time adds to the clock and is undone by setting the clock back, so it runs
+    // directly; the result card lists expired effects and offers “撤销”.
+    async function advanceNow(op, data, label) {
+        if (api.preview()) throw Error('请先确认或取消当前预览。');
+        stage(op, data); const draft = api.preview();
+        if (!draft) return;
+        let expired = [], due = 0, warning = '';
+        try { expired = expiryPreview(api.context(), draft.details.afterTime).newlyExpired ?? []; } catch (e) { warning = '无法检查限时效果：' + e.message; }
+        try { due = periodicPreview(api.context(), draft.details.afterTime).pending.length; } catch (e) { warning ||= '无法检查周期效果：' + e.message; }
+        await api.confirm();
+        lastAdvance = { label, reason: draft.reason, before: draft.details.beforeTime, after: draft.details.afterTime, periods: draft.state.periods, expired, due, warning };
+        say(`已推进时间：${formatGameTime(draft.details.beforeTime, draft.state.periods)} → ${formatGameTime(draft.details.afterTime, draft.state.periods)}`);
+        render();
+    }
+    async function undoAdvance() {
+        const done = lastAdvance, state = validateState(api.read());
+        if (!done) return;
+        if (JSON.stringify(state.clock) !== JSON.stringify(done.after)) { lastAdvance = null; render(); throw Error('时钟在推进后又有变化，不能直接撤销；请在“校正日期与时间”中手动调整。'); }
+        stage('set-time', { clock: structuredClone(done.before), reason: '撤销推进：' + done.reason }); await api.confirm();
+        lastAdvance = null; say('已撤销推进，时钟回到 ' + formatGameTime(done.before, done.periods) + '。'); render();
+    }
+    // Shown right under the advance buttons, where the user just clicked.
+    function renderAdvanceResult(parent) {
+        const done = lastAdvance;
+        const panel = card('已推进 · ' + done.label); panel.classList.add('amin-result'); panel.setAttribute('role', 'status');
+        panel.append(node('p', formatGameTime(done.before, done.periods) + ' → ' + formatGameTime(done.after, done.periods) + ' · 原因：' + done.reason));
+        if (done.warning) panel.append(node('p', done.warning, 'amin-notice'));
+        else appendExpiryPreview(panel, done.expired, { empty: false });
+        if (done.due) panel.append(node('p', `推进后有 ${done.due} 项持续效果等待周期结算；请在能力面板核对资源变化。`, 'amin-notice'));
+        const actions = node('div', null, 'amin-toolbar'); actions.append(button('撤销', undoAdvance), button('知道了', () => { lastAdvance = null; render(); })); panel.append(actions); parent.append(panel);
+    }
     function renderReview(state) {
         review.replaceChildren(); const draft = api.preview();
         if (!draft) return;
@@ -158,21 +193,21 @@ export function mount(target, { service = getSharedSceneService(), travelService
         result.append(node('p', '资料确认时刻：' + formatGameTime(scene.gameTime, periods), 'amin-meta')); return result;
     }
     function renderClock(state) {
-        const current = card('当前游戏时间'); current.append(node('strong', formatGameTime(state.clock, state.periods)), node('p', '游戏时间由你确认推进。重新生成、续写或切换 AI 回复不会自动增加时间。', 'amin-meta')); body.append(current);
+        const current = card('当前游戏时间'); current.append(node('strong', formatGameTime(state.clock, state.periods)), infoNote(document, '时间只在你推进时变化。', '重新生成、续写或切换 AI 回复不会自动增加时间。', 'amin-meta')); body.append(current);
         const advance = card('推进与休息'), form = node('div', null, 'amin-form-grid');
         form.append(field('推进量', amount, value => { amount = value; }, { type: 'number', min: 1 }), field('原因', advanceReason, value => { advanceReason = value; }, { help: '例如调查房间、赶路或休息。' }));
         const selectWrap = node('label', null, 'amin-field'), select = node('select'); selectWrap.append(node('span', '单位'), select);
         for (const [value, label] of [['minutes', '分钟'], ['hours', '小时']]) { const option = node('option', label); option.value = value; select.append(option); }
         select.value = unit; select.addEventListener('change', () => { unit = select.value; }); form.prepend(selectWrap); advance.append(form);
         const actions = node('div', null, 'amin-toolbar');
-        const previewAdvance = (minutes, reason) => stage('advance-time', { minutes, reason });
+        const advanceBy = (minutes, reason, label) => advanceNow('advance-time', { minutes, reason }, label);
         for (const [label, minutes] of [['10 分钟', 10], ['1 小时', 60]]) {
-            const b = button(label, () => previewAdvance(minutes, advanceReason.trim() || label)); b.disabled ||= !state.clock; actions.append(b);
+            const b = button(label, () => advanceBy(minutes, advanceReason.trim() || label, label)); b.disabled ||= !state.clock; actions.append(b);
         }
         for (const [activity, label] of Object.entries(ACTIVITY_LABELS)) {
-            const minutes = state.timeRules[activity], b = button(`${label} · ${minutes} 分钟`, () => stage('activity', { activity, reason: advanceReason.trim() || label })); b.disabled ||= !state.clock || !minutes; actions.append(b);
+            const minutes = state.timeRules[activity], b = button(`${label} · ${minutes} 分钟`, () => advanceNow('activity', { activity, reason: advanceReason.trim() || label }, `${label} · ${minutes} 分钟`)); b.disabled ||= !state.clock || !minutes; actions.append(b);
         }
-        const custom = button('预览自定义推进', () => previewAdvance(amount * (unit === 'hours' ? 60 : 1), advanceReason), true); custom.disabled ||= !state.clock; actions.append(custom); advance.append(actions, node('p', '休息按钮只推进游戏时钟；生命、资源与状态效果由对应应用管理。', 'amin-meta')); body.append(advance);
+        const custom = button('推进时间', () => { const minutes = amount * (unit === 'hours' ? 60 : 1); return advanceBy(minutes, advanceReason, `${amount} ${unit === 'hours' ? '小时' : '分钟'}`); }, true); custom.disabled ||= !state.clock; actions.append(custom); advance.append(actions, infoNote(document, '推进后可在结果卡中撤销。', '休息按钮只推进游戏时钟；生命、资源与状态效果由对应应用管理。推进会立即生效，结果卡列出到期的限时效果。', 'amin-meta')); if (lastAdvance) renderAdvanceResult(advance); body.append(advance);
         const editor = card(state.clock ? '校正日期与时间' : '设置故事起始时间'), grid = node('div', null, 'amin-form-grid');
         grid.append(field('历法名称（可选）', clockDraft.calendarLabel, value => { clockDraft.calendarLabel = value; }, { full: true }));
         grid.append(selectField('日期规则', customCalendar ? 'custom' : 'gregorian', [['gregorian', '公历月长与闰年'], ['custom', '自定义固定月长']], value => { customCalendar = value === 'custom'; render(); }, true));
@@ -184,7 +219,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
         }
         grid.append(clockFields());
         grid.append(field('设置原因', timeReason, value => { timeReason = value; }, { full: true }));
-        editor.append(grid, node('p', '历法规则随每个时间记录保存。中途换历法后，旧记录保持原日期；离场周期遇到不同历法时需重新确认基准。', 'amin-meta'), button('预览时间设置', () => {
+        editor.append(grid, infoNote(document, '历法随时间记录一起保存。', '中途换历法后，旧记录保持原日期；离场周期遇到不同历法时需重新确认起算时间。', 'amin-meta'), button('预览时间设置', () => {
             const clock = { ...clockDraft }; delete clock.calendar;
             if (customCalendar) { const split = value => value.split(/[,，]/).map(part => part.trim()); clock.calendar = validateCalendar({ monthLengths: split(calendarLengths).map(Number), monthNames: calendarNames.trim() ? split(calendarNames) : undefined, weekDays: split(calendarWeek), epochWeekday: calendarEpoch }); }
             stage('set-time', { clock, reason: timeReason });
@@ -299,7 +334,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
             b.addEventListener('keydown', e => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return; e.preventDefault(); tab = e.key === 'Home' ? names[0] : e.key === 'End' ? names.at(-1) : names[(names.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : names.length - 1)) % names.length]; render(); tabs.querySelector('[aria-selected="true"]')?.focus(); });
             tabs.append(b);
         }
-        body.setAttribute('aria-labelledby', instance + '-' + tab);
+        overflow.update(); body.setAttribute('aria-labelledby', instance + '-' + tab);
         body.replaceChildren(); renderReview(state);
         if (tab === '时钟') renderClock(state); else if (tab === '场景') renderScenes(state); else if (tab === '日程') renderSchedules(state); else if (tab === '离场') renderAbsence(state); else if (tab === '旅行') { body.append(travelHost); travelView.open(); } else if (tab === '记录') renderHistory(state); else renderSettings();
         say(error ? message : api.status(), error);
@@ -310,7 +345,7 @@ export function mount(target, { service = getSharedSceneService(), travelService
     const unsubscribe = api.subscribe(render); render();
     const view = {
         open() { if (disposed) return; api.sync(); render(); },
-        dispose() { if (disposed) return; disposed = true; extracting?.abort(); generationView.dispose(); unsubscribe(); document.removeEventListener?.('amin:select-character', selectCharacter); travelView.dispose(); page.remove(); if (mountedViews.get(target) === view) mountedViews.delete(target); },
+        dispose() { if (disposed) return; disposed = true; extracting?.abort(); generationView.dispose(); unsubscribe(); overflow.dispose(); document.removeEventListener?.('amin:select-character', selectCharacter); travelView.dispose(); page.remove(); if (mountedViews.get(target) === view) mountedViews.delete(target); },
     };
     mountedViews.set(target, view); return view;
 }

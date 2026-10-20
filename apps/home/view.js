@@ -88,11 +88,20 @@ export function mount(host, { openApp, onLayout = () => {}, getContext = () => g
         try {
             const result = await runQuickAction(id, { openApp });
             if (result.kind === 'roll') showRoll(result.record);
-            else showQuick(result.message);
+            else showAdvance(result);
         } catch (error) { showQuick(error?.message ?? String(error), true); }
         finally { busy = false; node.disabled = false; layout(); }
     }
     function showQuick(text, failed = false) { quickResult.replaceChildren(make('span', text)); quickResult.dataset.state = failed ? 'error' : ''; quickResult.hidden = false; }
+    function showAdvance(result) {
+        showQuick(result.message);
+        const undo = button(quickResult, '撤销', async () => {
+            undo.disabled = true;
+            try { showQuick(await result.undo()); }
+            catch (error) { undo.remove(); quickResult.append(make('span', error?.message ?? String(error), 'amin-meta')); }
+            layout();
+        });
+    }
     function showRoll(record) {
         showQuick(rollSummary(record));
         const append = button(quickResult, '追加到草稿', async () => {

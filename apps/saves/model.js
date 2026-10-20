@@ -32,19 +32,19 @@ export function validateSnapshot(value){
     if(!Number.isFinite(Date.parse(value.createdAt)))throw Error('存档创建时间无效。');
     shape(value.source,['identity','floor','candidate','path','candidateBinding'],'来源');text(value.source.identity,2000,'来源聊天',true);
     if(!Number.isInteger(value.source.floor)||value.source.floor<0||!Number.isInteger(value.source.candidate)||value.source.candidate<0)throw Error('存档来源楼层无效。');
-    if(value.source.path===undefined&&value.source.candidateBinding!==undefined)throw Error('存档候选缺少来源消息修订。');
+    if(value.source.path===undefined&&value.source.candidateBinding!==undefined)throw Error('存档缺少来源楼层记录。');
     if(value.source.path!==undefined){
         if(!Array.isArray(value.source.path)||value.source.path.length!==value.source.floor||value.source.path.length>100000)throw Error('存档来源消息路径不完整。');
         for(const revision of value.source.path){
-            text(revision,LIMITS.snapshotBytes,'消息修订',true);
-            if(!validMessageRevision(revision))throw Error('存档消息修订无效。');
+            text(revision,LIMITS.snapshotBytes,'来源楼层记录',true);
+            if(!validMessageRevision(revision))throw Error('存档的来源楼层记录无效。');
         }
         // Old revisions contained the swipe index in clear text. Compact
         // revisions bind the separate candidate field to the last digest.
         const last=value.source.path.at(-1);
         if(last?.startsWith('[')&&JSON.parse(last)[3]!==value.source.candidate)throw Error('存档候选与来源消息不一致。');
         if((last?.startsWith('sha256:')||value.source.candidateBinding!==undefined)
-            && value.source.candidateBinding!==candidateBinding(value.source.path,value.source.candidate))throw Error('存档候选与来源消息修订不一致。');
+            && value.source.candidateBinding!==candidateBinding(value.source.path,value.source.candidate))throw Error('存档的回复候选与来源楼层记录不一致。');
     }
     validateModules(value.modules);return clone(value);
 }

@@ -128,11 +128,11 @@ test('save list exposes scope, source floor, version, modules, tab semantics and
     assert.equal(f.api.stats().listenerCount, 1); f.view.dispose(); assert.equal(f.root.children.length, 0); assert.equal(f.api.stats().listenerCount, 0);
 });
 
-test('create and restore remain previews until explicit confirmation and restore shows safety semantics per module', async () => {
+test('create runs directly while restore stays a preview until explicit confirmation and shows safety semantics per module', async () => {
     const f = fixture(), originalChat = JSON.stringify(f.ctx.chat);
     await type(f.root, '存档名称', '进入地下室前'); await type(f.root, '备注（可选）', '保留钥匙状态');
-    await click(f.root, '预览创建存档'); assert.equal(f.store.saves.length, 1); assert.match(f.root.textContent, /待确认 · 建立当前剧情存档/);
-    await click(f.root, '确认创建存档'); assert.equal(f.store.saves.length, 2); assert.equal(f.api.stats().createApplies, 1);
+    await click(f.root, '创建存档'); assert.equal(f.store.saves.length, 2); assert.equal(f.api.stats().createApplies, 1);
+    assert.doesNotMatch(f.root.textContent, /待确认 · 建立当前剧情存档/); assert.match(f.root.textContent, /已创建存档「进入地下室前」/);
     await click(f.root, '预览恢复'); assert.equal(f.store.backups.length, 0); assert.equal(f.api.stats().restoreApplies, 0);
     assert.match(f.root.textContent, /确认时创建的安全备份/); assert.match(f.root.textContent, /此备份尚未写入/); assert.match(f.root.textContent, /最近 10 份/);
     assert.match(f.root.textContent, /聊天消息、回复候选和正文不会回退或删除/); assert.match(f.root.textContent, /从此处新开分支/);
@@ -159,13 +159,11 @@ test('export and import expose JSON, reject invalid input, validate without muta
     const imported = snapshot('external-save', '外部存档'); imported.source = { identity: 'chat-other', floor: 8, candidate: 0 };
     await type(f.root, '粘贴存档 JSON', JSON.stringify(imported)); await click(f.root, '验证 JSON');
     assert.match(f.root.textContent, /验证通过 · 外部存档/); assert.match(f.root.textContent, /第 8 楼 · 第 1 个候选 · 格式 v1/); assert.equal(f.store.saves.length, 1);
-    await click(f.root, '预览收纳到当前聊天'); assert.equal(f.store.saves.length, 1); assert.match(f.root.textContent, /不会立即恢复/);
-    await click(f.root, '确认导入存档'); assert.equal(f.store.saves.length, 2); assert.equal(f.store.saves.at(-1).id, 'external-save'); f.view.dispose();
+    await click(f.root, '收纳到当前聊天'); assert.equal(f.store.saves.length, 2); assert.match(f.root.textContent, /需要时在“剧情存档”页预览恢复/); assert.equal(f.store.saves.at(-1).id, 'external-save'); f.view.dispose();
 });
 
 test('failed persistence exposes retry and retry does not repeat the confirmed action', async () => {
-    const f = fixture(); await type(f.root, '存档名称', '保存失败测试'); await click(f.root, '预览创建存档');
-    f.api.failNext(); await click(f.root, '确认创建存档');
+    const f = fixture(); await type(f.root, '存档名称', '保存失败测试'); f.api.failNext(); await click(f.root, '创建存档');
     assert.equal(f.store.saves.length, 2); assert.equal(f.api.stats().createApplies, 1); assert.match(f.root.textContent, /保存尚未完成/); assert.match(f.root.textContent, /重试不会再次恢复、导入或删除/);
     await click(f.root, '重试保存'); assert.equal(f.store.saves.length, 2); assert.equal(f.api.stats().createApplies, 1); assert.equal(f.api.stats().retryCalls, 1);
     assert.match(f.root.textContent, /已重新保存/); f.view.dispose();

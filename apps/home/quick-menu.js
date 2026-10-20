@@ -17,7 +17,16 @@ export function toggleQuickMenu(anchor, { document = anchor.ownerDocument ?? glo
             if (busy) return; busy = true; say('正在处理…');
             try {
                 const result = await runQuickAction(action.id, { openApp: open });
-                if (result.kind !== 'roll') { say(result.message); return; }
+                if (result.kind !== 'roll') {
+                    say(result.message);
+                    const undo = make('button', '撤销'); undo.type = 'button';
+                    undo.addEventListener('click', async () => {
+                        undo.disabled = true;
+                        try { say(await result.undo()); }
+                        catch (error) { say(error?.message ?? String(error), true); }
+                    });
+                    status.append(' ', undo); return;
+                }
                 say(rollSummary(result.record));
                 const append = make('button', '追加到草稿'); append.type = 'button';
                 append.addEventListener('click', async () => {

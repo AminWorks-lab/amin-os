@@ -198,3 +198,34 @@ html[data-wsh-frame][data-amin-surface][data-amin-touch=true] :is(input:not([typ
 :is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module][data-mode=readonly]::before {background:var(--amin-accent)}
 
 @media (pointer:coarse) {:is(.amin-ui,.amin-context) button.amin-linkage-badge[data-linkage-module] {min-height:36px}}
+
+/* Tab overflow “⋯” menu (ui/tabs.js collapseTabs / createMoreMenu) */
+button[data-tab-overflow=true] {display:none!important}
+.amin-more {display:inline-flex;flex:0 0 auto;margin-inline-start:auto}
+.amin-more[hidden] {display:none!important}
+:is(.amin-ui,#amin-os,html[data-wsh-frame][data-amin-surface]) button.amin-more-toggle {min-width:40px;min-height:36px;padding:0 10px;font-size:1.25em;line-height:1;font-weight:700}
+:is(.amin-ui,#amin-os,html[data-wsh-frame][data-amin-surface]) button.amin-more-toggle[aria-expanded=true] {color:var(--amin-text)!important;border-color:var(--amin-line)!important}
+:is(.amin-ui,#amin-os,html[data-wsh-frame][data-amin-surface]) .amin-more-menu {display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;margin:4px 0 0;padding:6px;border:1px solid var(--amin-line);border-radius:min(var(--amin-radius,14px),10px);background:var(--amin-card);color:var(--amin-text)}
+:is(.amin-ui,#amin-os,html[data-wsh-frame][data-amin-surface]) .amin-more-menu[hidden] {display:none!important}
+:is(.amin-ui,#amin-os,html[data-wsh-frame][data-amin-surface]) .amin-more-menu>button {min-height:36px;padding:6px 12px}
+.amin-more-separator {flex-basis:100%;height:0;border-top:1px solid var(--amin-line)}
+@media (pointer:coarse) {:is(.amin-ui,#amin-os) :is(button.amin-more-toggle,.amin-more-menu>button) {min-height:44px}}
+
+/* "本轮变化" row under an automatically updated reply (apps/linkage/floor-turns.js) */
+.amin-floor.amin-turn-row {flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:6px 10px;margin:6px 0;padding:6px 10px;border:1px solid var(--amin-line,rgba(127,127,127,.35));border-radius:var(--amin-radius,10px);background:var(--amin-card,transparent);color:var(--amin-text,inherit);font-size:var(--amin-font,13px);line-height:1.5}
+.amin-turn-row .amin-turn-details {flex:1 1 220px;min-width:0}
+.amin-turn-row .amin-turn-details>summary {cursor:pointer;color:var(--amin-accent-text,var(--amin-accent,inherit));overflow-wrap:anywhere}
+.amin-turn-row .amin-turn-items {margin:6px 0 0;padding-inline-start:18px;color:var(--amin-muted,inherit)}
+.amin-turn-row .amin-turn-items li {overflow-wrap:anywhere}
+.amin-turn-row .amin-turn-actions {display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%}
+.amin-turn-row button {min-height:32px;padding:4px 10px;border:1px solid var(--amin-line,rgba(127,127,127,.35));border-radius:var(--amin-radius,8px);background:var(--amin-control,transparent);color:var(--amin-text,inherit);font:inherit;cursor:pointer}
+.amin-turn-row button.amin-primary {background:var(--amin-accent);border-color:var(--amin-accent);color:var(--amin-ink)}
+.amin-turn-row .amin-turn-confirm {display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.amin-turn-row .amin-turn-confirm p,.amin-turn-row .amin-turn-error {flex-basis:100%;margin:0}
+.amin-turn-row .amin-turn-error {color:var(--amin-danger)}
+.amin-turn-row .amin-turn-state {color:var(--amin-muted,inherit)}
+@media (pointer:coarse) {.amin-turn-row button {min-height:44px}}
+
+/* ⓘ marker that carries a page note's details (ui/forms.js infoNote) */
+.amin-info {cursor:help;color:var(--amin-accent-text,var(--amin-accent));white-space:nowrap}
+.amin-info:focus-visible {outline:2px solid var(--amin-accent);outline-offset:2px;border-radius:4px}

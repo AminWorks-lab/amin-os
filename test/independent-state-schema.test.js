@@ -13,7 +13,7 @@ test('independent state is complete, detached, and hashes JSON key order consist
     modules.characters.characters[0].name = 'changed';
     assert.equal(character.name, '人物');
     assert.equal(stateHash({ a: 1, nested: { b: 2, a: 1 } }), stateHash({ nested: { a: 1, b: 2 }, a: 1 }));
-    assert.throws(() => validateState({ ...state, revision: -1 }), /修订/);
+    assert.throws(() => validateState({ ...state, revision: -1 }), /编号/);
     const missing = structuredClone(state); delete missing.modules.characters;
     assert.throws(() => validateState(missing), /状态格式/);
 });

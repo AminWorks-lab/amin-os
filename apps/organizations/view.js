@@ -6,6 +6,7 @@ import {generate,followPrompt} from './ai.js';
 import {contextLine} from '../shared/context-line.js';
 import {takeAppRequest} from '../shared/open-app.js';
 import {attachLinkageBadge} from '../linkage/badge.js';
+import {collapseTabs} from '../../ui/tabs.js';
 const el=(tag,text='',cls='')=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e;};
 const show=v=>v===null||v===undefined||v===''?'未明确':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 const tabsMap={overview:'总览',organizations:'组织',alliances:'联盟／阵营',regions:'地区',assessment:'评估排行',settings:'生成与规则'};
@@ -15,6 +16,7 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
  const page=el('div','','amin-page amin-app-page amin-organizations'),header=el('header','','amin-context'),tabs=el('div','','amin-tabs'),actions=el('div','','amin-stack'),notice=el('div','','amin-notice'),body=el('section','','amin-stack'),viewId='amin-organizations-'+uid();
  attachLinkageBadge(header,'organizations');
  notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','势力资料页面');body.id=viewId+'-panel';body.setAttribute('role','tabpanel');body.tabIndex=0;page.append(header,tabs,actions,notice,body);target.append(page);
+ const overflow=collapseTabs(tabs,{keep:['总览','组织','联盟／阵营','地区'],label:'更多势力页面'});
  let selected='overview',chosen={},search='',editing=false,disposed=false,historyIndex=null,historyRecord=null,historyMetadata=null,historyRequest=0,lastIdentity='',requesting=false;
  const say=t=>{notice.textContent=t;};
  const btn=(parent,label,fn,primary=false)=>{const b=el('button',label,primary?'amin-primary':'');b.type='button';b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){say(e.message);}finally{if(!disposed)b.disabled=false;}};parent.append(b);return b;};
@@ -193,7 +195,7 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
     };
     tabs.append(b);
    }
-   body.setAttribute('aria-labelledby',viewId+'-tab-'+selected);
+   overflow.update();body.setAttribute('aria-labelledby',viewId+'-tab-'+selected);
    const pending=api.pending();if(pending&&historyIndex===null){drawPreview(pending);return;}
    let doc=api.read();
    if(historyIndex!==null){
@@ -211,6 +213,6 @@ export async function mount(target,{api:provided,ai=getAI,sourceOptions={}}={}){
   if(api.error())say(api.error());
   if(!editing)render();else if(!api.pending())say(api.error()||'资料可能已更新；表单草稿保留，保存时会检查冲突。');
  });
- const handle={open(){const request=takeAppRequest('organizations');if(editing)return;if(request?.focus&&GROUPS.includes(request.group)&&historyIndex===null){search='';navigate(request.group,request.focus);return;}render();},dispose(){disposed=true;historyRequest++;unsubscribe();page.remove();if(mounted.get(target)===handle)mounted.delete(target);}};
+ const handle={open(){const request=takeAppRequest('organizations');if(editing)return;if(request?.focus&&GROUPS.includes(request.group)&&historyIndex===null){search='';navigate(request.group,request.focus);return;}render();},dispose(){disposed=true;historyRequest++;unsubscribe();overflow.dispose();page.remove();if(mounted.get(target)===handle)mounted.delete(target);}};
  mounted.set(target,handle);render();return handle;
 }

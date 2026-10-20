@@ -6,9 +6,17 @@ function fakes({ clock = { year: 1, month: 1, day: 1, hour: 8, minute: 0 }, busy
     const calls = [];
     const dice = { async roll(input) { calls.push(['roll', input]); return { id: 'r1', text: '快捷 d20：1d20 = 17', results: [{ total: 17 }] }; },
         async append(id, input) { calls.push(['append', id, input]); return { input }; } };
-    const scene = { busy: () => busy, read: () => ({ clock }), stage(op, data) { calls.push(['stage', op, data]); } };
+    let pending = null;
+    const minutes = (op, data) => op === 'set-time' ? 0 : op === 'advance-time' ? data.minutes : { shortRest: 60, longRest: 480 }[data.activity];
+    const later = (value, add) => { const total = value.hour * 60 + value.minute + add; return { ...value, hour: Math.floor(total / 60) % 24, minute: total % 60 }; };
+    const scene = { busy: () => busy, read: () => ({ clock }), context: () => ({}), preview: () => pending && structuredClone(pending),
+        stage(op, data) { calls.push(['stage', op, data]); pending = { details: { beforeTime: clock, afterTime: op === 'set-time' ? data.clock : later(clock, minutes(op, data)) }, state: { periods: [] } }; },
+        async confirm() { calls.push(['confirm']); clock = pending.details.afterTime; pending = null; },
+        move(next) { clock = next; } };
+    const time = async () => ({ format: value => `${value.hour}:${String(value.minute).padStart(2, '0')}`, clock: state => state.clock,
+        expired: (_ctx, after) => after.hour >= 16 ? [{ name: '照明术' }] : [] });
     const openApp = async id => { calls.push(['open', id]); };
-    return { calls, deps: { dice: async () => dice, scene: async () => scene, openApp } };
+    return { calls, scene, deps: { dice: async () => dice, scene: async () => scene, time, openApp } };
 }
 
 test('the d20 is fixed and saved by the dice app, then appended on request', async () => {
@@ -22,15 +30,23 @@ test('the d20 is fixed and saved by the dice app, then appended on request', asy
     assert.deepEqual(calls, [['append', 'r1', input]], 'appending goes through the dice app, which records it as pending');
 });
 
-test('rests and advancing time stage the scene preview and open 场景与时间 to confirm', async () => {
-    const { calls, deps } = fakes();
-    for (const id of ['shortRest', 'longRest', 'advance10']) await runQuickAction(id, deps);
-    assert.deepEqual(calls, [
-        ['stage', 'activity', { activity: 'shortRest', reason: '短休' }], ['open', 'scene'],
-        ['stage', 'activity', { activity: 'longRest', reason: '长休' }], ['open', 'scene'],
-        ['stage', 'advance-time', { minutes: 10, reason: '推进 10 分钟' }], ['open', 'scene'],
-    ]);
-    assert.ok(!calls.some(([name]) => name === 'confirm'), 'nothing is confirmed or saved without the user');
+test('rests and advancing time run directly and offer an undo that sets the clock back', async () => {
+    const { calls, scene, deps } = fakes();
+    const results = [];
+    for (const id of ['shortRest', 'longRest', 'advance10']) results.push(await runQuickAction(id, deps));
+    assert.deepEqual(calls.splice(0), [
+        ['stage', 'activity', { activity: 'shortRest', reason: '短休' }], ['confirm'],
+        ['stage', 'activity', { activity: 'longRest', reason: '长休' }], ['confirm'],
+        ['stage', 'advance-time', { minutes: 10, reason: '推进 10 分钟' }], ['confirm'],
+    ], 'no preview is left for 场景与时间 and the app is not opened');
+    assert.deepEqual(results.map(result => result.kind), ['advanced', 'advanced', 'advanced']);
+    assert.equal(results[0].message, '已短休：8:00 → 9:00。');
+    assert.equal(results[1].message, '已长休：9:00 → 17:00；1 个限时效果到期。');
+    await assert.rejects(results[1].undo(), /又有变化/, 'an older advance cannot be undone after a later one');
+    assert.deepEqual(calls, []);
+    assert.equal(await results[2].undo(), '已撤销，时钟回到 17:00。');
+    assert.deepEqual(calls.splice(0), [['stage', 'set-time', { clock: { year: 1, month: 1, day: 1, hour: 17, minute: 0 }, reason: '撤销推进：推进 10 分钟' }], ['confirm']]);
+    assert.deepEqual(scene.read().clock, { year: 1, month: 1, day: 1, hour: 17, minute: 0 });
 });
 
 test('time actions refuse without a clock or while the scene is saving', async () => {

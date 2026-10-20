@@ -4,6 +4,7 @@ import { uuid } from './uuid.js';
 import {cleanupRetiredData} from './retired-data.js';
 import {installExtraFloorButtons} from './apps/extra-floor-ui.js';
 import {installReplyFloorButtons} from './apps/reply/floor-ui.js';
+import {installTurnSummaries} from './apps/linkage/floor-turns.js';
 import {initializeAppearance,installAppearance,getAppearance} from './settings/appearance.js';
 import {initializeAI} from './ai/service.js';
 import {installTabScroll} from './ui/tabs.js';
@@ -102,6 +103,7 @@ export function initialize() {
         services:Object.fromEntries(['characters','inventory','relationships','scene','journal'].map(id=>[id,ready[id]])),
         enabled:()=>getAppearance()?.snapshot().desktop.liveTiles!==false,subscribeSettings:fn=>getAppearance()?.subscribe(fn)});
     installReplyFloorButtons();
+    installTurnSummaries();
     for(const id of ['characters','inventory','relationships','saves','dice','scene','journal','organizations','effects','information','worldbooks','tts'])installExtraFloorButtons(id);
     const ev=ctx.eventTypes??ctx.event_types??{};
     if(ev.CHAT_CHANGED)ctx.eventSource?.on(ev.CHAT_CHANGED,()=>queueMicrotask(()=>shell.refreshActive()));

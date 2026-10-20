@@ -9,6 +9,9 @@ import { buildReferenceIndex } from './references.js';
 import { isIndependent, STATE_KEY, toLegacyContext } from '../story-state/access.js';
 import { sha256HexSync } from '../tts/source-hash.js';
 import { allocateUpdateEntityIds } from './entity-ids.js';
+import { summarizeChanges, rejectionCategory, rawUpdateText } from './turns.js';
+import { validateState } from '../story-state/schema.js';
+import { createIndependentBackups, stateSnapshot } from '../story-state/backups.js';
 
 const clone = value => structuredClone(value), same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -42,15 +45,36 @@ const compactSource = source => ({ identity: source.identity, index: source.inde
 const sourceEqual = (a,b) => a.identity === b.identity && a.index === b.index && (a.swipe ?? 0) === (b.swipe ?? 0)
     && (a.textHash ?? hash(a.text)) === (b.textHash ?? hash(b.text)) && (a.pathHash ?? hash(a.path)) === (b.pathHash ?? hash(b.path));
 const changesEqual = (record, changes) => record.changesHash ? record.changesHash === hash(changes) : same(record.changes, changes);
+const failWith = (category, text) => Object.assign(Error(text), { linkageCategory: category });
+function parse(raw, options) {
+    try { return parseUpdate(raw, options); }
+    catch (error) { error.linkageCategory ??= 'format'; throw error; }
+}
+const REJECTION_LIMIT = 10, TURN_LIMIT = 20, HINT_KEY = 'amin-os-regenerate-hint-v1';
+// One notice per chat: the storage key carries the chat identity. Storage is
+// best effort (private windows may refuse it); the in-memory set still applies.
+const hintKey = identity => `${HINT_KEY}:${hash(identity).slice(7, 39)}`;
+function rememberHint(identity, storage) {
+    try {
+        const key = hintKey(identity);
+        if (storage?.getItem?.(key)) return false;
+        storage?.setItem?.(key, '1');
+    } catch { /* Fall back to the in-memory set. */ }
+    return true;
+}
 
-export function createLinkageService(getContext = () => globalThis.SillyTavern?.getContext?.(), { adapters = allAdapters, createId = uuid, now = () => new Date().toISOString(), buildPrompt = buildUnifiedPrompt, manualModules = null } = {}) {
+export function createLinkageService(getContext = () => globalThis.SillyTavern?.getContext?.(), { adapters = allAdapters, createId = uuid, now = () => new Date().toISOString(), buildPrompt = buildUnifiedPrompt, manualModules = null,
+    backups = null, hintStorage = (() => { try { return globalThis.localStorage; } catch { return null; } })(),
+    notifyRegenerate = text => globalThis.toastr?.info?.(text, 'Amin OS', { timeOut: 12000 }) } = {}) {
     if (manualModules !== null && (!Array.isArray(manualModules) || !manualModules.length || manualModules.some(id => !['characters','inventory','relationships','scene','journal','status'].includes(id)) || new Set(manualModules).size !== manualModules.length)) throw Error('手动生成范围无效。');
     const manualScope = manualModules === null ? null : new Set(manualModules);
     const canWrite = (ctx, id) => manualScope ? manualScope.has(id) && (id !== 'status' || mayManuallyUpdateStatus(ctx)) : mayWrite(ctx,id);
     const batchLabel = manualScope ? 'AI 资料生成' : '跨应用剧情更新';
     const operation = createOperationService(getContext), listeners = new Set(), candidates = new Map();
     const paths = [...new Map([[KEY], ...adapters.flatMap(a => a.paths).filter(path => !derivedHistories.has(path[0]))].map(path => [JSON.stringify(path), path])).values()];
-    let pending = null, generation = null, message = '', hostMessage = '', disposed = false, templateBusy = false;
+    let pending = null, generation = null, message = '', hostMessage = '', disposed = false, templateBusy = false, backupStore = backups;
+    // Run-local records: rejected batches (any chat) and automatically applied turns.
+    const rejections = [], turns = [], hinted = new Set();
     const notify = () => { for (const callback of [...listeners]) { try { callback(); } catch { /* A view cannot interrupt a commit. */ } } };
     const context = () => { if (disposed) throw Error('联动更新服务已关闭。'); const ctx = getContext(); if (!ctx?.chatMetadata || (ctx.getCurrentChatId?.() ?? ctx.chatId) == null) throw Error('请先打开聊天。'); return ctx; };
     const rawData = ctx => {
@@ -59,9 +83,9 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
     };
     function allowedPatch(ctx, patch) {
         const id = pathModule(patch.path);
-        if (!id || !canWrite(ctx,id)) throw Error(`本次操作没有修改 ${id ? MODULES[id][0] : patch.path.join('.')} 的权限。`);
-        if (patch.path[0] === 'variables' && patch.path.length < 2) throw Error('不能整体替换聊天变量。');
-        if (patch.path[0] === 'amin_os_organizations_v1' && !['locks','assessment','backups'].includes(patch.path[1])) throw Error('不能通过剧情更新修改势力应用设置。');
+        if (!id || !canWrite(ctx,id)) throw failWith('permission', `本次操作没有修改 ${id ? MODULES[id][0] : patch.path.join('.')} 的权限。`);
+        if (patch.path[0] === 'variables' && patch.path.length < 2) throw failWith('permission', '不能整体替换聊天变量。');
+        if (patch.path[0] === 'amin_os_organizations_v1' && !['locks','assessment','backups'].includes(patch.path[1])) throw failWith('permission', '不能通过剧情更新修改势力应用设置。');
     }
     function ensureGeneration(candidate) {
         const ctx = context(), expected = candidate.basis;
@@ -69,11 +93,23 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         if (!same(rawData(ctx), expected.data) || !same(readLinkageState(ctx), expected.settings) || buildPrompt(ctx) !== expected.prompt) throw Error('生成期间关联资料或联动规则已变化，本次建议已过期。');
         return ctx;
     }
+    function reject(raw, source, error, manual = false) {
+        rejections.unshift({ id: createId(), at: now(), identity: source?.identity ?? null, index: Number.isInteger(source?.index) ? source.index : null,
+            swipe: source?.swipe ?? 0, manual, raw: rawUpdateText(raw), item: error?.linkageItem ? clone(error.linkageItem) : null,
+            category: rejectionCategory(error), reason: String(error?.message ?? error) });
+        rejections.length = Math.min(rejections.length, REJECTION_LIMIT);
+    }
     function stage(raw, options = {}) {
+        const ctx = context();
+        if (!readLinkageState(ctx).enabled && !manualScope) throw Error('请先启用统一联动更新。');
+        try { return stageUpdate(raw, options); }
+        catch (error) { if (!manualScope) { reject(raw, options.candidate?.source ?? sourceFor(ctx), error, !options.candidate); notify(); } throw error; }
+    }
+    function stageUpdate(raw, options = {}) {
         const ctx = options.candidate ? ensureGeneration(options.candidate) : context();
         const settings = readLinkageState(ctx);
         if (!settings.enabled && !manualScope) throw Error('请先启用统一联动更新。');
-        const input = parseUpdate(raw), literal = parseUpdate(raw, { canonical: false }), independent = isIndependent(ctx);
+        const input = parse(raw), literal = parse(raw, { canonical: false }), independent = isIndependent(ctx);
         const currentData = independent ? rawData(ctx) : null;
         const existingIds = independent ? [...buildReferenceIndex(currentData).entities.map(entity => entity.id),
             ...(currentData.relationships?.thresholdRules ?? []).map(rule => `relationships:${rule.id}`)] : [];
@@ -85,11 +121,11 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const token = operation.capture(independent ? [...paths, [STATE_KEY]] : paths);
         const operationId = createId(), at = now(), sandbox = independent ? toLegacyContext(ctx) : { ...ctx, chatMetadata: clone(ctx.chatMetadata) };
         const touched = [], descriptions = [], changes = [], beforeData = rawData(sandbox);
-        for (const [index, change] of parsed.changes.entries()) {
-            if (manualScope && change.module === 'status' && change.action !== 'set-field') throw Error('手动状态更新仅允许设置已有字段的最终值。');
-            if (!canWrite(ctx,change.module)) throw Error(`${MODULES[change.module][0]} 未在本次操作的更新范围内。`);
+        for (const [index, change] of parsed.changes.entries()) try {
+            if (manualScope && change.module === 'status' && change.action !== 'set-field') throw failWith('permission', '手动状态更新仅允许设置已有字段的最终值。');
+            if (!canWrite(ctx,change.module)) throw failWith('permission', `${MODULES[change.module][0]} 未在本次操作的更新范围内。`);
             const adapter = adapters.find(a => a.id === change.module);
-            if (!adapter?.apply) throw Error('这个模块目前只支持读取。');
+            if (!adapter?.apply) throw failWith('permission', '这个模块目前只支持读取。');
             const before = clone(adapter.read(sandbox)), original = JSON.stringify(sandbox.chatMetadata);
             const result = adapter.apply(sandbox, clone(change), { operationId: `${operationId}-${index}`, now: at });
             if (JSON.stringify(sandbox.chatMetadata) !== original) throw Error('应用适配器直接修改了资料，本次操作已拒绝。');
@@ -97,13 +133,16 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
             for (const patch of result.patches) { allowedPatch(ctx,patch); applyPatch(sandbox.chatMetadata,patch); touched.push(patch.path); }
             descriptions.push(String(result.summary ?? change.reason));
             changes.push({ ...change, label: adapter.label, before, after: clone(adapter.read(sandbox)) });
+        } catch (error) {
+            error.linkageItem ??= { index, module: change.module, label: MODULES[change.module]?.[0] ?? change.module, action: change.action, target: change.target ?? null };
+            throw error;
         }
         const afterData = rawData(sandbox); // Validate every module before the first live mutation.
         const beforeRefs = buildReferenceIndex(beforeData,settings.links), afterRefs = buildReferenceIndex(afterData,settings.links);
         const referenceKey = item => JSON.stringify([item.from,item.to]);
         const priorMissing = new Set(beforeRefs.unresolved.map(referenceKey));
         const newMissing = afterRefs.unresolved.filter(item => !priorMissing.has(referenceKey(item)));
-        if (newMissing.length) throw Error('这批更新会产生新的无效引用：' + newMissing.map(item => `${item.from} → ${item.to}`).join('；'));
+        if (newMissing.length) throw failWith('reference', '这批更新会产生新的无效引用：' + newMissing.map(item => `${item.from} → ${item.to}`).join('；'));
         const nextSettings = clone(settings);
         if (independent) {
             nextSettings.applied = compactLinkageReceipts(nextSettings).applied.slice(-63);
@@ -159,6 +198,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         if (manualScope) return false;
         if (!['normal','regenerate','swipe'].includes(type)) return false;
         const ctx = context(); if (!readLinkageState(ctx).enabled || operation.busy() || operation.dirty()) return false;
+        if (['regenerate','swipe'].includes(type)) hintRegenerate(ctx, source);
         const chat = [...(ctx.chat ?? [])];
         if (['regenerate','swipe'].includes(type) && chat.length && !chat.at(-1).is_user && !chat.at(-1).is_system
             && (!Object.hasOwn(source, 'excludedReply') || chat.at(-1) === source.excludedReply)) chat.pop();
@@ -177,23 +217,70 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         }
         const candidate = { id:basis.id, source:sourceFor(ctx,index), text:reply.mes, basis };
         try {
-            const parsed = parseUpdate(reply.mes);
+            const parsed = parse(reply.mes);
             if (!parsed.changes.length) {
                 ensureGeneration(candidate);
                 message = '模型已返回更新块：本轮无可提交的变化，未修改资料。'; notify();
                 return { outcome:'empty' };
             }
         } catch (error) {
+            reject(reply.mes, candidate.source, error);
             message = '更新块无效或已过期：' + error.message; notify();
             return { outcome:'invalid' };
         }
         if (readLinkageState(ctx).applied.some(record=>!record.archived && sourceEqual(record.source,candidate.source))) return null;
         candidates.set(candidate.id,candidate); message='收到跨应用更新建议，请查看预览。'; notify();
         if (readLinkageState(ctx).mode === 'auto') {
-            try { stage(candidate.text,{candidate}); await confirm(); }
+            let undo = null;
+            try { undo = await prepareUndo(candidate); } catch (error) { undo = { error: error.message }; }
+            try { stage(candidate.text,{candidate}); const applied = clone(pending); await confirm(); recordTurn(candidate, applied, undo); }
             catch (error) { message='自动更新未完成：'+error.message; notify(); }
         }
         return { id:candidate.id, source:clone(candidate.source), text:candidate.text };
+    }
+    // Before an automatic batch, make sure a pre-change backup exists for its undo.
+    // The ring keeps one record per state revision; an existing record of the same
+    // revision (such as a floor checkpoint) serves. Without external storage the
+    // snapshot stays in memory for this run.
+    async function prepareUndo(candidate) {
+        const ctx = context();
+        if (!isIndependent(ctx)) return null;
+        const state = validateState(ctx.chatMetadata[STATE_KEY]), label = `第 ${candidate.source.index + 1} 楼更新前`;
+        backupStore ??= createIndependentBackups(getContext);
+        if (backupStore.available?.()) {
+            const result = await backupStore.savePrevious(ctx, state, { label });
+            if (result?.saved) return { backupId: result.id, revision: state.revision };
+            const entry = result?.duplicate ? (await backupStore.readRing(ctx)).entries.find(item => item.revision === state.revision || item.snapshot.id === result.id) : null;
+            if (entry) return { backupId: entry.snapshot.id, revision: state.revision };
+        }
+        return { snapshot: stateSnapshot(ctx, state, { label }).snapshot, revision: state.revision };
+    }
+    const stamp = ctx => isIndependent(ctx) ? ctx.chatMetadata?.[STATE_KEY]?.revision ?? null : hash(rawData(ctx));
+    function recordTurn(candidate, applied, undo) {
+        const ctx = context(), summary = summarizeChanges(applied?.changes ?? [], applied?.summary ?? []);
+        turns.unshift({ id: applied?.operationId ?? createId(), at: now(), identity: candidate.source.identity, index: candidate.source.index, swipe: candidate.source.swipe ?? 0,
+            headline: summary.headline, items: summary.items, undo: undo && !undo.error ? undo : null, undoError: undo?.error ?? '', stamp: stamp(ctx), undone: false });
+        turns.length = Math.min(turns.length, TURN_LIMIT); notify();
+    }
+    /** Public view of a turn: only the newest turn of a chat, unchanged since, can be undone here. */
+    function turnView(turn, ctx = getContext()) {
+        const latest = turns.find(item => item.identity === turn.identity) === turn;
+        let current = null; try { current = stamp(ctx); } catch { /* Treated as changed. */ }
+        const stale = !latest || current !== turn.stamp;
+        const { undo, ...rest } = turn;
+        return { ...clone(rest), latest, stale, undoable: !turn.undone && !stale && !!(undo?.backupId || undo?.snapshot) };
+    }
+    function hintRegenerate(ctx, source) {
+        const chat = ctx.chat ?? [], index = chat.length - 1, reply = chat[index];
+        if (!reply || reply.is_user || reply.is_system || Object.hasOwn(source, 'excludedReply') && source.excludedReply !== reply) return;
+        const identity = chatIdentity(ctx);
+        if (hinted.has(identity)) return;
+        const applied = readLinkageState(ctx).applied.some(record => !record.archived && record.source?.index === index && record.source?.identity === identity)
+            || turns.some(turn => turn.identity === identity && turn.index === index && !turn.undone);
+        if (!applied) return;
+        hinted.add(identity);
+        if (!rememberHint(identity, hintStorage)) return;
+        try { notifyRegenerate('上一版回复的更新不会自动撤回，可在楼层小结中撤回。'); } catch { /* A notice cannot interrupt generation. */ }
     }
     const unsubscribe = operation.subscribe(notify);
     const unsubscribeState = subscribeStateChanges((_event, metadata) => { if (metadata === getContext()?.chatMetadata) notify(); });
@@ -221,6 +308,12 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         suggestions:()=>[...candidates.values()].filter(c=>c.source.identity===chatIdentity(getContext())).map(({id,source,text})=>({id,source:clone(source),text})),
         stageSuggestion(id){const candidate=candidates.get(id);if(!candidate)throw Error('更新建议已失效。');return stage(candidate.text,{candidate});},
         captureGeneration, collectReply, cancelGeneration(){generation=null;},
+        rejections:()=>clone(rejections), clearRejections(){rejections.length=0;notify();},
+        turns(){const ctx=getContext();let identity=null;try{identity=chatIdentity(ctx);}catch{return [];}return turns.filter(turn=>turn.identity===identity).map(turn=>turnView(turn,ctx));},
+        turnFor(index,swipe){const ctx=getContext();let identity=null;try{identity=chatIdentity(ctx);}catch{return null;}const turn=turns.find(item=>item.identity===identity&&item.index===index&&item.swipe===(swipe??0));return turn?turnView(turn,ctx):null;},
+        /** What the saves restore flow needs to undo a turn: a ring backup id or an in-memory snapshot. */
+        undoTarget(id){const turn=turns.find(item=>item.id===id);if(!turn)throw Error('这一轮更新记录已不存在。');const view=turnView(turn);if(!view.undoable)throw Error(turn.undone?'这一轮已经撤回。':'之后已有新的更新，请前往跨应用存档选择要恢复的记录。');return turn.undo.backupId?{id:turn.undo.backupId}:{snapshot:clone(turn.undo.snapshot)};},
+        markUndone(id){const turn=turns.find(item=>item.id===id);if(turn){turn.undone=true;notify();}},
         subscribe(callback){listeners.add(callback);return()=>listeners.delete(callback);},
         dispose(){disposed=true;generation=null;candidates.clear();unsubscribe();unsubscribeState();operation.dispose();listeners.clear();},
     };

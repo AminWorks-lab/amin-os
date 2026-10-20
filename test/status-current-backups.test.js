@@ -56,7 +56,7 @@ async function application(f, runtime = {}, loadVariables = async () => ({setLoc
     copyPrompt() {}, buildUpdatePrompt() {}, generateStatus() {}, hostSetLocalVariable: f.setLocalVariable,
     isIndependent, readStoryRoot, writeStoryRoot, STATE_KEY, prepareIndependentManualWrite,
     mountGeneration: (_target, options) => {const view={options,opens:0,disposed:false,open(){this.opens++;},dispose(){this.disposed=true;}};generationViews.push(view);return view;},
-    attachLinkageBadge: () => null, openLinkageApp: async () => {}, getLinkageService: () => ({ subscribe: () => () => {} }),
+    attachLinkageBadge: () => null, collapseTabs: () => ({ update() {}, dispose() {} }), openLinkageApp: async () => {}, getLinkageService: () => ({ subscribe: () => () => {} }),
     managesModule: () => !!f.ctx.chatMetadata.amin_os_linkage_v1?.enabled, getState2Runtime: () => runtime, contextLine,
   };
   const source = readFileSync(new URL('../apps/status/index.js', import.meta.url), 'utf8')
