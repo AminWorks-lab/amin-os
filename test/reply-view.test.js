@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mount} from '../apps/reply/index.js';
-import {ROOTS,MIGRATION_KEY,BACKUP_KEY,MIGRATION_OWNER,OWNED_VARIABLE_ROOTS,OWNERSHIP_FLOOR} from '../apps/state2/storage.js';
+import {ROOTS} from '../apps/story-state/legacy-roots.js';
 import {initializeState2} from '../apps/state2/runtime.js';
 import {STATE_KEY} from '../apps/story-state/access.js';
 import {emptyState} from '../apps/story-state/schema.js';
@@ -107,9 +107,6 @@ test('previewed independent story records can be excluded without reading inert 
     f.ctx.extensionSettings.LittleWhiteBox={variablesMode:'2.0'};
     f.ctx.chatMetadata={
         variables:{[ROOTS.characters]:JSON.stringify({version:1,characters:[{id:'pc',name:'玩家',kind:'pc',appearance:{description:'红色斗篷'}}]})},
-        [MIGRATION_KEY]:{version:1,owner:MIGRATION_OWNER,roots:[...OWNED_VARIABLE_ROOTS],createdAt:'2026-09-24'},
-        [BACKUP_KEY]:{version:1,roots:{},source:{}},
-        extensions:{LittleWhiteBox:{stateLogV2:{version:1,floors:{[OWNERSHIP_FLOOR]:{signature:MIGRATION_OWNER,roots:[...OWNED_VARIABLE_ROOTS]}}}}},
     };
     const runtime=initializeState2(()=>f.ctx,{interval:0});
     t.after(()=>runtime.destroy());

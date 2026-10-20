@@ -4,7 +4,7 @@ import { createStoryStateRuntime, LEGACY_STORY_KEYS } from '../apps/story-state/
 import { STATE_KEY, STATE_FORMAT, emptyState, validateState } from '../apps/story-state/schema.js';
 import { createIndependentBackups } from '../apps/story-state/backups.js';
 import { createOperationService } from '../apps/shared/operations.js';
-import { ROOTS } from '../apps/state2/storage.js';
+import { ROOTS } from '../apps/story-state/legacy-roots.js';
 import * as Characters from '../apps/characters/model.js';
 import * as Effects from '../apps/effects/model.js';
 import { LIBRARY_KEY, emptyLibrary } from '../apps/effects/library.js';

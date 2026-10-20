@@ -17,7 +17,6 @@ import { registerMapRuntime } from '../apps/map/src/integrations/runtime.js';
 import * as Linkage from '../apps/linkage/policy.js';
 import { chatIdentity, chatPath } from '../apps/shared/operations.js';
 import { branchAvailability, assertOpenedBranch } from '../apps/saves/branch.js';
-import { STORY_STORAGE_KEY } from '../apps/state2/storage.js';
 
 const at='2026-09-23T00:00:00.000Z';
 function fixture({populated=true}={}){
@@ -149,21 +148,6 @@ test('restoring into a clean initial map view may establish saved map metadata',
     const source=fixture(),saved=await save(source),target=fixture({populated:false});
     const release=registerMapRuntime({context:()=>target.ctx,persistence:{ensureActive(){},saving:()=>false},draft:{status:()=>({dirty:false})},store:{snapshot:()=>createDemoDocument()}});
     target.api.stageRestore(saved);await target.api.confirm();assert.deepEqual(target.ctx.chatMetadata.dynamicMapV1.document,saved.modules.map);release();source.api.dispose();target.api.dispose();
-});
-
-test('external story history pauses automatic full checkpoints while preserving manual saves', async () => {
-    const h = fixture({ populated: false });
-    h.ctx.chatMetadata[STORY_STORAGE_KEY] = { version: 2 };
-    const before = structuredClone(h.ctx.chatMetadata);
-    assert.equal(await h.api.captureCheckpoint({ automatic: true }), null);
-    assert.deepEqual(h.ctx.chatMetadata, before);
-    assert.equal(h.writes(), 0);
-    assert.match(h.api.checkpointStatus(), /自动完整检查点已暂停/);
-    await h.api.captureCheckpoint();
-    assert.equal(h.api.read().checkpoints.length, 1);
-    await save(h, '手工存档');
-    assert.equal(h.api.read().saves.length, 1);
-    h.api.dispose();
 });
 
 test('linked appearance, schedule, memories, relationship reminders and effect rules survive one complete restore',async()=>{

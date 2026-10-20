@@ -3,8 +3,18 @@ import assert from 'node:assert/strict';
 import { createIndependentMigration } from '../apps/story-state/migration.js';
 import { KEY, STATE_FORMAT, emptyState } from '../apps/story-state/schema.js';
 import { buildRestore, KEY as CHARACTERS_KEY } from '../apps/characters/model.js';
-import { createCurrentStoryStorage } from '../apps/state2/current-story-storage.js';
+import { chatIdentity } from '../apps/shared/operations.js';
+import { canonicalJSON } from '../apps/story-state/schema.js';
+import { sha256HexSync } from '../apps/tts/source-hash.js';
 
+// A 0.17.4 current-story export, sealed exactly as that release wrote it.
+function currentStoryExport(ctx) {
+    const digest = value => 'sha256:' + sha256HexSync(canonicalJSON(value));
+    const state = { version: 2, variables: { AminOS人物: JSON.parse(ctx.chatMetadata.variables.AminOS人物) }, rules: {}, jsonStringRoots: ['AminOS人物'] };
+    const data = { version: 1, owner: 'amin-os/current-story-v1', chat: chatIdentity(ctx), revision: 1, backups: [],
+        current: { state, hash: digest(state), at: 1, label: '当前状态' } };
+    return { format: 'amin-os-current-story', version: 1, record: { ...data, hash: digest(data) } };
+}
 const person = { id: 'person', name: '人物', kind: 'pc', notes: '', stats: [] };
 function fixture() {
     let ctx = { chatId: 'migration', characterId: 0, characters: [{ avatar: 'one.png' }], chat: [{ mes: 'original', swipe_id: 0 }],
@@ -67,15 +77,10 @@ test('independent import validates a detached current state without changing leg
     assert.equal(f.service.previewImport({ version: 2, graph: {} }).valid, false);
 });
 test('a real legacy current-only export is validated and previewed without applying native state', async () => {
-    const f = fixture(), records = new Map();
+    const f = fixture();
     f.ctx.chatMetadata.variables.AminOS人物 = JSON.stringify({ version: 1, characters: [person] });
-    let overlayCalls = 0;
-    const legacy = createCurrentStoryStorage(() => f.ctx, { files: {
-        async get(key) { return structuredClone(records.get(key) ?? null); },
-        async put(key, record) { records.set(key, structuredClone(record)); },
-    }, restoreState: () => { overlayCalls++; throw Error('must not replay'); } });
-    await legacy.enable();
-    const bundle = await legacy.exportStory(), before = structuredClone(f.ctx);
+    const overlayCalls = 0;
+    const bundle = currentStoryExport(f.ctx), before = structuredClone(f.ctx);
     const preview = f.service.previewImport(bundle);
     assert.equal(preview.valid, true);
     assert.equal(f.service.validatePreview(preview.plan).modules.characters.characters[0].name, '人物');

@@ -4,13 +4,11 @@ import { createOperationService, chatIdentity, chatPath, subscribeStateChanges, 
 import { branchAvailability, assertOpenedBranch, loadBranchHost as defaultLoadBranchHost } from './branch.js';
 import { uuid } from '../../uuid.js';
 import { assertMapReady } from '../map/src/integrations/runtime.js';
-import { STORY_STORAGE_KEY } from '../state2/storage.js';
 import { isIndependent, readModule } from '../story-state/access.js';
 
 const clone = value => structuredClone(value);
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const names = saved => Object.keys(MODULE_LABELS).filter(key => saved.modules[key] != null).map(key => MODULE_LABELS[key]);
-const externalHistory = ctx => ctx?.chatMetadata?.[STORY_STORAGE_KEY]?.version === 2;
 
 export function createSavesService(getContext = () => globalThis.SillyTavern?.getContext?.(), {
     createId = uuid, now = () => new Date().toISOString(), loadBranchHost = defaultLoadBranchHost, autoCheckpoints = true,
@@ -96,11 +94,9 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
         }
     }
     async function captureCheckpoint({ automatic = false } = {}) {
-        if (automatic && externalHistory(getContext())) return null;
         ensureIdle();
         if (operations.preview()) throw Error('请先确认或取消当前预览，再记录检查点。');
         const token = capture(), ctx = operations.check(token);
-        if (automatic && externalHistory(ctx)) return null;
         const store = readStore(ctx);
         if (automatic && !store.checkpointSettings.enabled) return null;
         if (!ctx.chat?.length) return null;
@@ -167,7 +163,7 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
     }
     function scheduleCheckpoint() {
         // The reply is still changing the tail; GENERATION_ENDED/STOPPED schedules again.
-        if (!autoCheckpoints || !hostListeners.length || disposed || branching || generationActive() || externalHistory(getContext())) return;
+        if (!autoCheckpoints || !hostListeners.length || disposed || branching || generationActive()) return;
         clearTimeout(timer);
         let token;
         try { token = capture(); } catch { return; }
@@ -192,8 +188,7 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
         scheduleCheckpoint();
     }
     return { context: getContext, capture, check: operations.check, read: () => readStore(getContext()), stageSave, stageRestore, stageImport, stageDelete, stageCheckpointSettings, captureCheckpoint, stageBranch,
-        branchAvailability: id => branchAvailability(getContext(), find(id)), checkpointStatus: () => checkpointMessage || (externalHistory(getContext())
-            ? '剧情历史已由外置存储按楼层记录；自动完整检查点已暂停。仍可手动建立检查点或命名存档。' : ''),
+        branchAvailability: id => branchAvailability(getContext(), find(id)), checkpointStatus: () => checkpointMessage,
         inspectImport: parseImport, exportSave: id => JSON.stringify(validateSnapshot(find(id)), null, 2), preview, confirm,
         async retrySave() { const result = await operations.retrySave(); branchMessage = ''; checkpointMessage = ''; return result; },
         discard() { branchPending = null; branchMessage = ''; operations.discard(); }, status: () => branchMessage || operations.status(), busy: () => branching || operations.busy(), dirty: operations.dirty,
