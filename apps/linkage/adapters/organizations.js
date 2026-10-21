@@ -26,18 +26,22 @@ function historyPatch(ctx, doc, assessment, timestamp) {
     return [{ path: [HISTORY], value: next }];
 }
 
+// Field keys every group shares are listed once, then each group's own.
+const groupKeys = group => [...Object.keys(FIELDS[group]), ...Object.keys(LINKS[group])].filter(key => key !== 'updatedAt');
+const shared = groupKeys(GROUPS[0]).filter(key => GROUPS.every(group => groupKeys(group).includes(key)));
 const spec = {
-    notes: 'target=主体ID；group:organizations|alliances|regions；metrics=[{key,label,unit,source,kind:number|range|text|unknown,value}]；relations/members/controllers=[{organization:组织ID,role,note}]；地区 parent=地区ID|null。locked 路径不可改，不删除或整体替换。',
+    notes: 'target=主体ID；group:organizations|alliances|regions；metrics=[{key,label,unit,source,kind:number|range|text|unknown,value}]；relations/members/controllers=[{organization:组织ID,role?,note?}]；range值=[min,max]；地区 parent=地区ID|null。locked 路径不可改，不删除或整体替换。',
     actions: [
         { name: 'create-entity', creates: 'entity', aliases: ['create'], args: 'group,fields:{name,...}' },
         { name: 'update-entity', aliases: ['update'], args: 'group,fields:{待改字段}', note: '仅既有主体，不换ID或group' },
     ],
 };
+spec.notes += `fields键：${shared.join(',')},metrics；${GROUPS.map(group => `${group}另有${groupKeys(group).filter(key => !shared.includes(key)).join(',')}`).join('；')}。`;
 
 export const adapter = {
     id: 'organizations', label: '势力资料',
     paths: [['variables', ROOT], [META], [HISTORY]],
-    spec, contract: renderContract(spec),
+    spec, contract: renderContract(spec), dataFields: action => ['create-entity', 'update-entity'].includes(action) ? ['group', 'fields'] : undefined,
     read(ctx) { const { doc, locks } = source(ctx); return { version: 1, doc, locks }; },
     apply(ctx, input, { now } = {}) {
         const change = canonicalChange(spec, input);
@@ -47,7 +51,10 @@ export const adapter = {
         if (!object(data) || Object.keys(data).some(key => !['group', 'fields'].includes(key)) || !GROUPS.includes(data.group) || !object(data.fields) || !Object.keys(data.fields).length) throw Error('势力更新格式无效。');
         if (typeof change.target !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(change.target) || ['constructor', 'prototype', '__proto__'].includes(change.target)) throw Error('势力主体 ID 无效。');
         const allowed = [...Object.keys(FIELDS[data.group]), ...Object.keys(LINKS[data.group]), 'metrics'];
-        if (Object.keys(data.fields).some(key => !allowed.includes(key))) throw Error('势力更新包含未允许的字段。');
+        const unknown = Object.keys(data.fields).filter(key => !allowed.includes(key));
+        if (unknown.length) throw Error(`势力更新包含未允许的字段：${unknown.join('、')}。`);
+        // role/note of a link are optional text, as metric label/unit/source are.
+        for (const key of Object.keys(LINKS[data.group])) if (Array.isArray(data.fields[key])) data.fields[key] = data.fields[key].map(link => object(link) ? { ...link, role: link.role ?? '', note: link.note ?? '' } : link);
         const { doc: before, extra, locks } = source(ctx), next = clone(before);
         const found = GROUPS.find(group => Object.hasOwn(before[group], change.target));
         if (change.action === 'create-entity') {

@@ -1,3 +1,23 @@
+## 0.19.2（2026-10-21）
+
+- 联动更新不再因为模型的常见小差错整批作废。逐轮联动和资料生成在校验前先做一轮修复，并在预览里逐条说明改了什么：
+  - 外层多给的字段（如 id、summary）忽略；缺 data 时按空对象处理；target 缺失但 data.id 有值时移到 target；reason 缺失时用 evidence/summary 等说明代替；character、item、relationship 等单数模块名按对应模块处理。
+  - data 里重复写的记录 ID（id、itemId、characterId 等等于 target 的）去掉。
+  - 常见同义字段改成协议字段，例如背包的 count/qty/amount→quantity、owner→ownerId、to→toOwnerId、description→notes、value→amount、change→delta；关系的 from/to→fromId/toId、relation→type；档案的 content/description→body；世界状态增减的 amount→delta。
+  - 其余多出的字段：资料生成时并入备注或正文，逐轮联动时忽略并提示。背包 wear/condition、人物属性、势力 fields 里的多余键同样处理。
+  - 场景的 participants/objects 写成数组时用“、”拼接；非叠层效果的 maxStacks/stacks 归为 1；人物记忆里多写的 title/body 忽略（标题本来取自事实）。
+  - 背包新增别名 use-item→consume-item、give-item→transfer-item。
+- 修复协议允许、但校验会拒绝的写法：
+  - 背包 create-item/update-item 只给部分 condition 或 wear 时，与原值合并（未给的程度按 0），不再报“湿润、污渍和破损程度必须是 0–100 的整数”或“穿戴部位无效”；update-item 把已装备物品数量改成 0 时自动卸下。
+  - 世界状态的进度字段增减或设值时省略 component，按“当前值”处理。
+  - update-character 只给部分 appearance 时保留其余外观字段（以前会被悄悄清空）。
+  - 已有人物关系可以只改 strength 等个别字段。
+  - 势力关联的 role/note 可省略；协议列出各分组可用的 fields 键和 range 写法。
+  - 地图方向接受“东北”“North-East”等写法，类型接受显示名（如“小径”）。
+  - 协议文字更正：效果 targeted 模式必须给 target；只有事实、伏笔、任务、线索新建时必须写 title/body。
+- 各应用报“不支持的字段/未知字段”时，错误信息列出具体字段名。
+- 每轮更新规则约增加 480 字（势力字段键列表），全模块约 4900 字。
+
 ## 0.19.1（2026-10-21）
 
 - 修复「联动更新 → 生成资料草稿」读取世界书人物设定时经常报“人物联动参数包含不支持的字段。”、整份草稿作废的问题。原因是模型按世界书条目给人物加了人物卡没有的字段（如年龄、性格、标签），或在 data 里重复 id、把发型等外观字段放到外层。现在生成草稿时：外层的 description/hairstyle/features 归入外观；重复的 id/target 去掉；其他字段以“字段：值”追加到备注（更新外观时追加到外貌特征），草稿上方提示哪些字段被并入；属性绑定里的数值等多余项忽略并提示。补充缺项模式下已有备注不改写，多余字段只提示忽略。

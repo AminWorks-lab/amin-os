@@ -2,6 +2,7 @@ import { MODULES, plain, validateJSON } from './policy.js';
 import { parseModelJSON } from '../../ai/json.js';
 import { getAdapter } from './registry.js';
 import { canonicalAction } from './contract.js';
+import { repairUpdate } from './repair.js';
 
 export const OPEN = '<amin_update>', CLOSE = '</amin_update>';
 // Accept Markdown escaping of delimiters only. Never unescape the JSON payload.
@@ -14,7 +15,7 @@ function tags(text) {
 /** Validate one update. Legacy action names (e.g. set_fact, add_node) are
  * mapped to the adapter's current name unless `canonical:false` asks for the
  * literal payload, as idempotency checks against old receipts need. */
-export function parseUpdate(input, { canonical = true } = {}) {
+export function parseUpdate(input, { canonical = true, repair = false, notes, ...repairOptions } = {}) {
     let raw = input;
     if (typeof input === 'string') {
         if (input.length > 2 * 1024 * 1024) throw Error('一次联动更新超过 2 MiB。');
@@ -27,6 +28,8 @@ export function parseUpdate(input, { canonical = true } = {}) {
         raw = parseModelJSON(raw, { label: '联动更新' });
     }
     validateJSON(raw);
+    // Opt-in: fix predictable model slips before the strict checks; see repair.js.
+    if (repair) { const result = repairUpdate(raw, repairOptions); raw = result.update; notes?.push(...result.notes); }
     if (!plain(raw) || raw.version !== 1 || Object.keys(raw).some(k => !['version','changes'].includes(k)) || !Array.isArray(raw.changes) || raw.changes.length > 64) throw Error('联动更新必须使用 version:1 和最多 64 项 changes。');
     for (const change of raw.changes) {
         if (!plain(change) || Object.keys(change).some(k => !['module','action','target','data','reason'].includes(k)) || !Object.hasOwn(MODULES, change.module)) throw Error('更新包含未知模块或字段。');

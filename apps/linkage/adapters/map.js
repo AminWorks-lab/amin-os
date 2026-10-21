@@ -1,5 +1,5 @@
 import { validateDocument } from '../../map/src/core/protocol.js';
-import { prepareDocument } from '../../map/src/core/spatial.js';
+import { prepareDocument, DIRECTIONS } from '../../map/src/core/spatial.js';
 import { compileMapUpdate } from '../../map/src/integrations/tool-calling.js';
 import { legacyModule, isIndependent } from '../../story-state/access.js';
 import { renderContract, canonicalChange } from '../contract.js';
@@ -8,6 +8,17 @@ const KEY = 'dynamicMapV1', HISTORY = 'dynamicMapPositionHistoryV1';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
 const visible = node => node?.discovered && node.ai?.includeInContext;
+// Models write 东北, north-east or North East; the map stores the 16 compass ids.
+const DIRECTION_NAMES = new Map(DIRECTIONS.flatMap(({ id, label }) => [[id, id], [id.replace(/-/g, ''), id], [label, id], [label + '方', id]]).concat([['上', 'up'], ['下', 'down'], ['北边', 'north'], ['南边', 'south'], ['东边', 'east'], ['西边', 'west']]));
+export function direction(value) {
+    if (typeof value !== 'string') return value;
+    return DIRECTION_NAMES.get(value.trim().toLowerCase().replace(/[\s_]+/g, '-')) ?? DIRECTION_NAMES.get(value.trim().toLowerCase().replace(/[\s_-]+/g, '')) ?? value;
+}
+// A type given by its display name resolves to that type's id on this map.
+function typeId(value, types) {
+    if (typeof value !== 'string' || types?.some(type => type.id === value)) return value;
+    return types?.find(type => type.name === value.trim())?.id ?? value;
+}
 const fields = {
     'create-node': ['mapId', 'name', 'description', 'type'], 'update-node': ['mapId', 'name', 'description', 'type'],
     'create-edge': ['mapId', 'from', 'to', 'name', 'type', 'direction', 'distance', 'bidirectional'],
@@ -50,7 +61,7 @@ const spec = {
 export const adapter = {
     id: 'map', label: '地图',
     paths: [[KEY], [HISTORY]],
-    spec, contract: renderContract(spec),
+    spec, contract: renderContract(spec), dataFields: action => fields[action],
     read(ctx) {
         const source = document(ctx);
         if (!source) return { version: 1, activeMap: null, maps: {} };
@@ -66,7 +77,8 @@ export const adapter = {
     apply(ctx, input, { operationId, now } = {}) {
         const change = canonicalChange(spec, input);
         if (change?.module !== 'map' || !Object.hasOwn(fields, change.action)) throw Error('不支持的地图联动操作。');
-        if (!object(change.data) || Object.keys(change.data).some(key => !fields[change.action].includes(key))) throw Error('地图更新包含未知字段。');
+        const extra = object(change.data) ? Object.keys(change.data).filter(key => !fields[change.action].includes(key)) : [];
+        if (!object(change.data) || extra.length) throw Error(`地图更新包含未知字段${extra.length ? '：' + extra.join('、') : ''}。`);
         if (typeof change.target !== 'string' || !change.target.trim() || ['__proto__', 'constructor', 'prototype'].includes(change.target)) throw Error('地图目标 ID 无效。');
         if (change.action.startsWith('create-') && !/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(change.target)) throw Error('新地点或道路需要安全、唯一的稳定 ID。');
         const before = document(ctx);
@@ -75,8 +87,11 @@ export const adapter = {
         if (typeof mapId !== 'string' || !Object.hasOwn(before.maps, mapId)) throw Error('目标地图不存在。');
         if (change.action.startsWith('update-') && Object.keys(change.data).length < 2) throw Error('地图更新没有提供待修改字段。');
         const edge = before.maps[mapId].edges.find(item => item.id === change.target);
-        if (change.action === 'update-edge' && edge?.metadata.directionLocked && Object.hasOwn(change.data, 'direction') && change.data.direction !== edge.direction) throw Error('道路方向已锁定，模型不能修改。');
-        const next = compileMapUpdate(before, { token: operationId, reason: change.reason, operations: [{ op: compilerOps[change.action], id: change.target, ...clone(change.data) }] });
+        if (change.action === 'update-edge' && edge?.metadata.directionLocked && Object.hasOwn(change.data, 'direction') && direction(change.data.direction) !== edge.direction) throw Error('道路方向已锁定，模型不能修改。');
+        const operation = { op: compilerOps[change.action], id: change.target, ...clone(change.data) }, metadata = before.maps[mapId].metadata;
+        if (Object.hasOwn(operation, 'direction')) operation.direction = direction(operation.direction);
+        if (Object.hasOwn(operation, 'type')) operation.type = typeId(operation.type, change.action.endsWith('node') ? metadata?.nodeTypes : metadata?.roadTypes);
+        const next = compileMapUpdate(before, { token: operationId, reason: change.reason, operations: [operation] });
         const timestamp = typeof now === 'number' ? now : Date.parse(now);
         if (!Number.isFinite(timestamp)) throw Error('联动更新时间无效。');
         return { patches: [{ path: [KEY], value: { ...clone(ctx.chatMetadata[KEY]), updatedAt: Math.max(timestamp, ctx.chatMetadata[KEY].updatedAt + 1), document: next } }, ...positionPatch(ctx, next)], summary: `地图 ${before.maps[mapId].name}：${change.action} ${change.target}` };

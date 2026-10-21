@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGenerationService } from '../apps/generation/service.js';
-import { normalizeCharacterChange } from '../apps/generation/normalize.js';
+import { repairChange } from '../apps/linkage/repair.js';
 import { adapter as characters } from '../apps/linkage/adapters/characters.js';
 const change=(action,target,data)=>({module:'characters',action,target,data,reason:'世界书角色绑定说明'});
 function setup(initial) {
@@ -32,15 +32,15 @@ test('supplement never rewrites populated notes when folding extra fields',async
         t.changes=[change('update-character','kita',{age:16,appearance:{hairstyle:'侧马尾'}})];
         const draft=await t.api.generate({...options,mode:'supplement'});
         assert.deepEqual(draft.changes[0].data,{appearance:{hairstyle:'侧马尾'}});
-        assert.ok(draft.warnings.some(w=>/age 无法保存/.test(w)));
+        assert.ok(draft.warnings.some(w=>/age 不是该应用的字段，已忽略/.test(w)));
     } finally { t.api.dispose(); }
 });
-test('character normalizer flattens nested appearance and strips stat extras',()=>{
-    const appearance=normalizeCharacterChange(change('update-appearance','kita',{appearance:{hairstyle:'侧马尾',eyes:'绿色'}}),{previous:{name:'喜多',appearance:{features:'小虎牙'}}});
+test('character repair flattens nested appearance and strips stat extras',()=>{
+    const appearance=repairChange(change('update-appearance','kita',{appearance:{hairstyle:'侧马尾',eyes:'绿色'}}),{fold:true,previous:()=>({name:'喜多',appearance:{features:'小虎牙'}})});
     assert.deepEqual(appearance.change.data,{hairstyle:'侧马尾',features:'小虎牙\neyes：绿色'});
-    const stats=normalizeCharacterChange(change('create-character','@new:kita',{name:'喜多',kind:'npc',stats:[{id:'@new:hp',label:'体力',binding:'人物.体力',component:'current',value:8,max:10}]}));
+    const stats=repairChange(change('create-character','@new:kita',{name:'喜多',kind:'npc',stats:[{id:'@new:hp',label:'体力',binding:'人物.体力',component:'current',value:8,max:10}]}));
     assert.deepEqual(stats.change.data.stats,[{id:'@new:hp',label:'体力',binding:'人物.体力',component:'current',check:'none'}]);
-    assert.ok(stats.notes.some(note=>/stats\.value、stats\.max 无法保存/.test(note)));
+    assert.ok(stats.notes.some(note=>/stats\.value、stats\.max 不是该应用的字段，已忽略/.test(note)));
 });
 test('character adapter names the unsupported field',()=>{
     const ctx={chat:[],chatMetadata:{},getCurrentChatId:()=>'c'};

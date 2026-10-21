@@ -29,7 +29,7 @@ const spec = {
 
 export const adapter = {
     id: 'scene', label: '场景、时间与日程', paths: [[KEY], ['amin_os_characters_v1'], ['dynamicMapV1']],
-    spec, contract: renderContract(spec),
+    spec, contract: renderContract(spec), dataFields: action => fields[action],
     read(ctx) {
         const state = readCurrentScene(ctx);
         // Referenced IDs belong to scene records; labels/content from other modules follow their own read policy.
@@ -38,7 +38,8 @@ export const adapter = {
     apply(ctx, input, { operationId, now } = {}) {
         const change = canonicalChange(spec, input);
         if (!Object.hasOwn(fields, change.action)) throw Error('场景不支持此联动操作。');
-        if (!object(change.data) || Object.keys(change.data).some(key => !fields[change.action].includes(key))) throw Error('场景联动参数含不支持的字段。');
+        const extra = object(change.data) ? Object.keys(change.data).filter(key => !fields[change.action].includes(key)) : [];
+        if (!object(change.data) || extra.length) throw Error(`场景联动参数含不支持的字段${extra.length ? '：' + extra.join('、') : ''}。`);
         if (targetActions.has(change.action) && !safeId(change.target)) throw Error('场景联动目标 ID 无效。');
         if (typeof change.reason !== 'string' || !change.reason.trim()) throw Error('场景变更需要剧情依据。');
         if (!safeId(operationId)) throw Error('场景联动操作编号无效。');

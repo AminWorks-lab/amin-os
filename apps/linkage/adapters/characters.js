@@ -18,6 +18,12 @@ function checkBindings(ctx, previous, next) {
     for (const stat of changed) if (!available.some(field => field.binding === stat.binding && field.component === stat.component)) throw Error(`人物绑定不存在或类型不匹配：${stat.binding}。请先建立世界状态字段。`);
 }
 
+const DATA_FIELDS = {
+    'create-character': ['name', 'kind', 'notes', 'stats', 'appearance'], 'update-character': ['name', 'kind', 'notes', 'stats', 'appearance'],
+    'update-appearance': ['description', 'hairstyle', 'features'], 'save-stat': ['id', 'label', 'binding', 'component', 'check'],
+    'delete-stat': ['statId'], 'delete-character': [],
+};
+
 const spec = {
     notes: 'target=人物ID。属性数值改 status，穿戴改 inventory。',
     advancedNotes: 'stat={id,label,binding:"项目名.字段名",component:value|current|max,check:none|d20|coc}，binding 须为已有世界状态字段。',
@@ -34,7 +40,7 @@ const spec = {
 export const adapter = {
     id: 'characters', label: '人物卡与外观',
     paths: [[KEY], [...STATUS_PATH]],
-    spec, contract: renderContract(spec),
+    spec, contract: renderContract(spec), dataFields: action => DATA_FIELDS[action],
     read: ctx => readCharacters(ctx),
     apply(ctx, input, { operationId, now }) {
         const change = canonicalChange(spec, input);
@@ -43,23 +49,24 @@ export const adapter = {
         if (change.action !== 'create-character' && !previous) throw Error('人物已不存在于当前剧情分支。');
         let next = previous;
         if (['create-character', 'update-character'].includes(change.action)) {
-            fields(data, ['name', 'kind', 'notes', 'stats', 'appearance']);
+            fields(data, DATA_FIELDS[change.action]);
             if (change.action === 'create-character' && (!validId(change.target) || previous)) throw Error('新增人物编号无效或已存在。');
-            next = validateCharacter({ ...(previous ?? { kind: 'npc', notes: '', stats: [] }), ...data, id: change.target, ...(data.stats === undefined ? {} : { stats: stats(data.stats) }) });
+            next = validateCharacter({ ...(previous ?? { kind: 'npc', notes: '', stats: [] }), ...data, id: change.target, ...(data.stats === undefined ? {} : { stats: stats(data.stats) }),
+                ...(object(data.appearance) ? { appearance: { ...previous?.appearance, ...data.appearance } } : {}) });
             checkBindings(ctx, previous, next);
         } else if (change.action === 'delete-character') {
-            fields(data, []); state.characters = state.characters.filter(person => person.id !== change.target); next = null;
+            fields(data, DATA_FIELDS[change.action]); state.characters = state.characters.filter(person => person.id !== change.target); next = null;
         } else if (change.action === 'update-appearance') {
-            fields(data, ['description', 'hairstyle', 'features']);
+            fields(data, DATA_FIELDS[change.action]);
             next = validateCharacter({ ...previous, appearance: validateAppearance({ ...previous.appearance, ...data }) });
         } else if (change.action === 'save-stat') {
-            fields(data, ['id', 'label', 'binding', 'component', 'check']);
+            fields(data, DATA_FIELDS[change.action]);
             const stat = validateStat(data), index = previous.stats.findIndex(value => value.id === stat.id);
             next = structuredClone(previous);
             if (index < 0) next.stats.push(stat); else next.stats[index] = stat;
             next = validateCharacter(next); checkBindings(ctx, previous, next);
         } else if (change.action === 'delete-stat') {
-            fields(data, ['statId']);
+            fields(data, DATA_FIELDS[change.action]);
             if (!previous.stats.some(stat => stat.id === data.statId)) throw Error('人物属性绑定已不存在。');
             next = validateCharacter({ ...previous, stats: previous.stats.filter(stat => stat.id !== data.statId) });
         } else throw Error('不支持的人物联动操作。');

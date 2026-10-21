@@ -7,8 +7,10 @@ import { renderContract, canonicalChange } from '../contract.js';
 const ROOT = '状态栏', HISTORY = 'world_status_hud_history_v1';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
+const DATA_FIELDS = { 'set-field': ['value', 'component'], 'adjust-field': ['delta', 'component'] };
 const exact = (value, fields) => {
-    if (!object(value) || Object.keys(value).some(key => !fields.includes(key))) throw Error('状态更新包含未知字段或格式无效。');
+    const extra = object(value) ? Object.keys(value).filter(key => !fields.includes(key)) : [];
+    if (!object(value) || extra.length) throw Error(`状态更新包含未知字段或格式无效${extra.length ? '：' + extra.join('、') : ''}。`);
 };
 const numeric = value => {
     if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) throw Error('状态数值必须是安全范围内的有限数字。');
@@ -43,23 +45,25 @@ const spec = {
     notes: 'target="项目名.字段名"。只改已有字段，不增删、改名或改类型；current/max 仅用于进度，保持 0≤当前≤最大、最大>0。',
     actions: [
         { name: 'set-field', aliases: ['set'], args: 'value:同现有类型,component?:value|current|max' },
-        { name: 'adjust-field', aliases: ['adjust'], args: 'delta:num,component?', note: '仅数字或进度' },
+        { name: 'adjust-field', aliases: ['adjust'], args: 'delta:num,component?', note: '仅数字或进度；进度省略 component 即 current' },
     ],
 };
 
 export const adapter = {
     id: 'status', label: '世界状态',
     paths: [['variables', ROOT], [HISTORY]],
-    spec, contract: renderContract(spec),
+    spec, contract: renderContract(spec), dataFields: action => DATA_FIELDS[action],
     read: state,
     apply(ctx, input, { now } = {}) {
         const change = canonicalChange(spec, input);
         if (change?.module !== 'status' || !['set-field', 'adjust-field'].includes(change.action)) throw Error('不支持的世界状态联动操作。');
         if (typeof change.reason !== 'string' || !change.reason.trim() || change.reason.length > 4000) throw Error('世界状态更新需要明确依据。');
-        exact(change.data, change.action === 'set-field' ? ['value', 'component'] : ['delta', 'component']);
+        exact(change.data, DATA_FIELDS[change.action]);
         const current = state(ctx), [project, field] = bindingParts(change.target);
         if (!Object.hasOwn(current.项目, project) || !Object.hasOwn(current.项目[project], field)) throw Error('世界状态目标字段不存在：' + change.target);
-        const before = current.项目[project][field], component = change.data.component ?? 'value';
+        const before = current.项目[project][field];
+        // A bare number for a progress field addresses its current value.
+        const component = change.data.component ?? (valueType(before) === '进度' && typeof (change.action === 'set-field' ? change.data.value : change.data.delta) === 'number' ? 'current' : 'value');
         if (!['value', 'current', 'max'].includes(component)) throw Error('世界状态数值部分无效。');
         let value = clone(before);
         if (component !== 'value') {

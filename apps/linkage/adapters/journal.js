@@ -4,9 +4,18 @@ import { renderContract, canonicalChange } from '../contract.js';
 
 const plain = value => value && typeof value === 'object' && !Array.isArray(value);
 const fields = (data, allowed) => {
-    if (!plain(data) || Object.keys(data).some(key => !allowed.includes(key))) throw Error('剧情档案更新包含未知字段');
+    const extra = plain(data) ? Object.keys(data).filter(key => !allowed.includes(key)) : [];
+    if (!plain(data) || extra.length) throw Error(`剧情档案更新包含未知字段${extra.length ? '：' + extra.join('、') : ''}`);
 };
 const RANGE = ['sourceStart', 'sourceEnd'];
+const DATA_FIELDS = {
+    'save-task': ['title','body','goal','status','progress','deadline','reward','characterIds','locationIds','itemIds','sourceNote', ...RANGE],
+    'save-clue': ['title','body','status','source','confidence','taskId','characterIds','locationIds','itemIds','sourceNote', ...RANGE],
+    'save-fact': ['title','body','truth','sourceNote', ...RANGE],
+    'save-knowledge': ['factId','characterId','state','belief','confidence','learnedFromId','learnedAtText','sourceNote', ...RANGE],
+    'save-hook': ['title','body','status','remindAfter','actors','sourceNote', ...RANGE],
+    'draft-chronicle': ['title','body', ...RANGE], 'delete-entry': [], 'forget-knowledge': [],
+};
 function source(ctx, data) {
     const start = data.sourceStart ?? ctx.chat.length - 1, end = data.sourceEnd ?? start;
     return sourceFromRange(ctx.chat, start, end);
@@ -15,7 +24,7 @@ function withoutRange(data) {
     const { sourceStart, sourceEnd, ...rest } = data; return rest;
 }
 const spec = {
-    notes: 'target=档案ID。新记录须用户确认后才启用，不能当已知事实。新建 save-* 时 title(≤120)/body 必填；characterIds/locationIds(场景ID)/itemIds 为ID数组≤32项。',
+    notes: 'target=档案ID。新记录须用户确认后才启用，不能当已知事实。新建 fact/hook/task/clue 时 title(≤120)/body 必填；characterIds/locationIds(场景ID)/itemIds 为ID数组≤32项。',
     actions: [
         { name: 'save-fact', upserts: 'fact', aliases: ['set_fact'], args: 'title?,body?,truth?:confirmed|uncertain|disputed', note: '传闻用 uncertain' },
         { name: 'save-knowledge', upserts: 'entry', aliases: ['set_knowledge'], args: 'factId?,characterId?,state?:known|rumor|forgotten,belief?,confidence?:0..100,learnedFromId?:人物ID|null,learnedAtText?', note: '新建必填 factId/characterId；同人同事实仅一条' },
@@ -31,7 +40,7 @@ const spec = {
 
 export const adapter = {
     id: 'journal', label: '剧情档案与记忆', paths: [[KEY], [CHARACTERS_KEY]],
-    spec, contract: renderContract(spec),
+    spec, contract: renderContract(spec), dataFields: action => DATA_FIELDS[action],
     read(ctx) {
         const chat = ctx?.chat ?? [], entries = currentEntries(readStore(ctx), chat);
         return {
@@ -65,27 +74,22 @@ export const adapter = {
         if (store.events.some(event => event.id === operationId) || (store.draftEvents ?? []).some(event => event.id === operationId)) return { patches: [{ path: [KEY], value: store }], summary: `已处理剧情档案操作：${change.target}` };
         let next, label;
         if (change.action === 'draft-chronicle') {
-            fields(data, ['title','body', ...RANGE]);
+            fields(data, DATA_FIELDS[change.action]);
             if (!Number.isInteger(data.sourceStart) || !Number.isInteger(data.sourceEnd)) throw Error('编年史草稿必须明确来源范围');
             next = putAutoDraft(store, ctx.chat, { id: change.target, title: data.title, body: data.body, sources: source(ctx, data) }, operationId, at); label = '新增待确认编年史草稿';
         } else if (change.action === 'delete-entry') {
-            fields(data, []);
+            fields(data, DATA_FIELDS[change.action]);
             if (!before || !['fact','knowledge','hook','task','clue'].includes(before.kind)) throw Error('仅可删除当前分支已有的事实、人物记忆、伏笔、任务或线索');
             next = changeWithContext(store, ctx, 'delete', { id: before.id }, operationId, at); label = '删除档案';
         } else if (change.action === 'forget-knowledge') {
-            fields(data, []);
+            fields(data, DATA_FIELDS[change.action]);
             if (before?.kind !== 'knowledge') throw Error('遗忘操作需要已有的人物记忆');
             next = changeWithContext(store, ctx, 'update', { ...before, state: 'forgotten' }, operationId, at); label = '标记遗忘';
         } else {
             const kind = { 'save-fact': 'fact', 'save-knowledge': 'knowledge', 'save-hook': 'hook', 'save-task': 'task', 'save-clue': 'clue' }[change.action];
             if (!kind) throw Error('不支持的剧情档案操作');
             if (before && before.kind !== kind) throw Error('不能变更已有档案的类型');
-            const allowed = kind === 'task' ? ['title','body','goal','status','progress','deadline','reward','characterIds','locationIds','itemIds','sourceNote', ...RANGE]
-                : kind === 'clue' ? ['title','body','status','source','confidence','taskId','characterIds','locationIds','itemIds','sourceNote', ...RANGE]
-                : kind === 'fact' ? ['title','body','truth','sourceNote', ...RANGE]
-                : kind === 'knowledge' ? ['factId','characterId','state','belief','confidence','learnedFromId','learnedAtText','sourceNote', ...RANGE]
-                    : ['title','body','status','remindAfter','actors','sourceNote', ...RANGE];
-            fields(data, allowed);
+            fields(data, DATA_FIELDS[change.action]);
             const record = { ...(before ?? {}), ...withoutRange(data), id: change.target, kind, sources: source(ctx, data), enabled: before?.enabled ?? false };
             if (kind === 'knowledge') {
                 const fact = records.find(item => item.id === record.factId && item.kind === 'fact'), people = new Set(readCharacters(ctx).characters.map(person => person.id));

@@ -12,7 +12,7 @@ import { parseSuggestions } from '../apps/relationships/draft.js';
 // Every legacy name a model or an old chat may still emit, and its current name.
 const LEGACY = {
     characters: { 'save-character': 'update-character', 'set-appearance': 'update-appearance' },
-    inventory: { 'save-item': 'update-item', 'save-balance': 'update-balance' },
+    inventory: { 'save-item': 'update-item', 'save-balance': 'update-balance', 'use-item': 'consume-item', 'give-item': 'transfer-item' },
     relationships: { save: 'save-relationship', delete: 'delete-relationship' },
     scene: { activity: 'log-activity' },
     journal: { set_fact: 'save-fact', set_knowledge: 'save-knowledge', set_hook: 'save-hook', set_task: 'save-task', set_clue: 'save-clue',

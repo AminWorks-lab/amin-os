@@ -5,7 +5,8 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 const clone = value => structuredClone(value);
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
 const exact = (value, fields) => {
-    if (!object(value) || Object.keys(value).some(key => !fields.includes(key))) throw Error('信息面板更新包含未知字段或格式无效。');
+    const extra = object(value) ? Object.keys(value).filter(key => !fields.includes(key)) : [];
+    if (!object(value) || extra.length) throw Error(`信息面板更新包含未知字段或格式无效${extra.length ? '：' + extra.join('、') : ''}。`);
 };
 function text(value, label, max = 12000, allowEmpty = true) {
     if (typeof value !== 'string' || value.length > max || !allowEmpty && !value.trim()) throw Error(label + '不是有效的长度受限文本。');
@@ -49,6 +50,7 @@ function append(source, chat, record, reason, operationId, at) {
     return next;
 }
 
+const DATA_FIELDS = { 'create-panel': ['name', 'kind', 'fields'], 'create-field': ['field'], 'update-field': ['fieldId', 'value', 'status'], 'delete-field': ['fieldId'] };
 const spec = {
     notes: 'target=面板ID。field={id,category,label,value:文本,status?:known|inferred|unknown}；不改已有字段的编号、分类、名称或面板类型。',
     actions: [
@@ -62,7 +64,7 @@ const spec = {
 export const adapter = {
     id: 'information', label: '信息面板',
     paths: [[KEY]],
-    spec, contract: renderContract(spec),
+    spec, contract: renderContract(spec), dataFields: action => DATA_FIELDS[action],
     read(ctx) { const source = store(ctx); return { version: 1, enabled: source.enabled, records: current(source, ctx?.chat) }; },
     readForPrompt(ctx) {
         const source = store(ctx);
@@ -86,7 +88,7 @@ export const adapter = {
         if (source.history.some(event => event.id === operationId)) throw Error('此信息面板操作已经应用，不能重复提交。');
         let record = records.find(item => item.id === change.target);
         if (change.action === 'create-panel') {
-            exact(change.data, ['name', 'kind', 'fields']);
+            exact(change.data, DATA_FIELDS[change.action]);
             if (!safeId(change.target) || record) throw Error('新面板 ID 无效或已存在。');
             if (records.length >= 1000 || !Array.isArray(change.data.fields) || change.data.fields.length > 80) throw Error('信息面板或字段数量超过上限。');
             record = validateRecord({ id: change.target, name: text(change.data.name, '面板名称', 120, false), kind: change.data.kind, mode: 'forward', fields: change.data.fields.map(validateField) });
@@ -94,12 +96,12 @@ export const adapter = {
             if (!record) throw Error('信息面板不存在于当前剧情分支。');
             record = clone(record);
             if (change.action === 'create-field') {
-                exact(change.data, ['field']);
+                exact(change.data, DATA_FIELDS[change.action]);
                 const field = validateField(change.data.field);
                 if (record.fields.length >= 80 || record.fields.some(item => item.id === field.id)) throw Error('字段 ID 已存在或字段数量超过上限。');
                 record.fields.push(field);
             } else {
-                exact(change.data, change.action === 'update-field' ? ['fieldId', 'value', 'status'] : ['fieldId']);
+                exact(change.data, DATA_FIELDS[change.action]);
                 const index = record.fields.findIndex(item => item.id === change.data.fieldId);
                 if (index < 0) throw Error('信息面板字段不存在。');
                 if (change.action === 'delete-field') record.fields.splice(index, 1);

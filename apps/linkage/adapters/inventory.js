@@ -18,8 +18,8 @@ const spec = {
     actions: [
         { name: 'create-item', creates: 'item', args: 'name,ownerId,quantity:int≥0,equipped?:bool,notes?,wear?,condition?' },
         { name: 'update-item', aliases: ['save-item'], args: 'name?,quantity?,equipped?,notes?,wear?,condition?' },
-        { name: 'consume-item', args: 'quantity:int>0' },
-        { name: 'transfer-item', args: 'quantity:int>0,toOwnerId,newId?', note: '普通物品需 newId；衣物保留原ID不给 newId' },
+        { name: 'consume-item', aliases: ['use-item'], args: 'quantity:int>0' },
+        { name: 'transfer-item', aliases: ['give-item'], args: 'quantity:int>0,toOwnerId,newId?', note: '普通物品需 newId；衣物保留原ID不给 newId' },
         { name: 'equip-item', args: 'equipped:bool' },
         { name: 'set-condition', args: 'condition' },
         { name: 'delete-item', note: '仅数量为0', advanced: true },
@@ -33,11 +33,13 @@ const spec = {
 
 export const adapter = {
     id: 'inventory', label: '背包、穿戴与账本', paths: [[KEY], [CHARACTERS_KEY]],
-    spec, contract: renderContract(spec),
+    spec, contract: renderContract(spec), dataFields: action => fields[action],
     read: ctx => readInventory(ctx),
     apply(ctx, input, { operationId, now }) {
         const change = canonicalChange(spec, input), allowed = fields[change.action], data = change.data;
-        if (!allowed || !object(data) || Object.keys(data).some(key => !allowed.includes(key))) throw Error('背包联动操作或参数无效。');
+        if (!allowed) throw Error(`背包不支持此联动操作：${change.action}。`);
+        const extra = object(data) ? Object.keys(data).filter(key => !allowed.includes(key)) : [];
+        if (!object(data) || extra.length) throw Error(`背包联动参数无效${extra.length ? `，不支持的字段：${extra.join('、')}` : ''}。`);
         if (typeof change.reason !== 'string' || !change.reason.trim()) throw Error('背包更新需要剧情原因。');
         const state = readInventory(ctx), creating = change.action.startsWith('create-');
         const isItem = change.action.includes('item') || change.action === 'set-condition';
@@ -51,6 +53,11 @@ export const adapter = {
         const op = change.action.replace(/^(create|update)-/, 'save-');
         const values = { ...(change.action.startsWith('update-') ? existing : {}), ...data, ...(creating ? { newId: change.target } : { id: change.target }), reason: change.reason };
         if (creating) { values.equipped ??= false; values.notes ??= ''; if (!isItem) values.unit ??= ''; }
+        // The contract lets condition/wear carry only the parts that changed.
+        if (object(data.condition)) values.condition = { wetness: 0, dirt: 0, damage: 0, notes: '', ...existing?.condition, ...data.condition };
+        if (object(data.wear) && (existing?.wear || !creating)) values.wear = { ...existing?.wear, ...data.wear };
+        if (object(values.wear)) { values.wear.slot ??= ''; values.wear.layer ??= 'base'; }
+        if (isItem && values.quantity === 0 && data.equipped === undefined) values.equipped = false;
         const result = applyInventory(readStore(ctx), ctx.chat, op, values, {
             ownerIds: readCharacters(ctx).characters.map(person => person.id), id: operationId, at: now,
             createId: () => { throw Error('新增转交记录需要显式 newId。'); },

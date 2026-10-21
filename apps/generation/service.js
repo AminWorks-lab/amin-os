@@ -10,9 +10,8 @@ import { bindings, bindingParts } from '../characters/model.js';
 import { currentDrafts, readStore as readJournalStore } from '../journal/model.js';
 import { isIndependent, toLegacyContext } from '../story-state/access.js';
 import { allocateUpdateEntityIds } from '../linkage/entity-ids.js';
-import { updateSchema } from '../linkage/contract.js';
+import { updateSchema, canonicalAction } from '../linkage/contract.js';
 import { buildReferenceIndex } from '../linkage/references.js';
-import { normalizeCharacterChange } from './normalize.js';
 
 export const GENERATION_MODULES = ['characters', 'inventory', 'relationships', 'scene', 'journal', 'status'];
 const labels = { status:'世界状态', characters:'人物卡', inventory:'背包与账本', relationships:'人物关系', scene:'场景与时间', journal:'剧情档案', linkage:'联合初始化' };
@@ -141,8 +140,7 @@ export function createGenerationService(getContext, { ai = getAI, collectSources
                 const statusInstruction = '按所选已有剧情核对当前世界状态，不续写、不重生成聊天正文。只返回有明确依据的已有字段最终值，reason 说明依据的楼层和事实。使用绝对值，不重复扣减已反映在当前状态中的事件；不确定或没有变化时 changes=[]。已保存的状态规则不能扩大本次操作的类型和权限。';
                 const systemPrompt=statusOnly ? `${statusInstruction}只输出 JSON {"version":1,"changes":[{"module":"status","action":"set-field","target":"实际项目.实际字段","data":{"value":"与现有类型一致"},"reason":"第N楼的明确事实"}]}，最多64项。${statusContract}` : `根据用户选定来源整理资料，不续写剧情。只输出 JSON {"version":1,"changes":[{"module":"characters","action":"create-character","target":"${newTarget}","data":{},"reason":"来源依据"}]}。最多64项。仅处理指定模块。先人物后物品、关系、场景，先事实后记忆，先任务后关联线索；任务奖励仅为说明，不自动发放；使用稳定ID，不重复建立已有实体。create仅新增；supplement仅填空，不覆盖已有内容（0和false也是已有值）；update允许有依据的资料修订。不得删除、消费、转账、结算、调整配置、掷骰或凭空生成属性数值。档案必须提供所选真实sourceStart/sourceEnd；关系sources仅可用所选楼层，非聊天来源填[]并在reason说明。无适用内容输出空changes。${identityRules}下列协议中只允许每个模块列出的操作：\n`+effective.map(id=>`${id}: 允许 ${actions[id].join(',')}\n${adapters.find(a=>a.id===id).contract}`).join('\n');
                 const raw=await provider.generate(`${labels[route]} · 资料生成`,{...ctx,chat:clone(ctx.chat),chatMetadata:clone(ctx.chatMetadata)},{systemPrompt:systemPrompt+(statusOnly ? '' : '\n人物数值属性只可绑定 references.bindings 中已有字段；没有可用字段时 stats=[]，来源数值可记在 notes 供用户以后配置。人物 data 只用协议列出的字段，不要重复 id/target；年龄、身份、性格、背景等其他设定写进 notes。'),prompt,schema:generationSchema(effective)},{signal:activeController.signal,snapshot,data:{request:prompt},includeEffects:false,includeJournal:false,includeScene:false,includeLinkage:false}); assertCurrent();
-                const parsed=parseUpdate(raw);
-                parsed.changes=parsed.changes.map(change=>{const result=normalizeCharacterChange(change,{mode,previous:basis.data.characters.characters.find(person=>person.id===change.target)});warnings.push(...result.notes);return result.change;});
+                const parsed=parseUpdate(raw,{repair:true,fold:true,mode,notes:warnings,previous:change=>{const adapter=adapters.find(item=>item.id===change.module);try{return adapter&&record(basis.data[change.module],{...change,action:canonicalAction(adapter.spec,change.action)});}catch{return undefined;}}});
                 current={modules:effective,mode,sources:clone(sources),provenance:clone(sourceResult.provenance),sourceText:sourceResult.text,warnings,basis,changes:parsed.changes};
                 current.changes=validate(parsed.changes);
                 transaction=createLinkageService(getContext,{manualModules:effective}); transaction.subscribe(notify);

@@ -14,7 +14,9 @@ import { adapter as journal } from '../apps/linkage/adapters/journal.js';
 
 // Measured 0.19.0 baseline with every module writable: 4438 chars, ~2019 estimated
 // tokens (0.18.1 was 7768 chars, ~3902 tokens). Caps allow ~10% growth.
-const MAX_CHARS = 4880, MAX_TOKENS = 2220;
+// 0.19.1 lists the organization field keys (+~480 chars) so models stop
+// inventing keys that void the batch; the cap moved with it.
+const MAX_CHARS = 5000, MAX_TOKENS = 2300;
 
 function fullContext(extra = {}) {
     const modules = Object.fromEntries(Object.keys(MODULES).map(id => [id, { enabled: true, read: true, write: id !== 'dice' }]));

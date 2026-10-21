@@ -47,7 +47,7 @@ const sourceEqual = (a,b) => a.identity === b.identity && a.index === b.index &&
 const changesEqual = (record, changes) => record.changesHash ? record.changesHash === hash(changes) : same(record.changes, changes);
 const failWith = (category, text) => Object.assign(Error(text), { linkageCategory: category });
 function parse(raw, options) {
-    try { return parseUpdate(raw, options); }
+    try { return parseUpdate(raw, { repair: true, ...options }); }
     catch (error) { error.linkageCategory ??= 'format'; throw error; }
 }
 const REJECTION_LIMIT = 10, TURN_LIMIT = 20, HINT_KEY = 'amin-os-regenerate-hint-v1';
@@ -109,7 +109,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         const ctx = options.candidate ? ensureGeneration(options.candidate) : context();
         const settings = readLinkageState(ctx);
         if (!settings.enabled && !manualScope) throw Error('请先启用统一联动更新。');
-        const input = parse(raw), literal = parse(raw, { canonical: false }), independent = isIndependent(ctx);
+        const repairs = [], input = parse(raw, { notes: repairs }), literal = parse(raw, { canonical: false }), independent = isIndependent(ctx);
         const currentData = independent ? rawData(ctx) : null;
         const existingIds = independent ? [...buildReferenceIndex(currentData).entities.map(entity => entity.id),
             ...(currentData.relationships?.thresholdRules ?? []).map(rule => `relationships:${rule.id}`)] : [];
@@ -155,7 +155,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
             return same(before,after) ? [] : [{ path, ...(after.exists ? { value: after.value } : { remove:true }) }];
         });
         operation.stage({ label:batchLabel, patches, summary:descriptions },token);
-        pending = { label:batchLabel, changes, summary:descriptions, warnings:afterRefs.unresolved.length ? ['已有未解析引用保持原样，请在关联目录检查。'] : [], operationId, candidateId:options.candidate?.id,
+        pending = { label:batchLabel, changes, summary:descriptions, warnings:[...repairs, ...(afterRefs.unresolved.length ? ['已有未解析引用保持原样，请在关联目录检查。'] : [])], operationId, candidateId:options.candidate?.id,
             ...(allocated ? { entityIds: clone(allocated.mapping) } : {}) };
         message = '全部变更已校验；确认后作为同一次操作保存。'; notify(); return preview();
     }
