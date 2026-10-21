@@ -261,6 +261,10 @@ export function mount(target, options = {}) {
         if (observedMetadata !== ctx?.chatMetadata) { checkpointDraft = null; observedMetadata = ctx?.chatMetadata; }
         context.textContent = contextLine(ctx, `${store.saves.length} 个命名存档`, `${store.backups.length} 个安全备份`);
         drawTabs(); drawReview(); body.replaceChildren(); drawRetry();
+        if (store.storage?.error && api.reloadExternal) {
+            const card = section('', body, 'amin-result amin-stack'); card.append(make('p', store.storage.error));
+            button(toolbar(card), '重新读取外置存档', () => api.reloadExternal());
+        }
         if (selected === 'saves') drawSaves(store); else if (selected === 'checkpoints') drawCheckpoints(store); else drawTransfer();
         notice.textContent = failed ? message : (message || api.status()); notice.dataset.state = failed ? 'error' : api.busy() || ownAction ? 'busy' : '';
     }

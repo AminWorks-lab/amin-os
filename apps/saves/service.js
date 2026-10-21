@@ -27,7 +27,7 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
     const operations = createOperationService(getContext), listeners = new Set(), hostListeners = [];
     const storage = backups ?? createIndependentBackups(getContext, { now });
     let branchPending = null, branching = false, branchMessage = '', checkpointMessage = '', timer = null, disposed = false, generating = false;
-    let plan = null, external = null, loading = null, externalError = '';
+    let plan = null, external = null, loading = null, externalError = '', attempted = null;
     const generationActive = () => { const stream = getContext()?.streamingProcessor; return generating || (!!stream && stream.isFinished === false); };
     const notify = () => { for (const fn of listeners) { try { fn(); } catch {} } };
     const capture = () => operations.capture([[KEY], ...RESTORE_DEPENDENCIES]);
@@ -48,8 +48,13 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
         if (current?.chatMetadata === ctx.chatMetadata && chatIdentity(current) === chatIdentity(ctx)) remember(ctx, ring, named);
         return external;
     }
+    // One automatic read per loaded chat. The read's own refresh calls read()
+    // again, so a failed or discarded read must not start another by itself;
+    // reloadExternal() retries on request.
     function ensureLoaded(ctx) {
         if (!ctx?.chatMetadata || !available() || loadedFor(ctx) || loading?.metadata === ctx.chatMetadata) return;
+        if (attempted?.metadata === ctx.chatMetadata && attempted.identity === chatIdentity(ctx)) return;
+        attempted = { metadata: ctx.chatMetadata, identity: chatIdentity(ctx) };
         const request = { metadata: ctx.chatMetadata };
         request.promise = load(ctx).catch(error => { if (getContext()?.chatMetadata === request.metadata) externalError = '外置存档读取失败：' + error.message; })
             .finally(() => { if (loading === request) loading = null; if (!disposed) notify(); });
@@ -358,6 +363,7 @@ export function createSavesService(getContext = () => globalThis.SillyTavern?.ge
         inspectImport: parseImport, exportSave: id => JSON.stringify(validateSnapshot(find(id)), null, 2), preview, confirm,
         async retrySave() { const result = await operations.retrySave(); branchMessage = ''; checkpointMessage = ''; return result; },
         discard() { branchPending = null; branchMessage = ''; plan = null; operations.discard(); }, status: () => branchMessage || operations.status(), busy: () => branching || operations.busy(), dirty: operations.dirty,
+        reloadExternal() { if (loading) return; attempted = null; external = null; externalError = ''; notify(); },
         subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
         dispose() { disposed = true; clearTimeout(timer); for (const release of hostListeners) release(); off(); offState(); operations.dispose(); listeners.clear(); },
     };
