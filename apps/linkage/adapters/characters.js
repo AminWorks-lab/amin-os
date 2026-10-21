@@ -3,7 +3,9 @@ import { renderContract, canonicalChange } from '../contract.js';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fields(data, allowed) {
-    if (!object(data) || Object.keys(data).some(key => !allowed.includes(key))) throw Error('人物联动参数包含不支持的字段。');
+    if (!object(data)) throw Error('人物联动参数包含不支持的字段。');
+    const extra = Object.keys(data).filter(key => !allowed.includes(key));
+    if (extra.length) throw Error(`人物联动参数包含不支持的字段：${extra.join('、')}。`);
 }
 function stats(input) {
     if (!Array.isArray(input)) throw Error('人物绑定必须是数组。');
