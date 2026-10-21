@@ -4,7 +4,7 @@
 
 Amin os 是用于 **SillyTavern / TauriTavern** 的前端扩展。点击悬浮入口打开侧栏，在可自定义的磁贴首页进入各个应用。适合希望一边聊天、一边查看世界资料、整理状态和控制持续效果的用户。
 
-当前版本：**0.19.3** · 无需编译 · 支持桌面与窄屏布局
+当前版本：**0.19.4** · 无需编译 · 支持桌面与窄屏布局
 
 [安装与更新](#安装与更新) · [第一次使用](#第一次使用) · [功能一览](#功能一览) · [独立剧情资料与迁移](docs/INDEPENDENT-STORY-STATE.md) · [AI 生成资料](docs/GENERATION-0.15.md) · [TauriTavern 适配与性能测量](docs/TAURITAVERN-AUDIT-0.16.md) · [跑团工作流](docs/RP-0.13.md) · [信息面板怎么用](#信息面板怎么用) · [常见问题](#常见问题) · [规划与验收](docs/NEXT-STEPS.md) · [更新记录](CHANGELOG.md)
 

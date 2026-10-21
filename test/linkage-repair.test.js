@@ -73,3 +73,15 @@ test('adapters name the rejected field',()=>{
     assert.throws(()=>inventory.apply(ctx,change('inventory','add-item','x',{}),opts),/不支持此联动操作：add-item/);
     assert.throws(()=>status.apply(ctx,change('status','set-field','玩家.金币',{value:1,note:'x'}),opts),/未知字段或格式无效：note/);
 });
+
+test('lenient parsing merges split blocks, ignores stray tags and accepts a complete unclosed block',()=>{
+    const a=change('status','set-field','玩家.金币',{value:1}), b=change('status','set-field','玩家.金币',{value:2});
+    const block=changes=>'<amin_update>'+JSON.stringify(batch(...changes))+'</amin_update>';
+    let notes=[];
+    assert.deepEqual(parseUpdate('正文'+block([a])+'中间'+block([b]),{repair:true,notes}).changes,[a,b]); assert.match(notes[0],/2 个更新块/);
+    notes=[];
+    assert.deepEqual(parseUpdate('我会写 <amin_update> 块。\n'+block([a]),{repair:true,notes}).changes,[a]); assert.ok(notes.some(n=>/多余/.test(n)));
+    assert.deepEqual(parseUpdate('正文<amin_update>'+JSON.stringify(batch(a)),{repair:true}).changes,[a]);
+    assert.throws(()=>parseUpdate('正文<amin_update>{"version":1,"changes":[{"module"',{repair:true}),/缺少结束标签.*截断/);
+    assert.throws(()=>parseUpdate(block([a])+block([b])),/只有一个完整/,'strict parsing is unchanged');
+});
