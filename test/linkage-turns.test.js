@@ -95,7 +95,7 @@ test('rejected batches are kept (newest first, at most 10) with floor, item and 
         [record] = f.api.rejections();
         assert.equal(record.category, 'permission', record.reason); assert.equal(record.index, 3);
         assert.deepEqual({ index: record.item.index, module: record.item.module, action: record.item.action }, { index: 1, module: 'inventory', action: 'create-item' });
-        assert.equal(f.ctx.chatMetadata[STATE_KEY].modules.characters.characters.length, 0, 'a rejected batch changes nothing');
+        assert.equal(f.ctx.chatMetadata[STATE_KEY].modules.characters.characters.length, 1, 'the valid change of the turn still applies');
         await f.reply([change('status', 'set', '玩家.生命', { value: '很多' })]);
         assert.equal(f.api.rejections()[0].category, 'validation'); assert.equal(f.api.rejections()[0].item.module, 'status');
         for (let i = 0; i < 12; i++) assert.throws(() => f.api.stage('{"version":2}'));
@@ -193,4 +193,15 @@ test('the floor row offers undo for the newest turn and the saves page otherwise
     press(row, '已有更新，前往存档恢复'); assert.deepEqual(calls.at(-1), 'saves');
     renderTurnRow(row, { ...turn, undoable: false, undone: true }, { document: doc, state: {}, ...handlers });
     assert.match(row.textContent, /已撤回本轮更新/);
+});
+
+test('an automatic turn still updates world status when another change of the turn is invalid', async () => {
+    const f = fixture();
+    try {
+        await f.reply([change('status', 'set-field', '玩家.生命', { value: 60 }), change('inventory', 'create-item', '@new:potion', { name: '药剂', ownerId: 'nobody', quantity: 1 })]);
+        assert.equal(f.ctx.chatMetadata[STATE_KEY].modules.status.项目.玩家.生命, 60);
+        const [record] = f.api.rejections();
+        assert.equal(record.item.module, 'inventory'); assert.match(record.reason, /持有|人物/);
+        assert.equal(f.ctx.chatMetadata[STATE_KEY].modules.inventory.items?.length ?? 0, 0);
+    } finally { f.dispose(); }
 });

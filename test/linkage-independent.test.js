@@ -68,15 +68,17 @@ test('independent automatic typed updates allocate NPC IDs and commit all module
     } finally {f.dispose();}
 });
 
-test('independent batch rejects AI persisted IDs, invalid final change and disabled permissions atomically', () => {
+test('independent batch rejects AI persisted IDs and skips an invalid or unwritable change without mutation', () => {
     const f=fixture();
     try {
         const before=clone(f.ctx.chatMetadata);
         assert.throws(()=>f.api.stage(batch({...person,target:'ai_picked_id'})),/临时|别名|插件/);
-        assert.throws(()=>f.api.stage(batch(person,{...potion,data:{...potion.data,ownerId:'missing'}})),/人物|持有/);
+        let preview=f.api.stage(batch(person,{...potion,data:{...potion.data,ownerId:'missing'}}));
+        assert.equal(preview.changes.length,1);assert.match(preview.skipped[0].reason,/人物|持有/);f.api.discard();
         f.ctx.chatMetadata[KEY].modules.inventory.write=false;
         const noPermission=clone(f.ctx.chatMetadata);
-        assert.throws(()=>f.api.stage(batch(person,potion)),/更新范围/);
+        preview=f.api.stage(batch(person,potion));assert.match(preview.skipped[0].reason,/更新范围/);f.api.discard();
+        assert.throws(()=>f.api.stage(batch({...potion,data:{...potion.data,ownerId:'missing'}})),/更新范围/);
         assert.deepEqual(f.ctx.chatMetadata,noPermission);assert.equal(f.saves,0);
         f.ctx.chatMetadata[KEY].modules.inventory.write=true;assert.deepEqual(f.ctx.chatMetadata,before);f.assertProtected();
     } finally {f.dispose();}

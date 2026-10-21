@@ -42,10 +42,14 @@ test('dependent character and inventory creations preview together, commit once 
     await t.api.confirm();assert.equal(t.saves,1);assert.equal(inventory.read(t.ctx).items[0].ownerId,'alice');assert.equal(t.ctx.chatMetadata.variables.unrelated,'preserved');
     assert.equal(t.ctx.chatMetadata[KEY].applied.length,1);assert.throws(()=>t.api.stage(batch(person,potion)),/已经应用/);t.api.dispose();
 });
-test('one invalid dependent change rejects the entire batch before live mutation',()=>{
+test('an invalid change is skipped and listed while the valid ones stage, with no live mutation',()=>{
     const t=setup(),before=structuredClone(t.ctx.chatMetadata);
-    assert.throws(()=>t.api.stage(batch(person,{...potion,data:{...potion.data,ownerId:'missing'}})),/人物|持有/);
-    assert.deepEqual(t.ctx.chatMetadata,before);assert.equal(t.saves,0);assert.equal(t.api.preview(),null);t.api.dispose();
+    const preview=t.api.stage(batch(person,{...potion,data:{...potion.data,ownerId:'missing'}}));
+    assert.deepEqual(preview.changes.map(item=>item.module),['characters']);
+    assert.match(preview.warnings[0],/已跳过第 2 项（背包与账本 create-item potion）：.*(人物|持有)/);assert.equal(preview.skipped[0].module,'inventory');
+    assert.deepEqual(t.ctx.chatMetadata,before);assert.equal(t.saves,0);t.api.discard();
+    assert.throws(()=>t.api.stage(batch({...potion,data:{...potion.data,ownerId:'missing'}})),/人物|持有/);
+    assert.deepEqual(t.ctx.chatMetadata,before);assert.equal(t.api.preview(),null);t.api.dispose();
 });
 test('changed permissions or data invalidate staged multi-app operations',async()=>{
     const t=setup();t.api.stage(batch(person,potion));t.ctx.chatMetadata[KEY].modules.inventory.write=false;

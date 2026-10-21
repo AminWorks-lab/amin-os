@@ -469,7 +469,8 @@ function mount() {
   const ctx = context(); const events = ctx.eventTypes || ctx.event_types || {};
   subscribeStateChanges((change,metadata) => {
     if(change.phase!=='applied'||metadata!==context()?.chatMetadata||change.identity!==chatIdentity(context())||!change.paths.some(path=>path[0]===STATE_KEY||path[0]==='variables'&&path[1]==='状态栏'))return;
-    running?.abort();if(hudPanel&&selectedPage==='generate')invalidateStatusFrame?.();else closeHud();
+    // Reload the open panel with the saved state instead of closing it under the user.
+    running?.abort();if(hudPanel)invalidateStatusFrame?.();
     history.adoptExternal();floorButtons.refresh();
   });
   for (const name of ['CHAT_CHANGED', 'MESSAGE_SENT', 'MESSAGE_RECEIVED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'MESSAGE_UPDATED', 'GENERATION_ENDED', 'CHARACTER_MESSAGE_RENDERED']) { if (events[name]) ctx.eventSource?.on(events[name], syncHistory); }

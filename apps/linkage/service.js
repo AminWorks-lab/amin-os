@@ -102,7 +102,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
     function stage(raw, options = {}) {
         const ctx = context();
         if (!readLinkageState(ctx).enabled && !manualScope) throw Error('请先启用统一联动更新。');
-        try { return stageUpdate(raw, options); }
+        try { const result = stageUpdate(raw, options); if (!manualScope && pending?.skipped?.length) { for (const item of pending.skipped) reject(raw, options.candidate?.source ?? sourceFor(ctx), Object.assign(Error(item.reason), { linkageItem: item }), !options.candidate); notify(); } return result; }
         catch (error) { if (!manualScope) { reject(raw, options.candidate?.source ?? sourceFor(ctx), error, !options.candidate); notify(); } throw error; }
     }
     function stageUpdate(raw, options = {}) {
@@ -120,7 +120,11 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         if (settings.applied.some(record => !record.archived && sourceEqual(record.source, source) && (options.candidate || changesEqual(record, input.changes) || changesEqual(record, literal.changes)))) throw Error('这次来源的更新已经应用，不会重复执行。');
         const token = operation.capture(independent ? [...paths, [STATE_KEY]] : paths);
         const operationId = createId(), at = now(), sandbox = independent ? toLegacyContext(ctx) : { ...ctx, chatMetadata: clone(ctx.chatMetadata) };
-        const touched = [], descriptions = [], changes = [], beforeData = rawData(sandbox);
+        const touched = [], descriptions = [], changes = [], skipped = [], beforeData = rawData(sandbox);
+        // A story turn keeps its valid changes when one item is invalid: the bad
+        // item (and anything that depended on it, which then fails too) is
+        // skipped and listed. Reviewed AI drafts (manual scope) stay all-or-nothing.
+        const partial = !manualScope;
         for (const [index, change] of parsed.changes.entries()) try {
             if (manualScope && change.module === 'status' && change.action !== 'set-field') throw failWith('permission', '手动状态更新仅允许设置已有字段的最终值。');
             if (!canWrite(ctx,change.module)) throw failWith('permission', `${MODULES[change.module][0]} 未在本次操作的更新范围内。`);
@@ -135,8 +139,10 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
             changes.push({ ...change, label: adapter.label, before, after: clone(adapter.read(sandbox)) });
         } catch (error) {
             error.linkageItem ??= { index, module: change.module, label: MODULES[change.module]?.[0] ?? change.module, action: change.action, target: change.target ?? null };
-            throw error;
+            if (!partial) throw error;
+            skipped.push(error);
         }
+        if (!changes.length) throw skipped[0];
         const afterData = rawData(sandbox); // Validate every module before the first live mutation.
         const beforeRefs = buildReferenceIndex(beforeData,settings.links), afterRefs = buildReferenceIndex(afterData,settings.links);
         const referenceKey = item => JSON.stringify([item.from,item.to]);
@@ -155,7 +161,8 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
             return same(before,after) ? [] : [{ path, ...(after.exists ? { value: after.value } : { remove:true }) }];
         });
         operation.stage({ label:batchLabel, patches, summary:descriptions },token);
-        pending = { label:batchLabel, changes, summary:descriptions, warnings:[...repairs, ...(afterRefs.unresolved.length ? ['已有未解析引用保持原样，请在关联目录检查。'] : [])], operationId, candidateId:options.candidate?.id,
+        pending = { label:batchLabel, changes, summary:descriptions, warnings:[...skipped.map(error => `已跳过第 ${error.linkageItem.index + 1} 项（${error.linkageItem.label} ${error.linkageItem.action}${error.linkageItem.target ? ' ' + error.linkageItem.target : ''}）：${error.message}`), ...repairs, ...(afterRefs.unresolved.length ? ['已有未解析引用保持原样，请在关联目录检查。'] : [])],
+            skipped: skipped.map(error => ({ ...clone(error.linkageItem), reason: String(error.message) })), operationId, candidateId:options.candidate?.id,
             ...(allocated ? { entityIds: clone(allocated.mapping) } : {}) };
         message = '全部变更已校验；确认后作为同一次操作保存。'; notify(); return preview();
     }
