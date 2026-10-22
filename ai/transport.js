@@ -62,16 +62,40 @@ async function generateTextInternal(ctx,config,request,{fetchImpl=globalThis.fet
   if(!text.trim())throw new Error('API 未返回文本，请确认使用兼容 Chat Completions 的模型');return text;
  }catch(error){
   if(controller.signal.aborted)throw new Error(signal?.aborted?'已取消生成，未应用结果':'独立 API 请求超时，请稍后重试或增加超时时间');
-  if(error instanceof TypeError)throw new Error('无法连接独立 API，请检查网络、地址以及服务是否允许浏览器跨域请求');throw error;
+  if(error instanceof TypeError)throw Object.assign(new Error('无法连接独立 API，请检查网络、地址以及服务是否允许浏览器跨域请求'),{code:'AI_NETWORK'});throw error;
  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
 }
 
+// Mobile WebViews (TauriTavern on Android/iOS) suspend network requests while the
+// app is in the background, so a request in flight fails as a network error.
+// That is not a bad address or CORS: once the page is visible again the same
+// request is sent once more. Nothing has been applied when it fails.
+let backgroundCount=0;
+const pageDocument=()=>globalThis.document;
+try{pageDocument()?.addEventListener?.('visibilitychange',()=>{if(pageDocument().visibilityState==='hidden')backgroundCount++;});}catch{}
+export const pageVisibility={
+ count:()=>backgroundCount+(pageDocument()?.visibilityState==='hidden'?1:0),
+ whenVisible(signal){const doc=pageDocument();if(!doc||doc.visibilityState!=='hidden')return Promise.resolve();
+  return new Promise((resolve,reject)=>{const done=()=>{if(doc.visibilityState==='hidden')return;cleanup();resolve();},stop=()=>{cleanup();reject(signal.reason);},cleanup=()=>{doc.removeEventListener('visibilitychange',done);signal?.removeEventListener('abort',stop);};
+   doc.addEventListener('visibilitychange',done);signal?.addEventListener('abort',stop,{once:true});});},
+};
+const BACKGROUND_MESSAGE='TT 酒馆切到后台时，系统暂停了网络连接，本次生成中断，未应用任何结果。回到前台后已自动重试一次，仍未成功；请让应用保持在前台直到生成完成，再重新生成。';
+async function withBackgroundRetry(run,signal,visibility){
+ const seen=visibility.count();
+ try{return await run();}
+ catch(error){
+  if(error?.code!=='AI_NETWORK'||signal.aborted||visibility.count()===seen)throw error;
+  await visibility.whenVisible(signal);
+  try{return await run();}
+  catch(retry){if(retry?.code==='AI_NETWORK')throw Object.assign(new Error(BACKGROUND_MESSAGE),{code:'AI_BACKGROUND'});throw retry;}
+ }
+}
 export async function generateText(ctx,config,request,options={}){
  const c=validateApiSettings(config),controller=new AbortController();
  const abort=()=>controller.abort(options.signal.reason);
  if(options.signal?.aborted)abort();options.signal?.addEventListener('abort',abort,{once:true});
  const timer=setTimeout(()=>controller.abort(new Error('模型等待超时，已停止等待；未应用生成结果')),c.timeoutSeconds*1000);
- try{const run=()=>{if(controller.signal.aborted)throw controller.signal.reason;return generateTextInternal(ctx,c,request,{...options,signal:controller.signal});};let task;if(options.targetKey&&c.queueMode==='serial'){const previous=targetQueues.get(options.targetKey)??Promise.resolve();task=previous.catch(()=>{}).then(run);const tracked=task.then(()=>{},()=>{}).finally(()=>{if(targetQueues.get(options.targetKey)===tracked)targetQueues.delete(options.targetKey);});targetQueues.set(options.targetKey,tracked);}else task=Promise.resolve().then(run);task.catch(()=>{});return await waitForSignal(()=>task,controller.signal);}
+ try{const run=()=>{if(controller.signal.aborted)throw controller.signal.reason;return withBackgroundRetry(()=>generateTextInternal(ctx,c,request,{...options,signal:controller.signal}),controller.signal,options.visibility??pageVisibility);};let task;if(options.targetKey&&c.queueMode==='serial'){const previous=targetQueues.get(options.targetKey)??Promise.resolve();task=previous.catch(()=>{}).then(run);const tracked=task.then(()=>{},()=>{}).finally(()=>{if(targetQueues.get(options.targetKey)===tracked)targetQueues.delete(options.targetKey);});targetQueues.set(options.targetKey,tracked);}else task=Promise.resolve().then(run);task.catch(()=>{});return await waitForSignal(()=>task,controller.signal);}
  finally{clearTimeout(timer);options.signal?.removeEventListener('abort',abort);}
 }
 
