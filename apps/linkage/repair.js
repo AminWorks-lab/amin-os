@@ -17,6 +17,7 @@ const CHANGE_KEYS = ['module', 'action', 'target', 'data', 'reason'];
 const MODULE_ALIASES = { character: 'characters', person: 'characters', people: 'characters', item: 'inventory', items: 'inventory', backpack: 'inventory', relationship: 'relationships', relation: 'relationships', effect: 'effects', fact: 'journal', facts: 'journal', world_status: 'status', worldStatus: 'status' };
 // The record's own id repeated inside data.
 const ECHO_KEYS = ['id', 'target', 'characterId', 'itemId', 'balanceId', 'sceneId', 'scheduleId', 'effectId', 'entryId', 'relationshipId', 'panelId', 'nodeId', 'edgeId', 'entityId'];
+const REASON_LIMIT = 2000;
 const REASON_KEYS = ['evidence', 'because', 'note', 'summary', 'description'];
 
 // Synonyms rename only when the canonical key is accepted and absent.
@@ -132,6 +133,11 @@ export function repairChange(input, { fold = false, mode, previous } = {}) {
         const key = REASON_KEYS.find(name => typeof change[name] === 'string' && change[name].trim());
         if (key) change.reason = change[key];
     }
+    if (Array.isArray(change.reason) && change.reason.every(item => typeof item === 'string')) change.reason = change.reason.join('；');
+    if (typeof change.reason === 'string' && change.reason.length > REASON_LIMIT) { change.reason = change.reason.slice(0, REASON_LIMIT - 1) + '…'; notes.push(`${label()} 的依据超过 ${REASON_LIMIT} 字，已截短。`); }
+    // A reviewed draft cites its chosen sources; the user checks every item before
+    // saving. World Status updates must name their floors, so they keep the check.
+    if (fold && change.module !== 'status' && (typeof change.reason !== 'string' || !change.reason.trim())) { change.reason = '依据所选来源资料（模型未写明）'; notes.push(`${label()} 没有写依据，已标为“依据所选来源资料”，请核对。`); }
     const extraKeys = Object.keys(change).filter(key => !CHANGE_KEYS.includes(key));
     for (const key of extraKeys) delete change[key];
     if (extraKeys.length) notes.push(`${label()} 忽略了外层多余字段 ${extraKeys.join('、')}。`);
@@ -161,6 +167,11 @@ export function repairChange(input, { fold = false, mode, previous } = {}) {
 /** Repair every change of a raw (already JSON-parsed) update object. */
 export function repairUpdate(raw, options = {}) {
     if (!object(raw) || !Array.isArray(raw.changes)) return { update: raw, notes: [] };
-    const notes = [], changes = raw.changes.map(change => { const result = repairChange(change, options); notes.push(...result.notes); return result.change; });
+    const notes = [], repaired = raw.changes.map(change => { const result = repairChange(change, options); notes.push(...result.notes); return result.change; });
+    // A story change without its reason cannot be applied; drop it instead of the
+    // whole turn. With nothing else left the strict check reports the error.
+    const unreasoned = change => object(change) && (typeof change.reason !== 'string' || !change.reason.trim());
+    const changes = !options.fold && repaired.some(change => !unreasoned(change)) ? repaired.filter(change => !unreasoned(change)) : repaired;
+    repaired.forEach((change, index) => { if (!changes.includes(change)) notes.push(`第 ${index + 1} 项（${change.module ?? '更新'} ${change.action ?? ''}${change.target ? ' ' + change.target : ''}）没有写剧情依据，已跳过。`); });
     return { update: { ...raw, changes }, notes };
 }

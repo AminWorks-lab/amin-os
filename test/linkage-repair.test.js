@@ -85,3 +85,18 @@ test('lenient parsing merges split blocks, ignores stray tags and accepts a comp
     assert.throws(()=>parseUpdate('正文<amin_update>{"version":1,"changes":[{"module"',{repair:true}),/缺少结束标签.*截断/);
     assert.throws(()=>parseUpdate(block([a])+block([b])),/只有一个完整/,'strict parsing is unchanged');
 });
+
+test('missing or overlong reasons no longer void the whole update',()=>{
+    const a=change('status','set-field','玩家.金币',{value:1}), b={module:'status',action:'set-field',target:'玩家.金币',data:{value:2}};
+    let notes=[];
+    assert.deepEqual(parseUpdate(batch(a,b),{repair:true,notes}).changes,[a]); assert.match(notes[0],/第 2 项.*没有写剧情依据，已跳过/);
+    assert.throws(()=>parseUpdate(batch(b),{repair:true}),/剧情依据/);
+    notes=[];
+    const long=parseUpdate(batch({...a,reason:'很'.repeat(2500)}),{repair:true,notes}).changes[0];
+    assert.equal(long.reason.length,2000); assert.match(notes[0],/已截短/);
+    assert.equal(parseUpdate(batch({...a,reason:['第3楼','付款']}),{repair:true}).changes[0].reason,'第3楼；付款');
+    notes=[];
+    const person={module:'characters',action:'create-character',target:'alice',data:{name:'艾琳',kind:'npc'}};
+    assert.match(parseUpdate(batch(person),{repair:true,fold:true,notes}).changes[0].reason,/依据所选来源资料/); assert.match(notes[0],/请核对/);
+    assert.throws(()=>parseUpdate(batch(b),{repair:true,fold:true}),/剧情依据/,'world status drafts still need floors as reasons');
+});
