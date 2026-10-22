@@ -21,7 +21,7 @@ export function validateJSON(value, depth = 0) {
     if (!plain(value)) throw Error('联动资料必须是有效 JSON。');
     for (const [key, item] of Object.entries(value)) { if (blocked.has(key)) throw Error('联动资料包含受保护的字段名。'); validateJSON(item, depth + 1); }
 }
-export const emptyLinkageState = () => ({ version: 1, enabled: false, mode: 'review', modules: {}, extraRules: '', links: [], applied: [] });
+export const emptyLinkageState = () => ({ version: 1, enabled: false, mode: 'auto', modules: {}, extraRules: '', links: [], applied: [] });
 export function validateLinkageState(raw) {
     validateJSON(raw);
     if (!plain(raw) || raw.version !== 1 || Object.keys(raw).some(k => !['version','enabled','mode','modules','extraRules','links','applied','dataSource','contextBudget','advancedActions'].includes(k))) throw Error('联动资料版本或字段不兼容。');

@@ -15,7 +15,7 @@ const change = (module,action,target,data) => ({module,action,target,data,reason
 const batch = (...changes) => ({version:1,changes});
 function setup(adapters = [characters,inventory,status]) {
     let saves=0, fail=false, id=0;
-    const ctx={chat:[{name:'玩家',is_user:true,mes:'起点'}],chatMetadata:{variables:{状态栏:JSON.stringify({版本:1,项目:{玩家:{生命:10}}}), unrelated:'preserved'},[KEY]:{...emptyLinkageState(),enabled:true,modules:structuredClone(modules)}},getCurrentChatId:()=> 'chat',characterId:1,saveMetadata:async()=>{saves++;if(fail)throw Error('offline');}};
+    const ctx={chat:[{name:'玩家',is_user:true,mes:'起点'}],chatMetadata:{variables:{状态栏:JSON.stringify({版本:1,项目:{玩家:{生命:10}}}), unrelated:'preserved'},[KEY]:{...emptyLinkageState(),enabled:true,mode:'review',modules:structuredClone(modules)}},getCurrentChatId:()=> 'chat',characterId:1,saveMetadata:async()=>{saves++;if(fail)throw Error('offline');}};
     let active=ctx;
     const api=createLinkageService(()=>active,{adapters,createId:()=>`test_${++id}`,now:()=> '2026-09-23T00:00:00.000Z'});
     return {ctx,api,get saves(){return saves;},set fail(value){fail=value;},set active(value){active=value;}};

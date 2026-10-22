@@ -19,7 +19,7 @@ function fixture({independent=true,statusWrite=true,master=true}={}) {
     chatMetadata:{variables:{状态栏:JSON.stringify(state(999)),foreign:'unchanged'},world_info:'unchanged-book'},
     async saveMetadata(){saves++;}};
   if(independent)ctx.chatMetadata[STATE_KEY]={...emptyState(),modules:{...emptyState().modules,status:state(10)}};
-  ctx.chatMetadata[LINKAGE_KEY]={...emptyLinkageState(),enabled:master,
+  ctx.chatMetadata[LINKAGE_KEY]={...emptyLinkageState(),mode:'review',enabled:master,
     modules:Object.fromEntries(Object.keys(MODULES).map(module=>[module,{enabled:module==='status',read:module==='status',write:module==='status'&&statusWrite}]))};
   const runtime=independent?createStoryStateRuntime(()=>ctx,{backups:{available:()=>false,status:()=>({available:false}),savePrevious:async()=>{}}}):null;
   return {ctx,get saves(){return saves;},dispose(){runtime?.destroy();}};
