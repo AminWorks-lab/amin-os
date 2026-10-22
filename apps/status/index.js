@@ -403,7 +403,10 @@ function mount() {
   sourceHost=node('div');generationForm.append(sourceHost);refreshSourceControls();
   field('includePersona', '读取用户设定描述（Persona）', 'checkbox');
   generationForm.append(node('p','默认不读取用户设定。勾选后每次读取当前用户名称与Persona描述，独立于角色资料和世界书；没有描述时提示补充。','wsh-note'));
-  field('allowTypeChange', '允许 AI 更新改变已有字段类型（默认关闭）', 'checkbox');
+  // Takes effect at once: 按剧情更新 and per-turn updates read it without 保存配置.
+  field('allowTypeChange', '允许 AI 更新改变已有字段类型（默认关闭）', 'checkbox').addEventListener('change', event => {
+    const ctx = context(); ctx.extensionSettings[KEY] = { ...ctx.extensionSettings[KEY], allowTypeChange: event.target.checked }; ctx.saveSettingsDebounced?.();
+  });
   generationForm.append(node('p','按现有剧情更新请使用上方独立草稿面板：选择楼层、检查建议并确认保存。默认保留已有类型；勾选上一项后，按剧情更新和每轮联动在有依据时也可把字段改成新类型。添加字段请使用状态栏编辑器。'));
   field('instructions', '状态栏要求', 'textarea').placeholder = '例如：仅显示玩家、世界、队伍；不要数值化感情。';
   Object.entries(settings).forEach(([k,v]) => { if (fields[k]) fields[k].type === 'checkbox' ? fields[k].checked = v : fields[k].value = v; });

@@ -82,7 +82,8 @@ export const adapter = {
             if (typeof value === 'number') numeric(value);
         }
         const typeChange = component === 'value' && change.action === 'set-field' && allowsTypeChange(ctx);
-        if (valueType(value) === '不支持' || (valueType(value) !== valueType(before) && !typeChange)) throw Error(`不允许改变状态字段类型或写入越界进度：${change.target}。如需改类型，请在世界状态的生成设置里勾选“允许 AI 更新改变已有字段类型”。`);
+        if (valueType(value) === '不支持') throw Error(`世界状态 ${change.target} 收到的值无法保存（类型不支持或进度越界）：${JSON.stringify(value).slice(0, 80)}。进度需保持 0≤当前≤最大且最大>0，其他值只能是数字、文本、布尔或文本列表。`);
+        if (valueType(value) !== valueType(before) && !typeChange) throw Error(`不允许改变状态字段类型：${change.target} 原为${valueType(before)}，收到${valueType(value)}。如需改类型，请在世界状态的生成设置里勾选“允许 AI 更新改变已有字段类型”。`);
         const result = mergeUpdates(current, current, { 项目: { [project]: { [field]: value } } }, { allowTypeChange: typeChange });
         const patches = [{ path: storyRootPath(ctx, ROOT), value: JSON.stringify(result.state) }, ...historyPatch(ctx, result.state, now)];
         return { patches, summary: `世界状态 ${change.target}${component === 'value' ? '' : component === 'current' ? ' · 当前' : ' · 最大'}：${JSON.stringify(before)} → ${JSON.stringify(value)}` };
