@@ -84,3 +84,12 @@ test('organization links may omit role and note', async () => {
     const saved = JSON.parse(result.patches.find(patch => patch.path.at(-1) === '势力资料').value);
     assert.deepEqual(saved.organizations.mages.relations, [{ organization: 'guild', role: '盟友', note: '' }]);
 });
+test('world status type changes follow the 允许 AI 更新改变已有字段类型 option', () => {
+    const ctx = world();
+    assert.throws(() => run(ctx, change('status', 'set-field', '主角.生命', { value: '重伤' })), /允许 AI 更新改变已有字段类型/);
+    assert.equal(status.contractNote(ctx), '');
+    ctx.extensionSettings = { world_status_hud_v1: { allowTypeChange: true } };
+    run(ctx, change('status', 'set-field', '主角.生命', { value: '重伤' }));
+    assert.equal(status.read(ctx).项目.主角.生命, '重伤');
+    assert.match(status.contractNote(ctx), /允许改变已有字段类型/);
+});

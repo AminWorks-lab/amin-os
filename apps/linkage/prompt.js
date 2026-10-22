@@ -219,7 +219,7 @@ export function buildUpdateRules(ctx, { purpose = 'story', write = purpose === '
     const rules = inheritedRules(ctx, writable), advanced = settings.advancedActions === true;
     return [
         PROTOCOL_HEADER,
-        ...writable.map(adapter => `■ module:${adapter.id} · ${adapter.label}\n${renderContract(adapter.spec, { advanced, sources: false })}`),
+        ...writable.map(adapter => `■ module:${adapter.id} · ${adapter.label}\n${renderContract(adapter.spec, { advanced, sources: false })}${adapter.contractNote?.(ctx) ? '\n' + adapter.contractNote(ctx) : ''}`),
         rules ? `【原应用数值规则】\n${rules}` : '',
         settings.extraRules ? `【用户补充要求】\n${settings.extraRules}` : '',
         rules || settings.extraRules ? '以上补充只决定何时、改什么；格式始终是 amin_update 模块操作。' : '',

@@ -4,7 +4,9 @@ import '../../status/story-state.js';
 import { isIndependent, readStoryRoot, storyRootPath } from '../../story-state/access.js';
 import { renderContract, canonicalChange } from '../contract.js';
 
-const ROOT = '状态栏', HISTORY = 'world_status_hud_history_v1';
+const ROOT = '状态栏', HISTORY = 'world_status_hud_history_v1', SETTINGS = 'world_status_hud_v1';
+/** The world status option “允许 AI 更新改变已有字段类型” (off by default). */
+export const allowsTypeChange = ctx => ctx?.extensionSettings?.[SETTINGS]?.allowTypeChange === true;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
 const DATA_FIELDS = { 'set-field': ['value', 'component'], 'adjust-field': ['delta', 'component'] };
@@ -53,6 +55,7 @@ export const adapter = {
     id: 'status', label: '世界状态',
     paths: [['variables', ROOT], [HISTORY]],
     spec, contract: renderContract(spec), dataFields: action => DATA_FIELDS[action],
+    contractNote: ctx => allowsTypeChange(ctx) ? '用户已允许改变已有字段类型：确有剧情依据时 set-field 的 value 可用新类型的完整最终值。' : '',
     read: state,
     apply(ctx, input, { now } = {}) {
         const change = canonicalChange(spec, input);
@@ -78,8 +81,9 @@ export const adapter = {
             value = clone(change.data.value);
             if (typeof value === 'number') numeric(value);
         }
-        if (valueType(value) === '不支持' || valueType(value) !== valueType(before)) throw Error('不允许改变状态字段类型或写入越界进度。');
-        const result = mergeUpdates(current, current, { 项目: { [project]: { [field]: value } } });
+        const typeChange = component === 'value' && change.action === 'set-field' && allowsTypeChange(ctx);
+        if (valueType(value) === '不支持' || (valueType(value) !== valueType(before) && !typeChange)) throw Error(`不允许改变状态字段类型或写入越界进度：${change.target}。如需改类型，请在世界状态的生成设置里勾选“允许 AI 更新改变已有字段类型”。`);
+        const result = mergeUpdates(current, current, { 项目: { [project]: { [field]: value } } }, { allowTypeChange: typeChange });
         const patches = [{ path: storyRootPath(ctx, ROOT), value: JSON.stringify(result.state) }, ...historyPatch(ctx, result.state, now)];
         return { patches, summary: `世界状态 ${change.target}${component === 'value' ? '' : component === 'current' ? ' · 当前' : ' · 最大'}：${JSON.stringify(before)} → ${JSON.stringify(value)}` };
     },
