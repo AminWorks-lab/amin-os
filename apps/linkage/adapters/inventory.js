@@ -3,9 +3,9 @@ import { KEY as CHARACTERS_KEY, readCharacters, validId } from '../../characters
 import { renderContract, canonicalChange } from '../contract.js';
 
 const fields = {
-    'create-item': ['name', 'ownerId', 'quantity', 'equipped', 'notes', 'wear', 'condition'],
-    'update-item': ['name', 'quantity', 'equipped', 'notes', 'wear', 'condition'],
-    'delete-item': [], 'consume-item': ['quantity'], 'transfer-item': ['quantity', 'toOwnerId', 'newId'],
+    'create-item': ['name', 'ownerId', 'quantity', 'equipped', 'notes', 'wear', 'condition', 'use'],
+    'update-item': ['name', 'quantity', 'equipped', 'notes', 'wear', 'condition', 'use'],
+    'delete-item': [], 'consume-item': ['quantity'], 'use-item': ['quantity'], 'transfer-item': ['quantity', 'toOwnerId', 'newId'],
     'equip-item': ['equipped'], 'set-condition': ['condition'],
     'create-balance': ['name', 'ownerId', 'amount', 'unit', 'notes'],
     'update-balance': ['name', 'amount', 'unit', 'notes'], 'delete-balance': [],
@@ -14,11 +14,12 @@ const fields = {
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const spec = {
-    notes: 'target=物品或余额ID。wear={slot:""|head|face|neck|torso|hands|waist|legs|feet|back|accessory,layer:base|middle|outer,description?}；condition={wetness?,dirt?,damage?:0..100 int,notes?}；金额≤10亿、≤6位小数。有部位的衣物逐件登记(quantity≤1)；同人同部位同层仅一件装备，换装先卸后穿。',
+    notes: 'target=物品或余额ID。wear={slot:""|head|face|neck|torso|hands|waist|legs|feet|back|accessory,layer:base|middle|outer,description?}；condition={wetness?,dirt?,damage?:0..100 int,notes?}；use={mode:consume|charges|reusable,effect?,charges?}；金额≤6位小数。有部位的衣物逐件登记(quantity≤1)，同人同部位同层仅装备一件。',
     actions: [
-        { name: 'create-item', creates: 'item', args: 'name,ownerId,quantity:int≥0,equipped?:bool,notes?,wear?,condition?' },
-        { name: 'update-item', aliases: ['save-item'], args: 'name?,quantity?,equipped?,notes?,wear?,condition?' },
-        { name: 'consume-item', aliases: ['use-item'], args: 'quantity:int>0' },
+        { name: 'create-item', creates: 'item', args: 'name,ownerId,quantity:int≥0,equipped?:bool,notes?,wear?,condition?,use?' },
+        { name: 'update-item', aliases: ['save-item'], args: 'name?,quantity?,equipped?,notes?,wear?,condition?,use?' },
+        { name: 'consume-item', args: 'quantity:int>0', advanced: true },
+        { name: 'use-item', args: 'quantity?' },
         { name: 'transfer-item', aliases: ['give-item'], args: 'quantity:int>0,toOwnerId,newId?', note: '普通物品需 newId；衣物保留原ID不给 newId' },
         { name: 'equip-item', args: 'equipped:bool' },
         { name: 'set-condition', args: 'condition' },
@@ -55,6 +56,8 @@ export const adapter = {
         if (creating) { values.equipped ??= false; values.notes ??= ''; if (!isItem) values.unit ??= ''; }
         // The contract lets condition/wear carry only the parts that changed.
         if (object(data.condition)) values.condition = { wetness: 0, dirt: 0, damage: 0, notes: '', ...existing?.condition, ...data.condition };
+        if (object(data.use) && existing?.use) values.use = { ...existing.use, ...data.use };
+        if (object(values.use) && values.use.mode !== 'charges') delete values.use.charges;
         if (object(data.wear) && (existing?.wear || !creating)) values.wear = { ...existing?.wear, ...data.wear };
         if (object(values.wear)) { values.wear.slot ??= ''; values.wear.layer ??= 'base'; }
         if (isItem && values.quantity === 0 && data.equipped === undefined) values.equipped = false;

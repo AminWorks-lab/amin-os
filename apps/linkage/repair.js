@@ -104,7 +104,7 @@ function nested(change, action, data, dropped) {
         data.fields = fields;
     }
     if (change.module === 'inventory') {
-        for (const [key, keep] of [['wear', ['slot', 'layer', 'description']], ['condition', ['wetness', 'dirt', 'damage', 'notes']]]) {
+        for (const [key, keep] of [['wear', ['slot', 'layer', 'description']], ['condition', ['wetness', 'dirt', 'damage', 'notes']], ['use', ['mode', 'effect', 'charges']]]) {
             if (!object(data[key])) continue;
             const extra = Object.keys(data[key]).filter(name => !keep.includes(name));
             if (!extra.length) continue;

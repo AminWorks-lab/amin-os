@@ -4,9 +4,11 @@ import { chatRevisions, pathBelongs } from '../shared/message-revision.js';
 
 export const KEY = 'amin_os_inventory_v1';
 export const LIMITS = Object.freeze({ items: 1000, balances: 300, ledger: 2000, events: 2000, amount: 1000000000 });
-const OPS = new Set(['save-item', 'delete-item', 'consume-item', 'transfer-item', 'equip-item', 'set-condition', 'save-balance', 'delete-balance', 'adjust-balance', 'transfer-balance', 'restore']);
+const OPS = new Set(['save-item', 'delete-item', 'consume-item', 'use-item', 'transfer-item', 'equip-item', 'set-condition', 'save-balance', 'delete-balance', 'adjust-balance', 'transfer-balance', 'restore']);
 export const WEAR_SLOTS = Object.freeze({ head: '头部', face: '面部', neck: '颈部', torso: '上身', hands: '双手', waist: '腰部', legs: '腿部', feet: '足部', back: '背部', accessory: '饰品' });
 export const WEAR_LAYERS = Object.freeze({ base: '贴身层', middle: '中间层', outer: '外层' });
+/** How one use is paid for. The effect itself is prose the story model plays out. */
+export const USE_MODES = Object.freeze({ consume: '每次消耗一件', charges: '按剩余次数', reusable: '可反复使用' });
 const clone = value => structuredClone(value);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const text = (value, label, max, required = false) => {
@@ -47,6 +49,23 @@ export function validateCondition(value) {
     for (const key of ['wetness', 'dirt', 'damage']) if (!Number.isInteger(value[key]) || value[key] < 0 || value[key] > 100) throw Error('湿润、污渍和破损程度必须是 0–100 的整数。');
     return { wetness: value.wetness, dirt: value.dirt, damage: value.damage, notes: text(value.notes ?? '', '状态说明', 1000) };
 }
+export function validateUse(value) {
+    if (!object(value) || Object.keys(value).some(key => !['mode', 'effect', 'charges'].includes(key))) throw Error('道具用法格式无效。');
+    if (!Object.hasOwn(USE_MODES, value.mode)) throw Error('道具消耗方式无效。');
+    const use = { mode: value.mode, effect: text(value.effect ?? '', '道具效果', 2000) };
+    if (value.mode === 'charges') {
+        if (!Number.isSafeInteger(value.charges) || value.charges < 0 || value.charges > LIMITS.amount) throw Error(`道具剩余次数需为 0–${LIMITS.amount} 的整数。`);
+        use.charges = value.charges;
+    } else if (value.charges !== undefined) throw Error('只有“按剩余次数”的道具才记录剩余次数。');
+    return use;
+}
+/** The draft line handed to the story: who uses what, how, and what it cost. */
+export function useDescription(item, { user = '', target = '', intent = '', count = 1 } = {}) {
+    const use = item.use ?? { mode: 'consume', effect: '' };
+    const cost = use.mode === 'charges' ? `消耗 ${count} 次使用次数，剩余 ${use.charges} 次` : use.mode === 'reusable' ? '道具可反复使用，未消耗' : `消耗 ${count} 件，剩余 ${item.quantity} 件`;
+    return [`【使用道具】${user || '持有人'}${target ? `对${target}` : ''}使用了「${item.name}」${intent ? `：${intent}` : '。'}`,
+        use.effect ? `道具效果：${use.effect}` : '', `（${cost}。请按道具效果和当前情境演绎使用结果。）`].filter(Boolean).join('\n');
+}
 export function validateItem(value) {
     if (!object(value)) throw Error('物品记录损坏。');
     id(value.id); id(value.ownerId, '持有人编号'); text(value.name, '物品名称', 120, true); text(value.notes, '物品备注', 4000);
@@ -57,6 +76,7 @@ export function validateItem(value) {
         if (wear.slot && value.quantity > 1) throw Error('指定穿戴部位的衣物需逐件登记，数量只能为 0 或 1。');
     }
     if (value.condition !== undefined) validateCondition(value.condition);
+    if (value.use !== undefined) validateUse(value.use);
 }
 function validateBalance(value) {
     if (!object(value)) throw Error('资源记录损坏。');
@@ -137,12 +157,25 @@ export function transition(source, op, data, context = {}) {
             quantity: quantity(data.quantity), equipped: data.equipped ?? false, notes: text(data.notes ?? '', '物品备注', 4000) };
         if (data.wear !== undefined) item.wear = validateWear(data.wear);
         if (data.condition !== undefined) item.condition = validateCondition(data.condition);
+        if (data.use === null) delete item.use; else if (data.use !== undefined) item.use = validateUse(data.use);
         validateItem(item); entries.push(entry('item', item, existing?.quantity ?? 0, item.quantity));
         if (existing) state.items[state.items.indexOf(existing)] = item; else state.items.push(item);
         summary = `${existing ? '更新' : '登记'}物品「${item.name}」：${existing?.quantity ?? 0} → ${item.quantity}`;
-    } else if (['consume-item', 'transfer-item', 'equip-item', 'delete-item', 'set-condition'].includes(op)) {
+    } else if (['consume-item', 'use-item', 'transfer-item', 'equip-item', 'delete-item', 'set-condition'].includes(op)) {
         const item = find(state.items, data.id, '物品'), before = item.quantity;
-        if (op === 'equip-item') {
+        if (op === 'use-item') {
+            // Unconfigured items are used up like consumables.
+            const use = item.use ?? { mode: 'consume', effect: '' }, count = positiveQuantity(data.quantity ?? 1);
+            if (!item.quantity) throw Error('物品数量为 0，无法使用。');
+            if (use.mode === 'consume') {
+                if (count > item.quantity) throw Error('物品数量不足，无法完成操作。');
+                item.quantity -= count; if (!item.quantity) item.equipped = false;
+            } else if (use.mode === 'charges') {
+                if (count > use.charges) throw Error(use.charges ? `「${item.name}」只剩 ${use.charges} 次使用次数。` : `「${item.name}」的使用次数已用完。`);
+                item.use = { ...use, charges: use.charges - count };
+            }
+            summary = `使用「${item.name}」${count > 1 ? ` × ${count}` : ''}：${use.mode === 'charges' ? `剩余次数 ${use.charges} → ${item.use.charges}` : use.mode === 'reusable' ? '可反复使用，未消耗' : `${before} → ${item.quantity}`}`;
+        } else if (op === 'equip-item') {
             if (typeof data.equipped !== 'boolean') throw Error('请选择装备或卸下。');
             if (data.equipped && !item.quantity) throw Error('零数量物品不能装备。');
             item.equipped = data.equipped; summary = `${item.equipped ? '装备' : '卸下'}「${item.name}」`;

@@ -2,14 +2,15 @@ import { createFormControls } from '../../ui/forms.js';
 import { mountGeneration } from '../generation/view.js';
 import { uuid } from '../../uuid.js';
 import { createInventoryService, getSharedInventoryService } from './service.js';
-import { WEAR_SLOTS, WEAR_LAYERS } from './model.js';
+import { WEAR_SLOTS, WEAR_LAYERS, USE_MODES, useDescription } from './model.js';
+import { GADGET_TEMPLATES } from './gadgets.js';
 import {contextLine} from '../shared/context-line.js';
 import {linkedEmpty,takeAppRequest} from '../shared/open-app.js';
 import { attachLinkageBadge } from '../linkage/badge.js';
 
 const mounted = new WeakMap();
 const TABS = { items: '物品', wear: '穿戴与外观', balances: '资源与货币', ledger: '变更账本' };
-const OP_LABELS = { 'save-item': '登记 / 编辑物品', 'delete-item': '移除空物品记录', 'consume-item': '消耗物品', 'transfer-item': '转交物品', 'equip-item': '调整装备', 'set-condition': '更新物品状态', 'save-balance': '登记 / 编辑资源', 'delete-balance': '移除空资源账户', 'adjust-balance': '资源收支', 'transfer-balance': '转交资源', restore: '恢复存档' };
+const OP_LABELS = { 'save-item': '登记 / 编辑物品', 'delete-item': '移除空物品记录', 'consume-item': '消耗物品', 'use-item': '使用道具', 'transfer-item': '转交物品', 'equip-item': '调整装备', 'set-condition': '更新物品状态', 'save-balance': '登记 / 编辑资源', 'delete-balance': '移除空资源账户', 'adjust-balance': '资源收支', 'transfer-balance': '转交资源', restore: '恢复存档' };
 
 /** Every write uses the shared preview/confirm operation; reopening never repeats it. */
 export function mount(target, options = {}) {
@@ -32,6 +33,8 @@ export function mount(target, options = {}) {
     let selected = 'items', form = null, disposed = false, working = false;
     const filters = { owner: '', query: '', kind: '', count: 50 };
     let bodyControls = [], reviewControls = [], list = null, state = null, characters = [];
+    // The action line a confirmed use-item preview appends to the chat draft.
+    let pendingUse = null;
 
     const say = (message, mode = '') => { if (!disposed) { notice.textContent = message; notice.dataset.state = mode; } };
     const busy = () => working || !!api.busy();
@@ -137,15 +140,17 @@ export function mount(target, options = {}) {
             const box = card(preview.label || '确认背包与资源变更', review, 'amin-result amin-stack');
             const summary = summaryText(preview.summary); if (summary) box.append(make('p', summary));
             const entry = preview.state?.ledger?.at(-1); if (entry) drawLedgerEntry(entry, box, { compact: true });
+            if (pendingUse?.text) { box.append(make('p', pendingUse.draft ? '确认后追加到聊天输入框的行动描述：' : '行动描述（不追加到输入框）：', 'amin-meta'), make('pre', pendingUse.text, 'amin-inventory-use-draft')); }
             box.append(make('p', '请核对所属人物、数量和原因。确认后才写入当前分支。', 'amin-help'));
             const actions = toolbar(box);
             button(actions, '确认操作', async () => {
                 working = true; updateDisabled(); say('正在保存已确认的变更…', 'busy');
-                try { await api.confirm(); form = null; render(); say('变更已确认并保存。', 'success'); }
+                const used = pendingUse;
+                try { await api.confirm(); pendingUse = null; form = null; render(); say(used ? appendDraft(used) : '变更已确认并保存。', 'success'); }
                 catch (error) { if (dirty()) { form = null; render(); } throw error; }
                 finally { working = false; drawReview(); updateDisabled(); }
             }, { primary: true, kind: 'confirm', group: reviewControls });
-            button(actions, '取消预览', () => { api.discard(); drawReview(); updateDisabled(); say('已取消预览，编辑内容仍保留。'); }, { kind: 'cancel', group: reviewControls });
+            button(actions, '取消预览', () => { api.discard(); pendingUse = null; drawReview(); updateDisabled(); say('已取消预览，编辑内容仍保留。'); }, { kind: 'cancel', group: reviewControls });
         }
         updateDisabled();
     }
@@ -165,7 +170,60 @@ export function mount(target, options = {}) {
     function finishForm(box, label, handler) {
         const actions = toolbar(box, 'amin-savebar');
         button(actions, label, handler, { primary: true });
-        button(actions, '取消编辑', () => { api.discard(); form = null; render(); say('已取消编辑。'); }, { kind: 'cancel' });
+        button(actions, '取消编辑', () => { api.discard(); pendingUse = null; form = null; render(); say('已取消编辑。'); }, { kind: 'cancel' });
+    }
+    function appendDraft(used) {
+        if (!used.draft) return '已使用道具，变更已保存。';
+        const input = doc.querySelector?.('#send_textarea');
+        if (!input || input.disabled || input.readOnly) return '已使用道具，变更已保存。聊天输入框当前不可用，请把预览中的行动描述复制到输入框发送。';
+        input.value = input.value?.trim() ? `${input.value.replace(/\s+$/u, '')}\n${used.text}` : used.text;
+        const InputEvent = doc.defaultView?.Event ?? globalThis.Event;
+        if (InputEvent) input.dispatchEvent?.(new InputEvent('input', { bubbles: true }));
+        return '已使用道具，行动描述已追加到聊天输入框。请检查后点发送，交给剧情演绎结果。';
+    }
+    function useFields(parent, value) {
+        const mode = select(parent, '道具用法', [['', '不是道具（普通物品）'], ...Object.entries(USE_MODES)], value?.mode ?? '');
+        const charges = field(parent, '剩余使用次数', value?.charges ?? 3, { type: 'number', min: 0, max: 1e9, step: 1 });
+        const effect = field(parent, '道具效果（交给剧情演绎）', value?.effect ?? '', { multi: true, maxLength: 2000 });
+        const row = node => node.parentElement ?? node.parent;
+        const reflect = () => { row(charges).hidden = mode.value !== 'charges'; row(effect).hidden = !mode.value; };
+        mode.addEventListener('change', reflect); reflect();
+        return () => mode.value ? { mode: mode.value, effect: effect.value, ...(mode.value === 'charges' ? { charges: numeric(charges, '剩余使用次数') } : {}) } : null;
+    }
+    function useItem(item) {
+        const use = item.use ?? { mode: 'consume', effect: '' };
+        startForm(`使用道具：${item.name}`, (box, fields) => {
+            const cost = use.mode === 'charges' ? `剩余 ${use.charges} 次` : use.mode === 'reusable' ? '可反复使用' : `剩余 ${item.quantity} 件，每次消耗一件`;
+            box.append(make('p', `${ownerLabel(item.ownerId)} · ${cost}`, 'amin-meta'));
+            if (use.effect) box.append(make('p', use.effect));
+            const target = field(fields, '使用对象（可选）', '', { maxLength: 200 });
+            const intent = field(fields, '怎么用 / 想达成什么（可选）', '', { multi: true, maxLength: 800 });
+            const count = use.mode === 'reusable' ? null : field(fields, use.mode === 'charges' ? '使用次数' : '使用数量', 1, { type: 'number', min: 1, max: use.mode === 'charges' ? Math.max(1, use.charges) : item.quantity, step: 1 });
+            const draft = checkbox(fields, '确认后把行动描述追加到聊天输入框', true);
+            box.append(make('p', '道具效果只写成文字交给模型演绎，结果以剧情为准；剧情里的后续变化（例如次数恢复、道具损坏）可由联动更新记录。', 'amin-help'));
+            if (use.mode === 'charges' && !use.charges) box.append(make('p', '这件道具的使用次数已用完，可在“编辑物品”里补充次数。', 'amin-empty'));
+            finishForm(box, '预览使用', () => {
+                const quantity = count ? numeric(count, '使用数量') : 1, purpose = intent.value.trim();
+                stage('use-item', { id: item.id, quantity, reason: purpose || `使用「${item.name}」` });
+                // The staged preview may live in story-state patches, so derive the remaining cost here.
+                const after = use.mode === 'charges' ? { ...item, use: { ...use, charges: use.charges - quantity } } : use.mode === 'consume' ? { ...item, quantity: item.quantity - quantity } : item;
+                pendingUse = { draft: draft.checked, text: useDescription(after, { user: ownerLabel(item.ownerId), target: target.value.trim(), intent: purpose, count: quantity }) };
+                drawReview();
+            });
+            target.focus();
+        });
+    }
+    function pickTemplate() {
+        startForm('从道具模板添加', box => {
+            box.append(make('p', '这些是哆啦A梦风格的示例道具。选一个后会打开登记表，可以改名、改效果或次数后再保存。', 'amin-help'));
+            for (const template of GADGET_TEMPLATES) {
+                const row = card(template.name, box);
+                row.append(make('p', template.use.effect), make('p', USE_MODES[template.use.mode] + (template.use.mode === 'charges' ? ` · ${template.use.charges} 次` : '') + ` · 数量 ${template.quantity}`, 'amin-meta'));
+                button(toolbar(row), '用这个模板', () => { form = null; editItem(null, template); }, { kind: 'form' });
+            }
+            const actions = toolbar(box, 'amin-savebar');
+            button(actions, '返回', () => { form = null; render(); say(''); }, { kind: 'cancel' });
+        });
     }
     function reasonField(parent) { return field(parent, '变更原因', '', { maxLength: 1000, full: true }); }
     function conditionFields(parent, value = {}) {
@@ -175,20 +233,22 @@ export function mount(target, options = {}) {
         const notes = field(parent, '物品状态说明', value.notes ?? '', { multi: true, maxLength: 1000 });
         return () => ({ wetness: numeric(wetness, '湿润程度'), dirt: numeric(dirt, '污渍程度'), damage: numeric(damage, '破损程度'), notes: notes.value });
     }
-    function editItem(item = null) {
-        startForm(item ? '编辑物品' : '登记新物品', (box, fields) => {
-            const name = field(fields, '物品名称', item?.name ?? '', { maxLength: 120 });
+    function editItem(item = null, preset = null) {
+        startForm(item ? '编辑物品' : preset ? `登记道具：${preset.name}` : '登记新物品', (box, fields) => {
+            const name = field(fields, '物品名称', item?.name ?? preset?.name ?? '', { maxLength: 120 });
             const owner = select(fields, '所属人物', ownerChoices(item?.ownerId), item?.ownerId ?? filters.owner);
             if (item) { disable(owner); box.append(make('p', '所属人物通过“转交物品”调整，以保留双方账目。', 'amin-help')); }
-            const quantity = field(fields, '数量', item?.quantity ?? 1, { type: 'number', min: 0, max: 1e9, step: 1 });
+            const quantity = field(fields, '数量', item?.quantity ?? preset?.quantity ?? 1, { type: 'number', min: 0, max: 1e9, step: 1 });
             const equipped = checkbox(fields, '已装备', item?.equipped ?? false);
             const notes = field(fields, '物品备注（可选）', item?.notes ?? '', { multi: true, maxLength: 4000 });
             const slot = select(fields, '穿戴部位', [['', '未指定（普通物品）'], ...Object.entries(WEAR_SLOTS)], item?.wear?.slot ?? '');
             const layer = select(fields, '穿戴层次', Object.entries(WEAR_LAYERS), item?.wear?.layer ?? 'outer');
             const description = field(fields, '衣物外观', item?.wear?.description ?? '', { multi: true, maxLength: 2000 });
+            const use = useFields(fields, item?.use ?? preset?.use);
             const condition = conditionFields(fields, item?.condition), reason = reasonField(fields);
-            box.append(make('p', '指定部位的衣物逐件登记，数量为 0 或 1。同一部位和层次只能穿戴一件；换装先卸下。0 表示干燥、干净或完好，100 表示完全浸湿、严重污损或完全破损。人物卡直接读取这里的穿戴。', 'amin-help'));
-            finishForm(box, '预览保存物品', () => stage('save-item', { ...(item ? { id: item.id } : {}), name: name.value, ownerId: owner.value, quantity: numeric(quantity, '数量'), equipped: equipped.checked, notes: notes.value, wear: { slot: slot.value, layer: layer.value, description: description.value }, condition: condition(), reason: reason.value }));
+            if (preset) reason.value = `获得道具「${preset.name}」`;
+            box.append(make('p', '设了“道具用法”的物品可以在列表里点“使用”：按次数或件数扣除，并把使用描述交给剧情。指定部位的衣物逐件登记，数量为 0 或 1。同一部位和层次只能穿戴一件；换装先卸下。0 表示干燥、干净或完好，100 表示完全浸湿、严重污损或完全破损。人物卡直接读取这里的穿戴。', 'amin-help'));
+            finishForm(box, '预览保存物品', () => stage('save-item', { ...(item ? { id: item.id } : {}), name: name.value, ownerId: owner.value, quantity: numeric(quantity, '数量'), equipped: equipped.checked, notes: notes.value, wear: { slot: slot.value, layer: layer.value, description: description.value }, condition: condition(), use: use(), reason: reason.value }));
             name.focus();
         });
     }
@@ -269,12 +329,14 @@ export function mount(target, options = {}) {
                 heading.append(make('strong', itemTab() ? `数量 ${entry.quantity}${entry.equipped ? ' · 已装备' : ''}` : `余额 ${entry.amount}${entry.unit ? ' ' + entry.unit : ''}`), make('span', ownerLabel(entry.ownerId), 'amin-meta')); box.append(heading);
                 if (entry.notes) box.append(make('p', entry.notes));
                 if (entry.wear?.slot) box.append(make('p', `${WEAR_SLOTS[entry.wear.slot]} · ${WEAR_LAYERS[entry.wear.layer]}${entry.wear.description ? ' · ' + entry.wear.description : ''}`, 'amin-meta'));
+                if (entry.use) box.append(make('p', `道具 · ${USE_MODES[entry.use.mode]}${entry.use.mode === 'charges' ? ` · 剩余 ${entry.use.charges} 次` : ''}${entry.use.effect ? ' · ' + entry.use.effect : ''}`, 'amin-meta'));
                 if (entry.condition) {
                     box.append(make('p', `湿润 ${entry.condition.wetness}/100 · 污渍 ${entry.condition.dirt}/100 · 破损 ${entry.condition.damage}/100`, 'amin-meta'));
                     if (entry.condition.notes) box.append(make('p', entry.condition.notes));
                 }
                 const actions = toolbar(box);
                 if (itemTab()) {
+                    if (entry.quantity > 0 && selected === 'items') button(actions, '使用', () => useItem(entry), { primary: !!entry.use });
                     button(actions, '编辑物品', () => editItem(entry));
                     button(actions, '物品状态', () => editCondition(entry));
                     if (entry.quantity > 0) button(actions, entry.equipped ? '卸下装备' : '装备物品', () => itemAction(entry, 'equip-item'));
@@ -296,7 +358,8 @@ export function mount(target, options = {}) {
         if (selected !== 'ledger') {
             const actions = toolbar(body);
             const add = button(actions, itemTab() ? '登记新物品' : '登记资源账户', () => itemTab() ? editItem() : editBalance(), { primary: true, kind: 'top' });
-            if (!characters.length) { add.disabled = true; bodyControls.find(row => row.control === add).base = true; body.append(linkedEmpty(make, '当前分支还没有人物。先在人物卡登记人物，即可将新物品与资源归到具体人物。', 'characters', { onError: error => say(error.message, 'error') })); }
+            const templates = selected === 'items' ? button(actions, '从道具模板添加', pickTemplate, { kind: 'top' }) : null;
+            if (!characters.length) { for (const control of [add, templates].filter(Boolean)) { control.disabled = true; bodyControls.find(row => row.control === control).base = true; } body.append(linkedEmpty(make, '当前分支还没有人物。先在人物卡登记人物，即可将新物品与资源归到具体人物。', 'characters', { onError: error => say(error.message, 'error') })); }
         }
         const filter = grid(body), refs = new Set([...state.items, ...state.balances, ...state.ledger.flatMap(entry => entry.entries ?? [])].map(entry => entry.ownerId));
         if (filters.owner) refs.add(filters.owner);

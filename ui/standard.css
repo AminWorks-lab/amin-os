@@ -43,6 +43,7 @@
 .amin-ui p:last-child {margin-bottom:0}
 .amin-ui :is(pre,blockquote) {font:inherit;white-space:pre-wrap;max-width:100%;margin:0;padding:var(--amin-space)}
 .amin-ui pre {max-height:340px;overflow:auto;background:var(--amin-control);border-radius:var(--amin-radius)}
+.amin-inventory .amin-inventory-use-draft {overflow-wrap:anywhere}
 .amin-ui blockquote {border-inline-start:3px solid var(--amin-line);color:var(--amin-muted)}
 .amin-ui a {color:var(--amin-accent-text,var(--amin-accent));text-decoration:underline}
 .amin-ui :is(.amin-meta,.amin-help,.dm-help,.wsh-note) {color:var(--amin-muted);font-size:max(11px,calc(var(--amin-font) - 1px));line-height:1.6;opacity:1}
