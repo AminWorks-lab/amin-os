@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGenerationService } from '../apps/generation/service.js';
+import { createGenerationService, repairSourceRanges } from '../apps/generation/service.js';
 import { adapter as characters } from '../apps/linkage/adapters/characters.js';
 import { adapter as inventory } from '../apps/linkage/adapters/inventory.js';
 const change=(module,action,target,data)=>({module,action,target,data,reason:'所选设定明确说明'});
@@ -61,7 +61,9 @@ test('failed persistence retries without applying the changes twice',async()=>{
 test('empty chat skips journal while other modules initialize and journal sources stay bounded',async()=>{
     const t=setup([person]);t.ctx.chat=[];const draft=await t.api.generate({...options,modules:['characters','journal']});assert.deepEqual(draft.modules,['characters']);assert.equal(draft.warnings.length,1);t.api.stage(draft.changes);await t.api.confirm();
     await assert.rejects(t.api.generate({...options,modules:['journal']}),/真实聊天楼层/);t.api.dispose();
-    const u=setup([change('journal','set_fact','fact',{title:'事实',body:'内容',sourceStart:1,sourceEnd:1})]);await assert.rejects(u.api.generate({...options,modules:['journal']}),/超出/);u.api.dispose();
+    const u=setup([change('journal','set_fact','fact',{title:'事实',body:'内容',sourceStart:1,sourceEnd:1})]);const fixed=await u.api.generate({...options,modules:['journal']});
+    assert.equal(fixed.changes[0].data.sourceStart,0);assert.equal(fixed.changes[0].data.sourceEnd,0);assert.match(fixed.warnings.join(),/修正/);
+    assert.throws(()=>u.api.stage([{...fixed.changes[0],data:{...fixed.changes[0].data,sourceStart:3,sourceEnd:3}}]),/超出/);u.api.dispose();
 });
 test('cancelled model result is never accepted even if provider ignores abort',async()=>{
     const t=setup([person]);t.callback=()=>t.api.cancel();await assert.rejects(t.api.generate(options),/已取消/);assert.equal(t.api.draft(),null);assert.equal(t.saves,0);t.api.dispose();
@@ -76,4 +78,12 @@ test('supplement preserves zero amounts and false equipment flags',async()=>{
     const t=setup([person,{...item,data:{...item.data,quantity:0}}]);await t.api.generate(options);t.api.stage(t.api.draft().changes);await t.api.confirm();
     t.changes=[change('inventory','save-item','potion',{quantity:2})];await assert.rejects(t.api.generate({...options,modules:['inventory'],mode:'supplement'}),/不能覆盖/);
     t.changes=[change('inventory','save-item','potion',{equipped:true})];await assert.rejects(t.api.generate({...options,modules:['inventory'],mode:'supplement'}),/不能覆盖|数量/);t.api.dispose();
+});
+
+test('model source ranges are shifted from floor numbers or clamped into the selected floors',()=>{
+    const j=data=>({module:'journal',action:'set_fact',target:'f',data,reason:'r'}), idx=[4,5,6,7], w=[];
+    const out=repairSourceRanges([j({sourceStart:5,sourceEnd:6}),j({sourceStart:6,sourceEnd:8}),j({sourceStart:2,sourceEnd:12}),j({sourceStart:20,sourceEnd:30}),j({}),j({sourceStart:'5'}),
+        {module:'relationships',action:'x',target:'r',data:{sources:[5,8]},reason:'r'},{module:'relationships',action:'x',target:'r',data:{sources:[1,9]},reason:'r'}],idx,w);
+    assert.deepEqual(out.slice(0,6).map(c=>[c.data.sourceStart,c.data.sourceEnd]),[[5,6],[5,7],[4,7],[4,7],[4,7],[5,5]]);
+    assert.deepEqual(out[6].data.sources,[4,7]);assert.deepEqual(out[7].data.sources,[]);assert.equal(w.length,1);assert.match(w[0],/6 项.*第 5–8 楼/);
 });
