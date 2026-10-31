@@ -112,3 +112,12 @@ test('set on a group goes to its only (or 描述) field', () => {
     assert.match(checkItem(profile, { op: 'set', path: '关系/关系三', value: 'x' }, 'c').error, /里面有：对象、态度/);
     assert.match(applyItem(profile, one).current.children[0].children[0].children[1].value, /挚友/);
 });
+
+test('让 AI 改 defaults can be kept for the whole chat', async () => {
+    const { createCardProfileService } = await import('../service.js');
+    const ctx = { chatMetadata: {}, chat: [], getCurrentChatId: () => 'c1', characters: [{ avatar: 'b.png', name: '后藤一里', description: TEXT }], characterId: 0, saveMetadata: async () => {} };
+    const service = createCardProfileService(() => ctx, { notice() {} });
+    assert.equal(service.askDefaults(), null);
+    await service.setAskDefaults({ by: '山田凉', story: false });
+    assert.deepEqual(service.askDefaults(), { by: '山田凉', story: false });
+});

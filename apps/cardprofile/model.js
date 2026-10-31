@@ -91,6 +91,7 @@ function validateProposal(entry) {
 export function validateStore(store) {
     if (!object(store) || store.version !== 1 || !object(store.profiles)) fail('角色资料存储格式无效。');
     if (store.proposals !== undefined) { if (!Array.isArray(store.proposals) || store.proposals.length > LIMITS.proposals) fail('角色资料建议过多。'); store.proposals.forEach(validateProposal); }
+    if (store.ask !== undefined && (!object(store.ask) || typeof store.ask.by !== 'string' || store.ask.by.length > LIMITS.key || typeof store.ask.story !== 'boolean')) fail('“让 AI 改”的默认设置无效。');
     if (Object.keys(store.profiles).length > LIMITS.profiles) fail('角色资料数量超过上限。');
     for (const [key, profile] of Object.entries(store.profiles)) { validateProfile(profile); if (profileKey(profile) !== key) fail('角色资料归属不一致。'); }
     return store;

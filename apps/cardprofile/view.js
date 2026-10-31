@@ -13,7 +13,7 @@ export function mount(target, { service } = {}) {
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     page.append(intro, notice, body); target.append(page);
 
-    let avatar = '', layout = {}, asks = {}, draft = null, generating = null, worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
+    let avatar = '', layout = {}, asks = {}, shared = null, draft = null, generating = null, worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
     const opened = new Set(), say = (text, state = '') => { notice.textContent = text; notice.dataset.state = state; };
     const button = (parent, text, fn, cls = '') => {
         const b = node('button', text, cls); b.type = 'button';
@@ -41,11 +41,13 @@ export function mount(target, { service } = {}) {
         try { entries = api.snapshot(); intro.textContent = contextLine(globalThis.SillyTavern?.getContext?.(), '本聊天的角色设定副本'); }
         catch (error) { intro.textContent = '角色卡资料'; body.append(node('p', error.message, 'amin-empty')); return; }
         if (!entries.length) { body.append(node('p', '当前聊天没有角色卡。打开一个角色或群聊后再使用。', 'amin-empty')); return; }
+        const chatId = String(globalThis.SillyTavern?.getContext?.()?.getCurrentChatId?.() ?? ''), slot = `amin-cardprofile-selected:${chatId}`;
+        if (!avatar) { try { avatar = globalThis.sessionStorage?.getItem(slot) ?? ''; } catch {} }
         if (!entries.some(entry => entry.key === avatar)) avatar = (entries.find(entry => entry.profile) ?? entries[0]).key;
         if (entries.length > 1) {
             const row = node('label', '角色', 'amin-field'), select = node('select');
             for (const entry of entries) { const option = node('option', entry.name + (entry.kind === 'world' ? `（世界书：${entry.book}）` : entry.kind === 'note' ? `（${NOTE_KINDS[entry.noteKind]}）` : entry.profile ? '' : '（未导入）')); option.value = entry.key; select.append(option); }
-            select.value = avatar; select.onchange = () => { avatar = select.value; editing = null; previewed = null; render(); };
+            select.value = avatar; select.onchange = () => { avatar = select.value; try { globalThis.sessionStorage?.setItem(slot, avatar); } catch {} editing = null; previewed = null; render(); };
             row.append(select); body.append(row);
         }
         const entry = entries.find(item => item.key === avatar);
@@ -74,8 +76,11 @@ export function mount(target, { service } = {}) {
 
     // 让 AI 改: describe a change, review the AI's items, apply the chosen ones (optionally as a story event).
     function askPanel(entry) {
-        const state = asks[entry.key] ??= { request: '', by: entry.profile.ask?.by ?? '', story: entry.profile.ask?.story ?? true, items: null, running: null };
-        const remember = () => api.options(entry.key, { ask: { by: state.by, story: state.story } }).catch(error => say(error.message, 'error'));
+        // 要怎么改 / 由谁改写 / 写入剧情 are shared by every copy in the chat; results stay per copy.
+        if (!shared) { let saved = null; try { saved = api.askDefaults(); } catch {} saved ??= entry.profile.ask; shared = { request: '', by: saved?.by ?? '', story: saved?.story ?? true }; }
+        const own = asks[entry.key] ??= { items: null, running: null };
+        const state = new Proxy(own, { get: (target, prop) => ['request', 'by', 'story'].includes(prop) ? shared[prop] : target[prop], set: (target, prop, value) => { if (['request', 'by', 'story'].includes(prop)) shared[prop] = value; else target[prop] = value; return true; } });
+        const remember = () => api.setAskDefaults({ by: shared.by, story: shared.story }).catch(error => say(`没有保存：${error.message}`, 'error'));
         const panel = card('让 AI 改');
         const askRow = node('label', '要怎么改', 'amin-field'), ask = node('textarea');
         ask.rows = 2; ask.value = state.request; ask.placeholder = '例如：经过这次冒险，她对主角的态度变得亲近，相关的关系和性格条目都更新一下';

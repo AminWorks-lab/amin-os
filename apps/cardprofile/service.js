@@ -337,6 +337,9 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     }
     return {
         install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, createNote, generateNote, notesPrompt, askEdits, applyEdits,
+        /** 让 AI 改's 由谁改写 / 写入剧情 for the whole chat (kept when switching between copies). */
+        askDefaults: () => { const value = read(context()).ask; return value ? { ...value } : null; },
+        setAskDefaults: ({ by = '', story = true } = {}) => write('“让 AI 改”默认设置', store => { store.ask = { by: String(by).trim().slice(0, LIMITS.key), story: !!story }; }),
         hooks: { onChatPrompt, onTextPrompt }, rules, receive, proposalsFor,
         pending: () => { const ctx = context(); return read(ctx).proposals.filter(entry => entry.items.some(item => item.status === 'pending')); },
         accept: (entryId, itemIds) => decide(entryId, itemIds, true),
