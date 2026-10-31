@@ -2,7 +2,7 @@
 // windows do not display:
 //   <!--amin_card [{"op":"set","path":"分区/分组/键","value":"…","reason":"…"}] -->
 // Proposals are only recorded here; the user accepts or ignores each one under the message.
-import { edit, locate, pathLabel, walk, LIMITS } from './model.js';
+import { edit, locate, pathLabel, walk, LIMITS, resolveName } from './model.js';
 
 export const TAG = 'amin_card';
 const BLOCK = /<!--\s*amin_card\b([\s\S]*?)-->/g;
@@ -13,7 +13,15 @@ const clean = text => String(text ?? '').replace(/\s*\n\s*/g, ' ').trim();
 const segment = text => clean(text).replace(/^\*+\s*/, '').replace(/\s*[:：]\s*$/, '');
 
 /** Rules appended to the prompt while a chat has a copy that accepts proposals. */
-export function buildRules(profiles) {
+/** Who may rewrite a panel, as the model should read it: "名字（全部）" / "名字（仅 分区、分区）". */
+export function panelEditors(profile, user) {
+    return (profile.panel?.editors ?? []).map(editor => {
+        const sections = editor.sections.map(id => profile.current.children.find(node => node.id === id)?.key).filter(Boolean);
+        return `${resolveName(editor.name, user)}（${sections.length ? '仅 ' + sections.join('、') : '全部'}）`;
+    });
+}
+
+export function buildRules(profiles, { user = '' } = {}) {
     const names = profiles.map(profile => profile.current.name);
     const locked = profiles.flatMap(profile => (profile.locked ?? []).map(id => locate(profile.current, id)).filter(Boolean).map(hit => pathLabel(hit.path).replace(/ \/ /g, '/')));
     const who = names.length > 1 ? `（有多个角色：每项必须加 "char":"角色名"，可选 ${names.join('、')}）` : '';
@@ -22,6 +30,10 @@ export function buildRules(profiles) {
         `<!--${TAG} [{"op":"set","path":"分区/分组/键","value":"新的完整内容","reason":"本轮剧情依据"}] -->`,
         `op：set 修改已有条目；add 在 path 指向的分组下新增（必填 key 和 value，或用 "items":[{"key":"…","value":"…"}] 新增一个分组）；remove 删除条目。path 按角色描述里的键名逐层用 / 连接（同名键可写 键#2）。一次最多 ${MAX_ITEMS} 项。大多数回合没有变化，不要输出${who}。`,
         locked.length ? `以下分区不要提议修改：${locked.join('、')}。` : '',
+        ...profiles.filter(profile => profile.panel?.on).map(profile => {
+            const editors = panelEditors(profile, user);
+            return `【角色面板】${profile.current.name} 的设定是剧情中真实存在的角色面板，${editors.length ? `只有 ${editors.join('、')} 能在剧情里改写它` : '目前没有人能改写它'}。剧情里有人改写这个面板时，按改写内容输出上述注释，每项加 "by":"改写者名字"，改写后的设定会真实生效，下一轮按新面板演绎；没有权限的人改写不会生效。剧情自然发展带来的变化不加 by。`;
+        }),
     ].filter(Boolean).join('\n');
 }
 
@@ -63,17 +75,27 @@ const lockedBy = (profile, path) => {
 };
 
 /** Check one raw item against the copy. Returns a stored item {id, op, path, …, status, error?}. */
-export function checkItem(profile, raw, id) {
+/** The panel editor entry that lets `by` rewrite the section `path` starts in (null when none). */
+export function panelPermission(profile, by, path, user) {
+    const editor = (profile.panel?.editors ?? []).find(value => resolveName(value.name, user) === by);
+    if (!editor) return { ok: false, error: `${by} 没有改写${profile.current.name}面板的权限。` };
+    if (editor.sections.length && !editor.sections.includes(path[0]?.id)) return { ok: false, error: `${by} 只能改写${profile.current.name}面板的 ${editor.sections.map(id => profile.current.children.find(node => node.id === id)?.key).filter(Boolean).join('、')}。` };
+    return { ok: true };
+}
+
+export function checkItem(profile, raw, id, { user = '' } = {}) {
     const op = ['set', 'add', 'remove'].includes(raw.op) ? raw.op : raw.op === 'update' ? 'set' : raw.op === 'delete' ? 'remove' : raw.op;
     const item = { id, op: ['set', 'add', 'remove'].includes(op) ? op : 'set', path: clean(raw.path).slice(0, 400), reason: clean(raw.reason).slice(0, 500), status: 'pending' };
     if (raw.key !== undefined) item.key = segment(raw.key).slice(0, LIMITS.key);
     if (raw.value !== undefined) item.value = clean(typeof raw.value === 'string' ? raw.value : JSON.stringify(raw.value)).slice(0, LIMITS.value);
+    if (raw.by !== undefined && clean(raw.by)) item.by = clean(raw.by).slice(0, LIMITS.key);
     if (Array.isArray(raw.items)) item.items = raw.items.filter(object).slice(0, 30).map(child => ({ key: segment(child.key).slice(0, LIMITS.key), value: clean(child.value).slice(0, LIMITS.value) }));
     try {
         if (!['set', 'add', 'remove'].includes(op)) throw Error(`不支持的操作“${raw.op}”。`);
         const hit = resolvePath(profile.current, item.path);
         const locked = lockedBy(profile, hit.path);
         if (locked) { item.status = 'locked'; return item; }
+        if (item.by && profile.panel?.on) { const allowed = panelPermission(profile, item.by, hit.path, user); if (!allowed.ok) throw Error(allowed.error); }
         if (op === 'set') {
             if (hit.node.kind !== 'field') throw Error('只能修改带内容的条目，分组请用 add/remove。');
             if (typeof item.value !== 'string') throw Error('缺少新内容。');
@@ -93,7 +115,7 @@ export function applyItem(profile, item, { at = new Date().toISOString() } = {})
     const hit = resolvePath(profile.current, item.path);
     if (lockedBy(profile, hit.path)) throw Error('这个分区已锁定，先在应用里解除锁定。');
     const where = pathLabel(hit.path), why = item.reason ? `（${item.reason}）` : '';
-    return edit(profile, `采纳 AI 建议：${item.op === 'set' ? '修改' : item.op === 'add' ? '新增' : '删除'} ${where}${item.op === 'add' ? ' / ' + item.key : ''}${why}`, next => {
+    return edit(profile, `${item.by ? `${item.by} 改写面板` : '采纳 AI 建议'}：${item.op === 'set' ? '修改' : item.op === 'add' ? '新增' : '删除'} ${where}${item.op === 'add' ? ' / ' + item.key : ''}${why}`, next => {
         const target = locate(next.current, hit.node.id);
         // Each applied item remembers how to undo itself (see undoItem).
         if (item.op === 'set') { if (target.node.kind !== 'field') throw Error('只能修改带内容的条目。'); item.undo = { id: target.node.id, value: target.node.value }; target.node.value = item.value; }
@@ -147,11 +169,22 @@ export function targetAvatar(item, message, profiles) {
 }
 
 export function describe(item) {
+    const text = describeOp(item);
+    return item.by ? { ...text, title: `${item.by} 改写：${text.title}` } : text;
+}
+function describeOp(item) {
     const where = item.path.replace(/\s*\/\s*/g, ' / ');
     if (item.op === 'set') return { title: `修改 ${where}`, before: item.before ?? '', after: item.value ?? '' };
     if (item.op === 'remove') return { title: `删除 ${where}`, before: item.before ?? '', after: '' };
     const after = item.items ? item.items.map(child => `${child.key}：${child.value}`).join('；') : item.value ?? '';
     return { title: `新增 ${where} / ${item.key ?? ''}`, before: '', after };
+}
+
+/** The line appended to the chat draft when the player rewrites a panel from the app. */
+export function storyLine({ by, target, path, before, after }) {
+    const where = path.join('/');
+    return before === undefined ? `【面板改写】${by} 在 ${target} 的面板上写下：${where}：${after}`
+        : `【面板改写】${by} 把 ${target} 面板上的 ${where} 从“${before}”改成了“${after}”`;
 }
 
 export const pendingCount = proposals => (proposals ?? []).reduce((sum, entry) => sum + entry.items.filter(item => item.status === 'pending').length, 0);

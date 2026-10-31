@@ -42,11 +42,24 @@ export function validateProfile(profile) {
     if (profile.propose !== undefined && typeof profile.propose !== 'boolean') fail('角色资料建议开关无效。');
     if (profile.proposeMode !== undefined && !PROPOSE_MODES.includes(profile.proposeMode)) fail('角色资料建议方式无效。');
     if (profile.locked !== undefined && (!Array.isArray(profile.locked) || profile.locked.length > 1000 || profile.locked.some(id => typeof id !== 'string'))) fail('角色资料锁定分区无效。');
+    if (profile.panel !== undefined) validatePanel(profile.panel);
     validateTree(profile.baseline); validateTree(profile.current);
     if (!Array.isArray(profile.history) || profile.history.length > LIMITS.history) fail('角色资料修改记录无效。');
     for (const entry of profile.history) if (!object(entry) || typeof entry.at !== 'string' || typeof entry.label !== 'string') fail('角色资料修改记录无效。');
     return profile;
 }
+// Character-panel play: the copy is a panel inside the story, and only the listed editors may
+// rewrite it (each optionally limited to some top-level sections). USER_TOKEN is the player.
+export const USER_TOKEN = '{{user}}';
+export const PANEL_LIMITS = Object.freeze({ editors: 20, sections: 200 });
+function validatePanel(panel) {
+    if (!object(panel) || typeof panel.on !== 'boolean' || !Array.isArray(panel.editors) || panel.editors.length > PANEL_LIMITS.editors) fail('角色面板设置无效。');
+    for (const editor of panel.editors) {
+        if (!object(editor) || typeof editor.name !== 'string' || !editor.name.trim() || editor.name.length > LIMITS.key) fail('角色面板的改写者无效。');
+        if (!Array.isArray(editor.sections) || editor.sections.length > PANEL_LIMITS.sections || editor.sections.some(id => typeof id !== 'string')) fail('角色面板的改写范围无效。');
+    }
+}
+export const resolveName = (name, user) => name === USER_TOKEN ? (user || '用户') : name;
 /** Settings added in 0.22: AI proposals on, nothing locked until the user locks a group. */
 export function normalizeProfile(profile) {
     const next = { ...profile };
@@ -159,8 +172,13 @@ export function restoreNode(profile, id, { at = new Date().toISOString() } = {})
 export function resetProfile(profile, { at = new Date().toISOString() } = {}) {
     return edit(profile, '全部恢复为初始版本', next => { next.current = copy(next.baseline); }, at);
 }
-export function setOptions(profile, { replace, diff, propose, proposeMode, lock }) {
+export function setOptions(profile, { replace, diff, propose, proposeMode, lock, panel }) {
     const next = copy(profile);
+    if (panel !== undefined) {
+        const editors = (panel.editors ?? next.panel?.editors ?? []).map(editor => ({ name: String(editor.name ?? '').trim(), sections: [...new Set(editor.sections ?? [])].filter(id => next.current.children.some(node => node.id === id)) }));
+        if (editors.some(editor => !editor.name)) fail('改写者需要名字。');
+        next.panel = { on: panel.on ?? next.panel?.on ?? false, editors };
+    }
     if (propose !== undefined) next.propose = !!propose;
     if (proposeMode !== undefined) { if (!PROPOSE_MODES.includes(proposeMode)) fail('建议方式无效。'); next.proposeMode = proposeMode; }
     if (lock) {

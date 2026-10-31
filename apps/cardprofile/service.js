@@ -166,7 +166,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         let ctx; try { ctx = getContext(); } catch { return null; }
         if (!ctx?.chatMetadata?.[KEY]) return null;
         const profiles = activeProfiles(ctx);
-        return profiles.length ? buildRules(profiles) : null;
+        return profiles.length ? buildRules(profiles, { user: ctx.name1 ?? '' }) : null;
     }
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     /** Record proposals from a finished reply. Retries while another app is saving the chat. */
@@ -190,7 +190,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
                         const avatar = targetAvatar(raw, message, profiles);
                         const value = avatar && store.profiles[avatar];
                         if (!value) continue;
-                        const item = checkItem(value, raw, uuid());
+                        const item = checkItem(value, raw, uuid(), { user: ctx.name1 ?? '' });
                         if (item.status === 'locked') continue;
                         if (!groups.has(avatar)) groups.set(avatar, []);
                         groups.get(avatar).push(item);
@@ -269,7 +269,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         ignore: (entryId, itemIds) => decide(entryId, itemIds, false),
         undo,
         subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-        set: (avatar, id, fields) => update(avatar, '修改角色资料', value => setNode(value, id, fields)),
+        set: (avatar, id, fields, label = '修改角色资料') => update(avatar, String(label).slice(0, 300), value => setNode(value, id, fields)),
         add: async (avatar, parentId, fields) => { let id; await update(avatar, '新增角色资料条目', value => { const result = addNode(value, parentId, fields); id = result.id; return result.profile; }); return id; },
         removeNode: (avatar, id) => update(avatar, '删除角色资料条目', value => removeNode(value, id)),
         move: (avatar, id, offset) => update(avatar, '调整角色资料顺序', value => moveNode(value, id, offset)),

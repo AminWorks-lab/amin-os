@@ -1,6 +1,6 @@
 import { getSharedCardProfileService } from './service.js';
-import { diffProfile, pathLabel, DIFF_MODES } from './model.js';
-import { describe } from './proposals.js';
+import { diffProfile, pathLabel, locate, DIFF_MODES, USER_TOKEN } from './model.js';
+import { describe, storyLine } from './proposals.js';
 import { contextLine } from '../shared/context-line.js';
 
 const node = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -13,7 +13,7 @@ export function mount(target, { service } = {}) {
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     page.append(intro, notice, body); target.append(page);
 
-    let avatar = '', worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
+    let avatar = '', layout = {}, worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
     const opened = new Set(), say = (text, state = '') => { notice.textContent = text; notice.dataset.state = state; };
     const button = (parent, text, fn, cls = '') => {
         const b = node('button', text, cls); b.type = 'button';
@@ -138,6 +138,7 @@ export function mount(target, { service } = {}) {
         };
         propose.append(proposeMode);
         modeRow.append(mode); top.append(replace, propose, modeRow); settings.append(top);
+        panelSettings(settings, entry);
         const result = entry.result;
         settings.append(node('p', [
             changes.length ? `与初始版本相比有 ${changes.length} 处改动` : '与初始版本相同',
@@ -167,6 +168,10 @@ export function mount(target, { service } = {}) {
             box.append(list);
         }
 
+        const view = layout[entry.key] ?? (profile.panel?.on ? 'panel' : 'tree');
+        const switcher = toolbar(body);
+        button(switcher, view === 'panel' ? '切换到编辑视图' : '切换到面板视图', () => { layout[entry.key] = view === 'panel' ? 'tree' : 'panel'; render(); });
+        if (view === 'panel') { body.append(panelView(entry, byId, touched)); return; }
         const tools = toolbar(body);
         const searchRow = node('label', null, 'amin-field amin-cardprofile-search'), search = node('input');
         search.type = 'search'; search.placeholder = '搜索键名或内容'; search.value = query; search.dataset.cardprofileSearch = '1'; search.setAttribute('aria-label', '搜索角色资料');
@@ -220,6 +225,99 @@ export function mount(target, { service } = {}) {
         const danger = toolbar(extra);
         button(danger, '全部恢复为初始版本', async () => { if (!globalThis.confirm?.('把这个角色的副本全部恢复为导入时的版本吗？')) return; await api.reset(entry.key); render(); });
         button(danger, '删除副本', async () => { if (!globalThis.confirm?.(entry.kind === 'world' ? '删除后恢复为直接发送世界书条目原文，副本和修改记录都会删除。确定吗？' : '删除后恢复为直接发送原角色卡描述，副本和修改记录都会删除。确定吗？')) return; await api.remove(entry.key); render(); }, 'amin-danger');
+    }
+
+    const userName = () => globalThis.SillyTavern?.getContext?.()?.name1 || '用户';
+    function panelSettings(parent, entry) {
+        const profile = entry.profile, panel = profile.panel ?? { on: false, editors: [] };
+        const row = node('label', null, 'amin-check'), box = node('input');
+        box.type = 'checkbox'; box.checked = panel.on;
+        box.onchange = async () => {
+            try {
+                const editors = panel.editors.length ? panel.editors : [{ name: USER_TOKEN, sections: [] }];
+                await api.options(entry.key, { panel: { on: box.checked, editors }, ...(box.checked && !profile.propose ? { propose: true } : {}) });
+                if (box.checked) layout[entry.key] = 'panel';
+                say(box.checked ? '已开启角色面板玩法：剧情里有权限的人改写面板后，改动会按“AI 按剧情修改”的方式审核或自动应用。' : '已关闭角色面板玩法，恢复普通的角色资料。');
+            } catch (error) { say(error.message, 'error'); }
+            render();
+        };
+        row.append(box, node('span', '角色面板玩法：剧情里有人可以改写这个角色的面板'));
+        parent.append(row);
+        if (!panel.on) return;
+        const box2 = node('div', null, 'amin-stack amin-cardprofile-editors');
+        box2.append(node('p', '能改写面板的人（{{user}} 是你扮演的角色）。不选分区表示全部分区都能改。AI 写出的改写会标明是谁改的，没有权限的改写不生效。', 'amin-meta'));
+        const sections = profile.current.children.filter(item => item.kind === 'group');
+        const save = editors => api.options(entry.key, { panel: { on: true, editors } }).then(() => render(), error => say(error.message, 'error'));
+        const ctx = globalThis.SillyTavern?.getContext?.();
+        const known = [...new Set([USER_TOKEN, ...(ctx?.characters ?? []).map(card => card.name).filter(Boolean), ...api.snapshot().filter(item => item.profile).map(item => item.profile.current.name)])];
+        panel.editors.forEach((editor, index) => {
+            const line = node('div', null, 'amin-cardprofile-editor-row');
+            const name = node('input'); name.value = editor.name; name.setAttribute('aria-label', '改写者名字'); name.setAttribute('list', 'amin-cardprofile-names');
+            name.onchange = () => { const next = structuredClone(panel.editors); next[index].name = name.value.trim(); if (next[index].name) save(next); else say('改写者需要名字。', 'error'); };
+            line.append(name);
+            const scope = node('div', null, 'amin-cardprofile-scope');
+            for (const section of sections) {
+                const label = node('label', null, 'amin-check'), check = node('input'); check.type = 'checkbox'; check.checked = editor.sections.includes(section.id);
+                check.onchange = () => { const next = structuredClone(panel.editors), set = new Set(next[index].sections); if (check.checked) set.add(section.id); else set.delete(section.id); next[index].sections = [...set]; save(next); };
+                label.append(check, node('span', section.key)); scope.append(label);
+            }
+            line.append(node('span', editor.sections.length ? '只能改：' : '全部分区（或只勾选部分）：', 'amin-meta'), scope);
+            button(line, '移除', () => save(panel.editors.filter((_, i) => i !== index)), 'amin-cardprofile-mini');
+            box2.append(line);
+        });
+        const list = node('datalist'); list.id = 'amin-cardprofile-names';
+        for (const value of known) { const option = node('option'); option.value = value; list.append(option); }
+        box2.append(list);
+        button(toolbar(box2), '添加改写者', () => save([...panel.editors, { name: '新的改写者', sections: [] }]));
+        parent.append(box2);
+    }
+    // Read-only game-style panel: sections as cards, changed values highlighted. Click to edit.
+    function panelView(entry, byId, touched) {
+        const profile = entry.profile, root = node('div', null, 'amin-cardprofile-panel');
+        root.append(node('h3', profile.current.name, 'amin-cardprofile-panel-name'));
+        const open = id => { layout[entry.key] = 'tree'; editing = id; for (const step of locate(profile.current, id)?.path ?? []) opened.add(step.id); render(); };
+        const rows = (nodes, parent) => {
+            for (const item of nodes) {
+                const change = byId.get(item.id);
+                if (item.kind === 'group') {
+                    const sub = node('div', null, 'amin-cardprofile-panel-group');
+                    sub.append(node('div', item.key, 'amin-cardprofile-panel-subhead'));
+                    rows(item.children, sub); parent.append(sub); continue;
+                }
+                const row = node('div', null, 'amin-cardprofile-panel-row'); row.tabIndex = 0; row.setAttribute('role', 'button');
+                if (change) row.dataset.changed = change.type;
+                if (item.kind === 'field') row.append(node('span', item.key, 'amin-cardprofile-panel-key'), node('span', item.value || '—', 'amin-cardprofile-panel-value'));
+                else row.append(node('span', item.value, 'amin-cardprofile-panel-value'));
+                if (change?.type === 'changed' && change.before.value !== undefined && change.before.value !== item.value) row.append(node('span', `原：${change.before.value}`, 'amin-cardprofile-panel-before'));
+                row.onclick = () => open(item.id); row.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(item.id); } };
+                parent.append(row);
+            }
+        };
+        const loose = [];
+        for (const item of profile.current.children) {
+            if (item.kind !== 'group') { loose.push(item); continue; }
+            const section = node('section', null, 'amin-cardprofile-panel-section');
+            if (touched.has(item.id) || byId.has(item.id)) section.dataset.changed = '1';
+            section.append(node('h4', item.key, 'amin-cardprofile-panel-head'));
+            rows(item.children, section); root.append(section);
+        }
+        if (loose.length) { const section = node('section', null, 'amin-cardprofile-panel-section'); rows(loose, section); root.firstChild.after(section); }
+        root.append(node('p', '点任意一项进入编辑。高亮的是与初始版本不同的地方。', 'amin-meta'));
+        return root;
+    }
+    function actorNames(entry) {
+        const user = userName(), names = (entry.profile.panel?.editors ?? []).map(editor => editor.name === USER_TOKEN ? user : editor.name);
+        const ctx = globalThis.SillyTavern?.getContext?.();
+        for (const item of api.snapshot()) if (item.profile) names.push(item.profile.current.name);
+        for (const card of ctx?.characters ?? []) if (card?.name) names.push(card.name);
+        return [...new Set([user, ...names])].filter(name => name && name !== entry.profile.current.name).concat(entry.profile.current.name);
+    }
+    function appendStory(text) {
+        const input = document.querySelector('#send_textarea');
+        if (!input || input.disabled || input.readOnly) return false;
+        input.value = input.value?.trim() ? `${input.value.replace(/\s+$/u, '')}\n${text}` : text;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
     }
 
     function moveButtons(parent, entry, item, total, index) {
@@ -284,6 +382,22 @@ export function mount(target, { service } = {}) {
             await api.set(entry.key, item.id, { ...(key ? { key: key.value } : {}), ...(value ? { value: value.value } : {}), star: star.checked });
             editing = null; say('已保存。'); render();
         }, 'amin-primary');
+        let actor = null;
+        if (entry.profile.panel?.on && item.kind !== 'group') {
+            // Like 能力面板: the player decides who did the rewrite in the story (no permission check here).
+            const row = node('label', '由谁改写（写入剧情时）', 'amin-field'); actor = node('select');
+            for (const name of actorNames(entry)) { const option = node('option', name); option.value = name; actor.append(option); }
+            row.append(actor); box.append(row);
+        }
+        if (entry.profile.panel?.on && item.kind !== 'group') button(actions, '保存并写入剧情', async () => {
+            const hit = locate(entry.profile.current, item.id), path = hit.path.map(step => step.key ?? step.value);
+            const after = value ? value.value.trim() : item.value, newKey = key ? key.value.trim() : item.key;
+            await api.set(entry.key, item.id, { ...(key ? { key: key.value } : {}), ...(value ? { value: value.value } : {}), star: star.checked }, `${actor?.value || userName()} 改写面板：${path.join(' / ')}`);
+            if (newKey && newKey !== item.key) path[path.length - 1] = newKey;
+            const line = storyLine({ by: actor?.value || userName(), target: entry.profile.current.name, path, before: item.kind === 'field' && item.value ? item.value : undefined, after });
+            editing = null;
+            say(appendStory(line) ? '已保存，并把这次改写追加到聊天输入框，检查后点发送。' : `已保存。聊天输入框当前不可用，可以手动发送：${line}`); render();
+        });
         button(actions, '取消', () => { editing = null; render(); });
         if (item.kind === 'group') {
             button(actions, '新增条目', async () => { const id = await api.add(entry.key, item.id, { kind: 'field', key: '新条目', star: true }); opened.add(item.id); editing = id; render(); });
