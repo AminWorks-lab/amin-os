@@ -48,7 +48,7 @@ test('world-info entries are listed, imported one copy each, and swapped in the 
 test('proposals for a multi-character card go to the copy the char name points at', async () => {
     const { ctx, service } = host();
     await service.importWorld((await service.worldCandidates()).entries);
-    assert.match(service.rules(), /"char":"角色名"/);
+    assert.match(service.rules(), /"char":"设定名"/);
     ctx.chat.push({ is_user: false, name: '结束乐队', original_avatar: 'band.png', swipe_id: 0, send_date: 't', mes: '正文<!--amin_card [{"char":"伊地知虹夏","op":"set","path":"基本信息/年龄","value":"18岁","reason":"生日"},{"op":"set","path":"基本信息/年龄","value":"x"}] -->' });
     await service.receive(0);
     const entries = service.proposalsFor(0);
@@ -57,4 +57,30 @@ test('proposals for a multi-character card go to the copy the char name points a
     assert.equal(entries[0].name, '伊地知虹夏');
     await service.accept(entries[0].id, [entries[0].items[0].id]);
     assert.match(service.rendered('wi:结束乐队#1'), /\*年龄: 18岁/);
+});
+
+test('a created 世界资料 is sent as an extra block and can be a world panel', async () => {
+    const { ctx, service } = host();
+    const prompts = new Map(); ctx.setExtensionPrompt = (key, text, position) => prompts.set(key, { text, position });
+    const key = await service.createNote({ kind: 'world', text: '下北泽=[\n地点:[\n*STARRY: 地下 livehouse\n]\n]' });
+    assert.match(key, /^note:/);
+    assert.deepEqual(service.snapshot().at(-1).kind, 'note');
+    assert.match(service.notesPrompt(), /下北泽=\[\n地点:\[\n\*STARRY: 地下 livehouse/);
+    await service.options(key, { panel: { on: true, editors: [{ name: '{{user}}', sections: [] }] } });
+    ctx.name1 = '阿明';
+    assert.match(service.rules(), /【世界面板】下北泽/);
+    await service.options(key, { replace: false });
+    assert.equal(service.notesPrompt(), null);
+});
+
+test('AI draft parsing keeps only the template', async () => {
+    const { parseDraft, generateNote } = await import('../generate.js');
+    assert.equal(parseDraft('好的：\n```\n世界=[\n概况:[\n*时代: 现代\n]\n]\n```\n以上'), '世界=[\n概况:[\n*时代: 现代\n]\n]');
+    assert.throws(() => parseDraft('没有模板'), /名字=\[/);
+    const asked = [];
+    const ai = { capture: () => ({}), generate: async (app, ctx, request) => { asked.push(request); return '世界=[\n概况:[\n*时代: 现代\n]\n]'; } };
+    const ctx = { chat: [{ name: '喜多', mes: '去 STARRY 吧<!--amin_card [] -->' }] };
+    const text = await generateNote(ctx, { kind: 'world', characters: [{ name: '结束乐队', description: '四人乐队' }], worldbooks: { choices: async () => [{ name: 'b', data: book }] } }, { ai });
+    assert.match(text, /^世界=\[/);
+    assert.match(asked[0].prompt, /四人乐队/); assert.match(asked[0].prompt, /STARRY 是一家 livehouse/); assert.doesNotMatch(asked[0].prompt, /amin_card/);
 });

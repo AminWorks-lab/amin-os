@@ -2,7 +2,7 @@
 // windows do not display:
 //   <!--amin_card [{"op":"set","path":"分区/分组/键","value":"…","reason":"…"}] -->
 // Proposals are only recorded here; the user accepts or ignores each one under the message.
-import { edit, locate, pathLabel, walk, LIMITS, resolveName } from './model.js';
+import { edit, locate, pathLabel, walk, LIMITS, resolveName, isWorldPanel } from './model.js';
 
 export const TAG = 'amin_card';
 const BLOCK = /<!--\s*amin_card\b([\s\S]*?)-->/g;
@@ -24,15 +24,16 @@ export function panelEditors(profile, user) {
 export function buildRules(profiles, { user = '' } = {}) {
     const names = profiles.map(profile => profile.current.name);
     const locked = profiles.flatMap(profile => (profile.locked ?? []).map(id => locate(profile.current, id)).filter(Boolean).map(hit => pathLabel(hit.path).replace(/ \/ /g, '/')));
-    const who = names.length > 1 ? `（有多个角色：每项必须加 "char":"角色名"，可选 ${names.join('、')}）` : '';
+    const who = names.length > 1 ? `（有多份设定：每项必须加 "char":"设定名"，可选 ${names.join('、')}）` : '';
     return [
-        `【角色设定更新】设定资料（${names.join('、')}=[…]）是这些角色的当前设定。只有当本轮剧情让设定发生了持续性的变化（关系、身份、外貌服装、装备、能力、偏好、性格成长等）时，才在回复最末尾另起一行输出一个 HTML 注释（不会显示给用户）：`,
+        `【角色设定更新】设定资料（${names.join('、')}=[…]）是这些角色（或世界）的当前设定。只有当本轮剧情让设定发生了持续性的变化（关系、身份、外貌服装、装备、能力、偏好、性格成长、世界局势与规则等）时，才在回复最末尾另起一行输出一个 HTML 注释（不会显示给用户）：`,
         `<!--${TAG} [{"op":"set","path":"分区/分组/键","value":"新的完整内容","reason":"本轮剧情依据"}] -->`,
         `op：set 修改已有条目；add 在 path 指向的分组下新增（必填 key 和 value，或用 "items":[{"key":"…","value":"…"}] 新增一个分组）；remove 删除条目。path 按角色描述里的键名逐层用 / 连接（同名键可写 键#2）。一次最多 ${MAX_ITEMS} 项。大多数回合没有变化，不要输出${who}。`,
         locked.length ? `以下分区不要提议修改：${locked.join('、')}。` : '',
         ...profiles.filter(profile => profile.panel?.on).map(profile => {
             const editors = panelEditors(profile, user);
-            return `【角色面板】${profile.current.name} 的设定是剧情中真实存在的角色面板，${editors.length ? `只有 ${editors.join('、')} 能在剧情里改写它` : '目前没有人能改写它'}。剧情里有人改写这个面板时，按改写内容输出上述注释，每项加 "by":"改写者名字"，改写后的设定会真实生效，下一轮按新面板演绎；没有权限的人改写不会生效。剧情自然发展带来的变化不加 by。`;
+            const kind = isWorldPanel(profile) ? '世界面板' : '角色面板';
+            return `【${kind}】${profile.current.name} 的设定是剧情中真实存在的${kind}，${editors.length ? `只有 ${editors.join('、')} 能在剧情里改写它` : '目前没有人能改写它'}。剧情里有人改写这个面板时，按改写内容输出上述注释，每项加 "by":"改写者名字"，改写后的设定会真实生效，下一轮按新面板演绎；没有权限的人改写不会生效。剧情自然发展带来的变化不加 by。`;
         }),
     ].filter(Boolean).join('\n');
 }
@@ -159,8 +160,8 @@ export function messageKey(message, index) {
 export function targetAvatar(item, message, profiles) {
     const key = profile => profile.key ?? profile.avatar;
     const named = clean(item.char);
-    if (named) { const hit = profiles.find(profile => profile.current.name === named) ?? profiles.find(profile => profile.cardName === named && profile.source?.type !== 'world'); if (hit) return key(hit); }
-    const cards = profiles.filter(profile => profile.source?.type !== 'world');
+    if (named) { const hit = profiles.find(profile => profile.current.name === named) ?? profiles.find(profile => profile.cardName === named && !profile.source); if (hit) return key(hit); }
+    const cards = profiles.filter(profile => !profile.source);
     const speaker = message?.original_avatar ?? null;
     if (speaker) { const hit = cards.find(profile => profile.avatar === speaker); if (hit) return key(hit); }
     const byName = cards.find(profile => profile.cardName && profile.cardName === message?.name);

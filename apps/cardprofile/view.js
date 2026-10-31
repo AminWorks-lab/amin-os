@@ -1,5 +1,5 @@
 import { getSharedCardProfileService } from './service.js';
-import { diffProfile, pathLabel, locate, DIFF_MODES, USER_TOKEN } from './model.js';
+import { diffProfile, pathLabel, locate, DIFF_MODES, USER_TOKEN, NOTE_KINDS } from './model.js';
 import { describe, storyLine } from './proposals.js';
 import { contextLine } from '../shared/context-line.js';
 
@@ -13,7 +13,7 @@ export function mount(target, { service } = {}) {
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     page.append(intro, notice, body); target.append(page);
 
-    let avatar = '', layout = {}, worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
+    let avatar = '', layout = {}, draft = null, generating = null, worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
     const opened = new Set(), say = (text, state = '') => { notice.textContent = text; notice.dataset.state = state; };
     const button = (parent, text, fn, cls = '') => {
         const b = node('button', text, cls); b.type = 'button';
@@ -44,12 +44,13 @@ export function mount(target, { service } = {}) {
         if (!entries.some(entry => entry.key === avatar)) avatar = (entries.find(entry => entry.profile) ?? entries[0]).key;
         if (entries.length > 1) {
             const row = node('label', '角色', 'amin-field'), select = node('select');
-            for (const entry of entries) { const option = node('option', entry.name + (entry.kind === 'world' ? `（世界书：${entry.book}）` : entry.profile ? '' : '（未导入）')); option.value = entry.key; select.append(option); }
+            for (const entry of entries) { const option = node('option', entry.name + (entry.kind === 'world' ? `（世界书：${entry.book}）` : entry.kind === 'note' ? `（${NOTE_KINDS[entry.noteKind]}）` : entry.profile ? '' : '（未导入）')); option.value = entry.key; select.append(option); }
             select.value = avatar; select.onchange = () => { avatar = select.value; editing = null; previewed = null; render(); };
             row.append(select); body.append(row);
         }
         const entry = entries.find(item => item.key === avatar);
         if (!entry.profile) importPage(entry); else profilePage(entry);
+        notePanel();
         worldPanel();
         if (focusSearch) { const input = body.querySelector('[data-cardprofile-search="1"]'); input?.focus(); if (input && Number.isInteger(caret)) input.setSelectionRange(caret, caret); }
     }
@@ -69,6 +70,43 @@ export function mount(target, { service } = {}) {
         for (const item of previewed.current.children) list.append(node('li', item.kind === 'group' ? item.key : (item.key ?? item.value)));
         intro.append(list);
         button(toolbar(intro), '确认导入', async () => { await api.importCard(entry.key); previewed = null; say('已导入，发送时将使用本聊天的副本。'); render(); }, 'amin-primary');
+    }
+
+    // 世界资料 / 角色资料 created here: paste a template or let the AI draft one, check it, create.
+    function notePanel() {
+        const panel = card('新建资料（世界 / 角色）');
+        panel.append(node('p', '没有现成模板时，在这里新建一份“名字=[ … ]”格式的资料：可以自己粘贴，也可以让 AI 从角色卡、世界书和最近的聊天整理。新建的资料发送时作为额外设定附上，同样可以编辑、让 AI 按剧情修改，也能开启面板玩法（世界资料就是世界面板）。', 'amin-meta'));
+        if (!draft) { button(toolbar(panel), '新建资料', () => { draft = { kind: 'world', name: '', request: '', text: '', use: { cards: true, worldbooks: true, chat: true } }; render(); }); return; }
+        const kindRow = node('label', '类型', 'amin-field'), kind = node('select');
+        for (const [value, text] of Object.entries(NOTE_KINDS)) { const option = node('option', text); option.value = value; kind.append(option); }
+        kind.value = draft.kind; kind.onchange = () => { draft.kind = kind.value; };
+        kindRow.append(kind);
+        const nameRow = node('label', '名字（可空，AI 会自己取）', 'amin-field'), name = node('input'); name.value = draft.name; name.oninput = () => { draft.name = name.value; }; nameRow.append(name);
+        const askRow = node('label', '给 AI 的要求（可空）', 'amin-field'), ask = node('textarea'); ask.rows = 2; ask.value = draft.request; ask.placeholder = '例如：重点整理魔法体系和各国关系；允许补充资料没写的细节'; ask.oninput = () => { draft.request = ask.value; }; askRow.append(ask);
+        const use = node('div', null, 'amin-cardprofile-scope');
+        for (const [key, text] of [['cards', '角色卡'], ['worldbooks', '世界书'], ['chat', '最近 30 楼聊天']]) {
+            const row = node('label', null, 'amin-check'), check = node('input'); check.type = 'checkbox'; check.checked = draft.use[key] !== false;
+            check.onchange = () => { draft.use[key] = check.checked; }; row.append(check, node('span', text)); use.append(row);
+        }
+        panel.append(kindRow, nameRow, askRow, node('span', 'AI 参考的资料', 'amin-meta'), use);
+        const actions = toolbar(panel);
+        if (generating) button(actions, '取消生成', () => { generating.abort(); });
+        else button(actions, draft.text ? '让 AI 重新生成' : '让 AI 生成', () => {
+            // Not awaited: the button helper blocks other buttons while it runs, and 取消生成 must stay usable.
+            const run = generating = new AbortController(), target = draft; say('AI 正在整理资料…'); render();
+            api.generateNote({ kind: target.kind, name: target.name, request: target.request, use: target.use }, { signal: run.signal })
+                .then(text => { target.text = text; say('已生成，检查后点“创建”。可以直接修改下面的文本。'); }, error => say(run.signal.aborted ? '已取消生成。' : error.message, run.signal.aborted ? '' : 'error'))
+                .finally(() => { if (generating === run) generating = null; render(); });
+        }, draft.text ? '' : 'amin-primary');
+        const textRow = node('label', '模板（可以直接粘贴或修改）', 'amin-field'), text = node('textarea');
+        text.rows = 12; text.value = draft.text; text.placeholder = '世界名=[\n世界概况:[\n*时代: …\n]\n]'; text.oninput = () => { draft.text = text.value; };
+        textRow.append(text); panel.append(textRow);
+        const finish = toolbar(panel);
+        button(finish, '创建', async () => {
+            const key = await api.createNote({ kind: draft.kind, text: draft.text });
+            avatar = key; layout[key] = 'panel'; draft = null; say('已创建。'); render();
+        }, 'amin-primary');
+        button(finish, '取消', () => { generating?.abort(); draft = null; render(); });
     }
 
     // Multi-character cards keep each character in a world-info entry: one copy per entry,
@@ -121,8 +159,8 @@ export function mount(target, { service } = {}) {
         const top = node('div', null, 'amin-cardprofile-settings');
         const replace = node('label', null, 'amin-check'), box = node('input');
         box.type = 'checkbox'; box.checked = profile.replace;
-        box.onchange = async () => { try { await api.options(entry.key, { replace: box.checked }); say(box.checked ? '发送时将用副本替换。' : entry.kind === 'world' ? '已暂停替换，发送世界书原文。' : '已暂停替换，发送原角色卡描述。'); } catch (error) { say(error.message, 'error'); } render(); };
-        replace.append(box, node('span', entry.kind === 'world' ? '发送时用副本替换世界书条目原文' : '发送时用副本替换角色描述'));
+        box.onchange = async () => { try { await api.options(entry.key, { replace: box.checked }); say(entry.kind === 'note' ? (box.checked ? '发送时会附上这份资料。' : '已暂停发送这份资料。') : box.checked ? '发送时将用副本替换。' : entry.kind === 'world' ? '已暂停替换，发送世界书原文。' : '已暂停替换，发送原角色卡描述。'); } catch (error) { say(error.message, 'error'); } render(); };
+        replace.append(box, node('span', entry.kind === 'note' ? '发送时附上这份资料' : entry.kind === 'world' ? '发送时用副本替换世界书条目原文' : '发送时用副本替换角色描述'));
         const modeRow = node('label', '对照', 'amin-field'), mode = node('select');
         for (const value of DIFF_MODES) { const option = node('option', DIFF_LABELS[value]); option.value = value; mode.append(option); }
         mode.value = profile.diff;
@@ -142,7 +180,7 @@ export function mount(target, { service } = {}) {
         const result = entry.result;
         settings.append(node('p', [
             changes.length ? `与初始版本相比有 ${changes.length} 处改动` : '与初始版本相同',
-            !profile.replace ? '替换已暂停' : !result ? '本次打开后还没有发送过' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? '最近一次发送没找到条目原文，按世界书原样发送（条目没激活，或导入后被改过）' : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
+            !profile.replace ? (entry.kind === 'note' ? '暂停发送' : '替换已暂停') : !result ? '本次打开后还没有发送过' : entry.kind === 'note' ? '最近一次发送已附上' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? '最近一次发送没找到条目原文，按世界书原样发送（条目没激活，或导入后被改过）' : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
         ].join(' · '), result && !result.matched && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
 
         let pending = [];
@@ -224,7 +262,7 @@ export function mount(target, { service } = {}) {
         extra.append(preview, history);
         const danger = toolbar(extra);
         button(danger, '全部恢复为初始版本', async () => { if (!globalThis.confirm?.('把这个角色的副本全部恢复为导入时的版本吗？')) return; await api.reset(entry.key); render(); });
-        button(danger, '删除副本', async () => { if (!globalThis.confirm?.(entry.kind === 'world' ? '删除后恢复为直接发送世界书条目原文，副本和修改记录都会删除。确定吗？' : '删除后恢复为直接发送原角色卡描述，副本和修改记录都会删除。确定吗？')) return; await api.remove(entry.key); render(); }, 'amin-danger');
+        button(danger, '删除副本', async () => { if (!globalThis.confirm?.(entry.kind === 'note' ? '删除这份资料和它的修改记录吗？' : entry.kind === 'world' ? '删除后恢复为直接发送世界书条目原文，副本和修改记录都会删除。确定吗？' : '删除后恢复为直接发送原角色卡描述，副本和修改记录都会删除。确定吗？')) return; await api.remove(entry.key); render(); }, 'amin-danger');
     }
 
     const userName = () => globalThis.SillyTavern?.getContext?.()?.name1 || '用户';
@@ -241,7 +279,7 @@ export function mount(target, { service } = {}) {
             } catch (error) { say(error.message, 'error'); }
             render();
         };
-        row.append(box, node('span', '角色面板玩法：剧情里有人可以改写这个角色的面板'));
+        row.append(box, node('span', entry.noteKind === 'world' ? '世界面板玩法：剧情里有人可以改写这个世界的面板' : '角色面板玩法：剧情里有人可以改写这个角色的面板'));
         parent.append(row);
         if (!panel.on) return;
         const box2 = node('div', null, 'amin-stack amin-cardprofile-editors');

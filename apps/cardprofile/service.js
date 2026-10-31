@@ -1,4 +1,4 @@
-import { KEY, emptyStore, validateStore, normalizeProfile, worldKey, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
+import { KEY, emptyStore, validateStore, normalizeProfile, worldKey, noteKey, NOTE_KINDS, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
 import { candidates, replaceInMessages, replaceInText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
 import { promptInjectors } from '../linkage/injectors.js';
@@ -7,6 +7,7 @@ import { uuid } from '../../uuid.js';
 import { parseCard } from './format.js';
 import { worldbookChoices, freshWorldbook } from '../worldbook-sources.js';
 import { sha256HexSync } from '../tts/source-hash.js';
+import { generateNote as runNoteTask } from './generate.js';
 
 const copy = value => structuredClone(value);
 export const hashDescription = text => 'sha256:' + sha256HexSync(String(text ?? ''));
@@ -68,6 +69,8 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         const avatars = new Set(chatCharacters(ctx).map(item => item.avatar));
         return Object.entries(store.profiles).filter(([, value]) => value.source?.type === 'world' && avatars.has(value.avatar));
     }
+    // Copies created in the app live in this chat's metadata and always belong to it.
+    const notes = store => Object.entries(store.profiles).filter(([, value]) => value.source?.type === 'custom');
     function snapshot() {
         const ctx = context(), store = read(ctx), key = chatKey(ctx);
         const cards = chatCharacters(ctx).map(item => {
@@ -77,7 +80,9 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         });
         const worlds = owned(ctx, store).map(([id, value]) => ({ key: id, avatar: value.avatar, kind: 'world', name: value.current.name, book: value.source.book, title: value.source.title,
             description: value.source.text, profile: value, cardChanged: false, result: results.get(key + '\n' + id) ?? null }));
-        return [...cards, ...worlds];
+        const extra = notes(store).map(([id, value]) => ({ key: id, avatar: value.avatar, kind: 'note', noteKind: value.source.kind, name: value.current.name,
+            description: '', profile: value, cardChanged: false, result: results.get(key + '\n' + id) ?? null }));
+        return [...cards, ...worlds, ...extra];
     }
     /** World-info entries in the books this chat uses whose content is a bracket template. */
     async function worldCandidates() {
@@ -107,6 +112,19 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             for (const value of values) store.profiles[worldKey(value.source.book, value.source.uid)] = value;
         });
         return values.map(value => worldKey(value.source.book, value.source.uid));
+    }
+    /** Create a 世界资料 / 角色资料 from a pasted or generated template. Returns its key. */
+    async function createNote({ kind = 'world', text }) {
+        if (!Object.hasOwn(NOTE_KINDS, kind)) throw Error('资料类型无效。');
+        const ctx = context(), owner = chatCharacters(ctx)[0], id = uuid().replace(/[^\w-]/g, '').slice(0, 40);
+        const value = createProfile({ avatar: owner?.avatar ?? 'chat', cardName: owner?.name ?? '', description: String(text ?? ''), hash: hashDescription(text), source: { type: 'custom', id, kind } });
+        await write(`新建${NOTE_KINDS[kind]}：${value.current.name}`, store => { store.profiles[noteKey(id)] = value; });
+        return noteKey(id);
+    }
+    /** Ask the shared AI for a template built from the card, world info and recent chat. */
+    async function generateNote(options, { signal, ai } = {}) {
+        const ctx = context();
+        return runNoteTask(ctx, { ...options, characters: chatCharacters(ctx), worldbooks }, { signal, ai });
     }
     /** Parse without saving, for the import preview. */
     function preview(avatar) {
@@ -159,7 +177,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     function activeProfiles(ctx) {
         let store; try { store = read(ctx); } catch { return []; }
         const avatars = new Set(chatCharacters(ctx).map(item => item.avatar));
-        return Object.entries(store.profiles).filter(([id, value]) => value.propose && avatars.has(value.avatar) && (value.source?.type === 'world' || id === value.avatar))
+        return Object.entries(store.profiles).filter(([id, value]) => value.propose && avatars.has(value.avatar) && (value.source?.type === 'world' || id === value.avatar) || value.propose && value.source?.type === 'custom')
             .map(([id, value]) => ({ ...value, key: id }));
     }
     function rules() {
@@ -167,6 +185,20 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         if (!ctx?.chatMetadata?.[KEY]) return null;
         const profiles = activeProfiles(ctx);
         return profiles.length ? buildRules(profiles, { user: ctx.name1 ?? '' }) : null;
+    }
+    /** Created copies have no original text to replace: they are sent as an extra block. */
+    function notesPrompt() {
+        let ctx; try { ctx = getContext(); } catch { return null; }
+        if (!ctx?.chatMetadata?.[KEY]) return null;
+        let store; try { store = read(ctx); } catch { return null; }
+        const macro = substitute(ctx), key = chatKey(ctx), blocks = [];
+        for (const [id, value] of notes(store)) {
+            if (!value.replace) continue;
+            let text = renderForPrompt(value);
+            if (macro) { try { text = macro(text); } catch {} }
+            blocks.push(text); results.set(key + '\n' + id, { at: new Date().toISOString(), matched: true });
+        }
+        return blocks.length ? blocks.join('\n\n') : null;
     }
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     /** Record proposals from a finished reply. Retries while another app is saving the chat. */
@@ -255,6 +287,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         const ctx = getContext(), ev = ctx?.eventTypes ?? ctx?.event_types ?? {};
         if (!ctx?.eventSource?.on) return;
         promptInjectors(getContext).register('amin-os-card-profile', { build: rules, position: 1, depth: 0 });
+        promptInjectors(getContext).register('amin-os-card-profile-notes', { build: notesPrompt, position: 0, depth: 0 });
         if (ev.MESSAGE_RECEIVED) ctx.eventSource.on(ev.MESSAGE_RECEIVED, index => { receive(index).catch(() => {}); });
         if (ev.CHAT_COMPLETION_PROMPT_READY) ctx.eventSource.on(ev.CHAT_COMPLETION_PROMPT_READY, onChatPrompt);
         if (ev.GENERATE_AFTER_COMBINE_PROMPTS) ctx.eventSource.on(ev.GENERATE_AFTER_COMBINE_PROMPTS, onTextPrompt);
@@ -262,7 +295,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         installed = true;
     }
     return {
-        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld,
+        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, createNote, generateNote, notesPrompt,
         hooks: { onChatPrompt, onTextPrompt }, rules, receive, proposalsFor,
         pending: () => { const ctx = context(); return read(ctx).proposals.filter(entry => entry.items.some(item => item.status === 'pending')); },
         accept: (entryId, itemIds) => decide(entryId, itemIds, true),

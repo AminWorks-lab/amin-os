@@ -12,7 +12,12 @@ const fail = message => { throw Object.assign(Error(message), { code: 'CARD_PROF
 export const emptyStore = () => ({ version: 1, profiles: {} });
 /** Store key: the card avatar for a card description, `wi:书名#uid` for a world-info entry. */
 export const worldKey = (book, uid) => `wi:${book}#${uid}`;
-export const profileKey = profile => profile.source?.type === 'world' ? worldKey(profile.source.book, profile.source.uid) : profile.avatar;
+export const noteKey = id => `note:${id}`;
+export const NOTE_KINDS = Object.freeze({ world: '世界资料', character: '角色资料' });
+// Copies come from a card description (no source), a world-info entry, or are created in the
+// app (custom: pasted or AI-generated, sent as an extra block since there is no original text).
+export const profileKey = profile => profile.source?.type === 'world' ? worldKey(profile.source.book, profile.source.uid) : profile.source?.type === 'custom' ? noteKey(profile.source.id) : profile.avatar;
+export const isWorldPanel = profile => profile.source?.type === 'custom' && profile.source.kind === 'world';
 
 export function validateNode(node, ids) {
     if (!object(node) || typeof node.id !== 'string' || !node.id || ids.has(node.id)) fail('角色资料条目编号无效或重复。');
@@ -37,7 +42,9 @@ export function validateProfile(profile) {
     if (typeof profile.replace !== 'boolean' || !DIFF_MODES.includes(profile.diff)) fail('角色资料发送设置无效。');
     if (profile.source !== undefined) {
         const source = profile.source;
-        if (!object(source) || source.type !== 'world' || typeof source.book !== 'string' || !source.book || !['string', 'number'].includes(typeof source.uid) || typeof source.title !== 'string' || typeof source.text !== 'string' || source.text.length > 400000) fail('角色资料的世界书来源无效。');
+        if (object(source) && source.type === 'custom') {
+            if (typeof source.id !== 'string' || !/^[\w-]{1,80}$/.test(source.id) || !Object.hasOwn(NOTE_KINDS, source.kind)) fail('自建资料的来源无效。');
+        } else if (!object(source) || source.type !== 'world' || typeof source.book !== 'string' || !source.book || !['string', 'number'].includes(typeof source.uid) || typeof source.title !== 'string' || typeof source.text !== 'string' || source.text.length > 400000) fail('角色资料的世界书来源无效。');
     }
     if (profile.propose !== undefined && typeof profile.propose !== 'boolean') fail('角色资料建议开关无效。');
     if (profile.proposeMode !== undefined && !PROPOSE_MODES.includes(profile.proposeMode)) fail('角色资料建议方式无效。');
