@@ -36,3 +36,20 @@ test('only listed editors may rewrite the panel, within their sections', () => {
 test('story line for a rewrite made from the app', () => {
     assert.equal(storyLine({ by: '阿明', target: '后藤一里', path: ['性格', '自信'], before: '很低', after: '高' }), '【面板改写】阿明 把 后藤一里 面板上的 性格/自信 从“很低”改成了“高”');
 });
+
+test('让 AI 改 returns checked items and applies the chosen ones with the chosen rewriter', async () => {
+    const { createCardProfileService } = await import('../service.js');
+    const ctx = { chatMetadata: {}, chat: [], name1: '阿明', getCurrentChatId: () => 'c1', characters: [{ avatar: 'b.png', name: '后藤一里', description: TEXT }], characterId: 0, saveMetadata: async () => {} };
+    const service = createCardProfileService(() => ctx, { notice() {} });
+    await service.importCard('b.png');
+    const asked = [];
+    const ai = { capture: () => ({}), generate: async (app, c, request) => { asked.push(request); return '[{"op":"set","path":"性格/自信","value":"高了一点","by":"别人"},{"op":"add","path":"性格","key":"口头禅","value":"我会努力的"},{"op":"set","path":"没有","value":"x"}]'; } };
+    const items = await service.askEdits('b.png', { request: '让她自信一点', by: '山田凉' }, { ai });
+    assert.match(asked[0].prompt, /后藤一里=\[/); assert.match(asked[0].prompt, /让她自信一点/); assert.match(asked[0].prompt, /山田凉/);
+    assert.deepEqual(items.map(item => [item.status, item.by]), [['pending', '山田凉'], ['pending', '山田凉'], ['invalid', '山田凉']]);
+    assert.equal(ctx.chatMetadata.amin_os_card_profile_v1.profiles['b.png'].current.children[1].children[0].value, '很低', 'nothing is saved before applying');
+    const done = await service.applyEdits('b.png', items.slice(0, 2));
+    assert.deepEqual(done.map(item => item.names), [['性格', '自信'], ['性格']]);
+    assert.match(service.rendered('b.png'), /\*自信: 高了一点/); assert.match(service.rendered('b.png'), /\*口头禅: 我会努力的/);
+    assert.match(ctx.chatMetadata.amin_os_card_profile_v1.profiles['b.png'].history.at(-1).label, /^山田凉 改写面板/);
+});

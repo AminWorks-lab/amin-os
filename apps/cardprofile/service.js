@@ -2,12 +2,12 @@ import { KEY, emptyStore, validateStore, normalizeProfile, worldKey, noteKey, NO
 import { candidates, replaceInMessages, replaceInText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
 import { promptInjectors } from '../linkage/injectors.js';
-import { buildRules, extract, checkItem, applyItem, undoItem, messageKey, targetAvatar } from './proposals.js';
+import { buildRules, extract, checkItem, applyItem, undoItem, messageKey, targetAvatar, resolvePath } from './proposals.js';
 import { uuid } from '../../uuid.js';
 import { parseCard } from './format.js';
 import { worldbookChoices, freshWorldbook } from '../worldbook-sources.js';
 import { sha256HexSync } from '../tts/source-hash.js';
-import { generateNote as runNoteTask } from './generate.js';
+import { generateNote as runNoteTask, requestEdits } from './generate.js';
 
 const copy = value => structuredClone(value);
 export const hashDescription = text => 'sha256:' + sha256HexSync(String(text ?? ''));
@@ -125,6 +125,30 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     async function generateNote(options, { signal, ai } = {}) {
         const ctx = context();
         return runNoteTask(ctx, { ...options, characters: chatCharacters(ctx), worldbooks }, { signal, ai });
+    }
+    /** 让 AI 改: ask for edits to one copy. Returns checked items (nothing is saved yet).
+     *  The player decided who rewrites, so panel permissions are not applied here. */
+    async function askEdits(key, { request, by = '' } = {}, { signal, ai } = {}) {
+        const ctx = context(), value = profile(key, ctx);
+        const raws = await requestEdits(ctx, { profile: value, request, by }, { signal, ai });
+        return raws.map(raw => { const { by: _ignored, ...rest } = raw; const item = checkItem(value, rest, uuid(), { user: ctx.name1 ?? '' }); if (by) item.by = by; return item; });
+    }
+    /** Apply the accepted items in order; each failure is reported on the item and skipped. */
+    async function applyEdits(key, items) {
+        const done = [];
+        await write(`按要求修改：${items.length} 项`, store => {
+            let value = store.profiles[key];
+            if (!value) throw Error('这份资料已删除。');
+            for (const item of items) {
+                if (item.status !== 'pending') continue;
+                try {
+                    const path = resolvePath(value.current, item.path).path.map(step => step.key ?? step.value);
+                    value = applyItem(value, item); item.status = 'accepted'; done.push({ ...item, names: path });
+                } catch (error) { item.status = 'invalid'; item.error = error.message; }
+            }
+            store.profiles[key] = value;
+        });
+        return done;
     }
     /** Parse without saving, for the import preview. */
     function preview(avatar) {
@@ -295,7 +319,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         installed = true;
     }
     return {
-        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, createNote, generateNote, notesPrompt,
+        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, createNote, generateNote, notesPrompt, askEdits, applyEdits,
         hooks: { onChatPrompt, onTextPrompt }, rules, receive, proposalsFor,
         pending: () => { const ctx = context(); return read(ctx).proposals.filter(entry => entry.items.some(item => item.status === 'pending')); },
         accept: (entryId, itemIds) => decide(entryId, itemIds, true),

@@ -182,8 +182,9 @@ function describeOp(item) {
 }
 
 /** The line appended to the chat draft when the player rewrites a panel from the app. */
-export function storyLine({ by, target, path, before, after }) {
+export function storyLine({ by, target, path, before, after, op }) {
     const where = path.join('/');
+    if (op === 'remove') return `【面板改写】${by} 抹去了 ${target} 面板上的 ${where}`;
     return before === undefined ? `【面板改写】${by} 在 ${target} 的面板上写下：${where}：${after}`
         : `【面板改写】${by} 把 ${target} 面板上的 ${where} 从“${before}”改成了“${after}”`;
 }

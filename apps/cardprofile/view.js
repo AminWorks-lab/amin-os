@@ -13,7 +13,7 @@ export function mount(target, { service } = {}) {
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     page.append(intro, notice, body); target.append(page);
 
-    let avatar = '', layout = {}, draft = null, generating = null, worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
+    let avatar = '', layout = {}, asks = {}, draft = null, generating = null, worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
     const opened = new Set(), say = (text, state = '') => { notice.textContent = text; notice.dataset.state = state; };
     const button = (parent, text, fn, cls = '') => {
         const b = node('button', text, cls); b.type = 'button';
@@ -70,6 +70,65 @@ export function mount(target, { service } = {}) {
         for (const item of previewed.current.children) list.append(node('li', item.kind === 'group' ? item.key : (item.key ?? item.value)));
         intro.append(list);
         button(toolbar(intro), '确认导入', async () => { await api.importCard(entry.key); previewed = null; say('已导入，发送时将使用本聊天的副本。'); render(); }, 'amin-primary');
+    }
+
+    // 让 AI 改: describe a change, review the AI's items, apply the chosen ones (optionally as a story event).
+    function askPanel(entry) {
+        const state = asks[entry.key] ??= { request: '', by: '', story: true, items: null, running: null };
+        const panel = card('让 AI 改');
+        const askRow = node('label', '要怎么改', 'amin-field'), ask = node('textarea');
+        ask.rows = 2; ask.value = state.request; ask.placeholder = '例如：经过这次冒险，她对主角的态度变得亲近，相关的关系和性格条目都更新一下';
+        ask.oninput = () => { state.request = ask.value; };
+        askRow.append(ask); panel.append(askRow);
+        const byRow = node('label', '由谁改写', 'amin-field'), by = node('select');
+        for (const [value, text] of [['', '不指定（只是修改资料）'], ...actorNames(entry).map(name => [name, name])]) { const option = node('option', text); option.value = value; by.append(option); }
+        by.value = state.by; by.onchange = () => { state.by = by.value; render(); };
+        byRow.append(by); panel.append(byRow);
+        if (state.by) {
+            const storyRow = node('label', null, 'amin-check'), story = node('input'); story.type = 'checkbox'; story.checked = state.story;
+            story.onchange = () => { state.story = story.checked; };
+            storyRow.append(story, node('span', '采纳后把改写写入聊天输入框（不自动发送）')); panel.append(storyRow);
+        }
+        const actions = toolbar(panel);
+        if (state.running) button(actions, '取消', () => state.running.abort());
+        else button(actions, state.items ? '重新让 AI 改' : '让 AI 改', () => {
+            const run = state.running = new AbortController(); state.items = null; say('AI 正在修改…'); render();
+            api.askEdits(entry.key, { request: state.request, by: state.by }, { signal: run.signal })
+                .then(items => { state.items = items; say(items.some(item => item.status === 'pending') ? '检查下面的修改，采纳后才会写入。' : 'AI 给出的修改都无法应用，看看原因后重试。', items.some(item => item.status === 'pending') ? '' : 'error'); },
+                    error => say(run.signal.aborted ? '已取消。' : error.message, run.signal.aborted ? '' : 'error'))
+                .finally(() => { if (state.running === run) state.running = null; render(); });
+        }, 'amin-primary');
+        if (!state.items) return;
+        const list = node('ul', null, 'amin-cardprofile-proposals');
+        const chosen = new Set(state.items.filter(item => item.status === 'pending').map(item => item.id));
+        for (const item of state.items) {
+            const text = describe(item), li = node('li', null, 'amin-cardprofile-proposal');
+            li.dataset.status = item.status;
+            const head = node('label', null, 'amin-check');
+            if (item.status === 'pending') { const check = node('input'); check.type = 'checkbox'; check.checked = true; check.onchange = () => { if (check.checked) chosen.add(item.id); else chosen.delete(item.id); }; head.append(check); }
+            head.append(node('strong', text.title)); li.append(head);
+            if (text.before) li.append(node('div', `当前：${text.before}`, 'amin-cardprofile-proposal-before'));
+            if (text.after) li.append(node('div', `${item.op === 'set' ? '改为' : '内容'}：${text.after}`, 'amin-cardprofile-proposal-after'));
+            if (item.reason) li.append(node('div', `说明：${item.reason}`, 'amin-cardprofile-proposal-reason'));
+            if (item.status === 'invalid') li.append(node('div', `无法应用：${item.error}`, 'amin-turn-error'));
+            list.append(li);
+        }
+        panel.append(list);
+        const finish = toolbar(panel);
+        if (chosen.size) button(finish, '采纳勾选的修改', async () => {
+            const picked = state.items.filter(item => chosen.has(item.id));
+            if (!picked.length) { say('没有勾选任何修改。', 'error'); return; }
+            const done = await api.applyEdits(entry.key, picked);
+            let told = '';
+            if (state.by && state.story && done.length) {
+                const lines = done.map(item => storyLine({ by: state.by, target: entry.profile.current.name, path: item.op === 'add' ? [...item.names, item.key] : item.names, before: item.op === 'set' ? item.before : undefined, after: item.op === 'add' && item.items ? item.items.map(child => `${child.key}：${child.value}`).join('；') : item.value, op: item.op }));
+                told = appendStory(lines.join('\n')) ? '，改写已追加到聊天输入框' : `。聊天输入框不可用，可以手动发送：${lines.join(' ')}`;
+            }
+            const failed = picked.length - done.length;
+            state.items = null; state.request = '';
+            say(`已应用 ${done.length} 项${failed ? `，${failed} 项无法应用` : ''}${told}。`); render();
+        }, 'amin-primary');
+        button(finish, '放弃', () => { state.items = null; say(''); render(); });
     }
 
     // 世界资料 / 角色资料 created here: paste a template or let the AI draft one, check it, create.
@@ -182,6 +241,8 @@ export function mount(target, { service } = {}) {
             changes.length ? `与初始版本相比有 ${changes.length} 处改动` : '与初始版本相同',
             !profile.replace ? (entry.kind === 'note' ? '暂停发送' : '替换已暂停') : !result ? '本次打开后还没有发送过' : entry.kind === 'note' ? '最近一次发送已附上' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? '最近一次发送没找到条目原文，按世界书原样发送（条目没激活，或导入后被改过）' : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
         ].join(' · '), result && !result.matched && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
+
+        askPanel(entry);
 
         let pending = [];
         try { pending = api.pending().filter(item => item.avatar === entry.key); } catch {}
