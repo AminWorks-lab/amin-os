@@ -53,3 +53,10 @@ test('让 AI 改 returns checked items and applies the chosen ones with the chos
     assert.match(service.rendered('b.png'), /\*自信: 高了一点/); assert.match(service.rendered('b.png'), /\*口头禅: 我会努力的/);
     assert.match(ctx.chatMetadata.amin_os_card_profile_v1.profiles['b.png'].history.at(-1).label, /^山田凉 改写面板/);
 });
+
+test('a path that starts with the copy name still resolves', async () => {
+    const { resolvePath } = await import('../proposals.js');
+    const profile = make();
+    assert.equal(resolvePath(profile.current, '后藤一里/性格/自信').node.value, '很低');
+    assert.equal(checkItem(profile, { op: 'add', path: '后藤一里/性格', key: '口头禅', value: '我会努力的' }, 'x').status, 'pending');
+});

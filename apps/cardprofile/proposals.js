@@ -28,7 +28,7 @@ export function buildRules(profiles, { user = '' } = {}) {
     return [
         `【角色设定更新】设定资料（${names.join('、')}=[…]）是这些角色（或世界）的当前设定。只有当本轮剧情让设定发生了持续性的变化（关系、身份、外貌服装、装备、能力、偏好、性格成长、世界局势与规则等）时，才在回复最末尾另起一行输出一个 HTML 注释（不会显示给用户）：`,
         `<!--${TAG} [{"op":"set","path":"分区/分组/键","value":"新的完整内容","reason":"本轮剧情依据"}] -->`,
-        `op：set 修改已有条目；add 在 path 指向的分组下新增（必填 key 和 value，或用 "items":[{"key":"…","value":"…"}] 新增一个分组）；remove 删除条目。path 按角色描述里的键名逐层用 / 连接（同名键可写 键#2）。一次最多 ${MAX_ITEMS} 项。大多数回合没有变化，不要输出${who}。`,
+        `op：set 修改已有条目；add 在 path 指向的分组下新增（必填 key 和 value，或用 "items":[{"key":"…","value":"…"}] 新增一个分组）；remove 删除条目。path 按设定里的键名逐层用 / 连接，从分区开始写，不要带最外层的名字（同名键可写 键#2）。一次最多 ${MAX_ITEMS} 项。大多数回合没有变化，不要输出${who}。`,
         locked.length ? `以下分区不要提议修改：${locked.join('、')}。` : '',
         ...profiles.filter(profile => profile.panel?.on).map(profile => {
             const editors = panelEditors(profile, user);
@@ -56,6 +56,9 @@ export function extract(text) {
 /** Resolve "分区/分组/键#2" to a node; field/group keys only. Throws a readable error. */
 export function resolvePath(tree, path) {
     const parts = String(path ?? '').split(/\s*\/\s*/).map(segment).filter(Boolean);
+    // Models often start the path with the copy's own name ("伊地知虹夏/重要关系/…"): drop it
+    // unless a top-level section really has that name.
+    if (parts.length > 1 && segment(tree.name ?? '') === parts[0].replace(/#\d+$/, '') && !(tree.children ?? []).some(node => node.kind !== 'text' && segment(node.key) === parts[0])) parts.shift();
     if (!parts.length) throw Error('缺少路径。');
     let nodes = tree.children, hit = null, trail = [];
     for (const part of parts) {
