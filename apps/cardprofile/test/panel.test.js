@@ -60,3 +60,15 @@ test('a path that starts with the copy name still resolves', async () => {
     assert.equal(resolvePath(profile.current, '后藤一里/性格/自信').node.value, '很低');
     assert.equal(checkItem(profile, { op: 'add', path: '后藤一里/性格', key: '口头禅', value: '我会努力的' }, 'x').status, 'pending');
 });
+
+test('the rewrite manner goes into the rules and the story line', async () => {
+    const { panelManner } = await import('../proposals.js');
+    let profile = setOptions(make(), { panel: { on: true, editors: [{ name: USER_TOKEN, sections: [] }] } });
+    assert.equal(panelManner(profile), '', 'left to the story by default');
+    profile = setOptions(profile, { panel: { method: 'ability', methodText: '言灵', aware: 'unaware' } });
+    assert.equal(profile.panel.editors.length, 1, 'editors are kept');
+    assert.equal(panelManner(profile), '改写者使用能力「言灵」来改写；后藤一里 不会察觉，认为自己一直如此');
+    assert.match(buildRules([profile], { user: '阿明' }), /改写方式：改写者使用能力「言灵」/);
+    assert.match(storyLine({ by: '阿明', target: '后藤一里', path: ['性格', '自信'], before: '很低', after: '高', manner: panelManner(profile) }), /改成了“高”（改写者使用能力「言灵」来改写；/);
+    assert.throws(() => setOptions(profile, { panel: { method: 'magic' } }), /改写方式无效/);
+});

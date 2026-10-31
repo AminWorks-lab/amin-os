@@ -21,6 +21,14 @@ export function panelEditors(profile, user) {
     });
 }
 
+/** How rewrites of this panel happen in the story, as one sentence ('' when left to the story). */
+export function panelManner(profile) {
+    const panel = profile.panel ?? {}, text = panel.methodText?.trim(), name = profile.current.name;
+    const how = { panel: '改写者打开并操作这个面板来改写', ability: `改写者使用能力${text ? `「${text}」` : ''}来改写`, natural: '没有任何超自然现象，设定就这样自然地变成了新的样子', custom: text || '' }[panel.method] ?? '';
+    const aware = { aware: `${name} 会察觉到自己被改写`, unaware: `${name} 不会察觉，认为自己一直如此` }[panel.aware] ?? '';
+    return [how, aware].filter(Boolean).join('；');
+}
+
 export function buildRules(profiles, { user = '' } = {}) {
     const names = profiles.map(profile => profile.current.name);
     const locked = profiles.flatMap(profile => (profile.locked ?? []).map(id => locate(profile.current, id)).filter(Boolean).map(hit => pathLabel(hit.path).replace(/ \/ /g, '/')));
@@ -33,7 +41,7 @@ export function buildRules(profiles, { user = '' } = {}) {
         ...profiles.filter(profile => profile.panel?.on).map(profile => {
             const editors = panelEditors(profile, user);
             const kind = isWorldPanel(profile) ? '世界面板' : '角色面板';
-            return `【${kind}】${profile.current.name} 的设定是剧情中真实存在的${kind}，${editors.length ? `只有 ${editors.join('、')} 能在剧情里改写它` : '目前没有人能改写它'}。剧情里有人改写这个面板时，按改写内容输出上述注释，每项加 "by":"改写者名字"，改写后的设定会真实生效，下一轮按新面板演绎；没有权限的人改写不会生效。剧情自然发展带来的变化不加 by。`;
+            return `【${kind}】${profile.current.name} 的设定是剧情中真实存在的${kind}，${editors.length ? `只有 ${editors.join('、')} 能在剧情里改写它` : '目前没有人能改写它'}。剧情里有人改写这个面板时，按改写内容输出上述注释，每项加 "by":"改写者名字"，改写后的设定会真实生效，下一轮按新面板演绎；${panelManner(profile) ? `改写方式：${panelManner(profile)}；` : ''}没有权限的人改写不会生效。剧情自然发展带来的变化不加 by。`;
         }),
     ].filter(Boolean).join('\n');
 }
@@ -192,7 +200,11 @@ function describeOp(item) {
 }
 
 /** The line appended to the chat draft when the player rewrites a panel from the app. */
-export function storyLine({ by, target, path, before, after, op }) {
+export function storyLine({ by, target, path, before, after, op, manner = '' }) {
+    const line = storyText({ by, target, path, before, after, op });
+    return manner ? `${line}（${manner}）` : line;
+}
+function storyText({ by, target, path, before, after, op }) {
     const where = path.join('/');
     if (op === 'remove') return `【面板改写】${by} 抹去了 ${target} 面板上的 ${where}`;
     return before === undefined ? `【面板改写】${by} 在 ${target} 的面板上写下：${where}：${after}`

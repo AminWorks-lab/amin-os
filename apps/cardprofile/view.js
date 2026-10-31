@@ -1,6 +1,6 @@
 import { getSharedCardProfileService, chatCharacters } from './service.js';
-import { diffProfile, pathLabel, locate, DIFF_MODES, USER_TOKEN, NOTE_KINDS } from './model.js';
-import { describe, storyLine } from './proposals.js';
+import { diffProfile, pathLabel, locate, DIFF_MODES, USER_TOKEN, NOTE_KINDS, PANEL_METHODS, PANEL_AWARE } from './model.js';
+import { describe, storyLine, panelManner } from './proposals.js';
 import { contextLine } from '../shared/context-line.js';
 
 const node = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -121,7 +121,7 @@ export function mount(target, { service } = {}) {
             const done = await api.applyEdits(entry.key, picked);
             let told = '';
             if (state.by && state.story && done.length) {
-                const lines = done.map(item => storyLine({ by: state.by, target: entry.profile.current.name, path: item.op === 'add' ? [...item.names, item.key] : item.names, before: item.op === 'set' ? item.before : undefined, after: item.op === 'add' && item.items ? item.items.map(child => `${child.key}：${child.value}`).join('；') : item.value, op: item.op }));
+                const lines = done.map(item => storyLine({ by: state.by, target: entry.profile.current.name, path: item.op === 'add' ? [...item.names, item.key] : item.names, before: item.op === 'set' ? item.before : undefined, after: item.op === 'add' && item.items ? item.items.map(child => `${child.key}：${child.value}`).join('；') : item.value, op: item.op, manner: entry.profile.panel?.on ? panelManner(entry.profile) : '' }));
                 told = appendStory(lines.join('\n')) ? '，改写已追加到聊天输入框' : `。聊天输入框不可用，可以手动发送：${lines.join(' ')}`;
             }
             const failed = picked.length - done.length;
@@ -344,6 +344,26 @@ export function mount(target, { service } = {}) {
         parent.append(row);
         if (!panel.on) return;
         const box2 = node('div', null, 'amin-stack amin-cardprofile-editors');
+        // How rewrites happen in the story; written into the rules and the 【面板改写】 lines.
+        const manner = node('div', null, 'amin-cardprofile-settings');
+        const methodRow = node('label', '改写方式', 'amin-field'), method = node('select');
+        for (const [value, text] of Object.entries(PANEL_METHODS)) { const option = node('option', text); option.value = value; method.append(option); }
+        method.value = panel.method ?? 'story';
+        method.onchange = () => api.options(entry.key, { panel: { method: method.value } }).then(() => render(), error => say(error.message, 'error'));
+        const awareRow = node('label', '被改写的人', 'amin-field'), aware = node('select');
+        for (const [value, text] of Object.entries(PANEL_AWARE)) { const option = node('option', text); option.value = value; aware.append(option); }
+        aware.value = panel.aware ?? 'story';
+        aware.onchange = () => api.options(entry.key, { panel: { aware: aware.value } }).then(() => render(), error => say(error.message, 'error'));
+        methodRow.append(method); awareRow.append(aware); manner.append(methodRow, awareRow);
+        box2.append(manner);
+        if (['ability', 'custom'].includes(panel.method)) {
+            const textRow = node('label', panel.method === 'ability' ? '能力描述（例如：言灵——说出口的设定会成真）' : '改写方式（一句话，会原样告诉模型）', 'amin-field'), text = node('input');
+            text.value = panel.methodText ?? ''; text.maxLength = 300;
+            text.onchange = () => api.options(entry.key, { panel: { methodText: text.value } }).then(() => { say('已保存改写方式。'); render(); }, error => say(error.message, 'error'));
+            textRow.append(text); box2.append(textRow);
+        }
+        const sentence = panelManner(profile);
+        box2.append(node('p', sentence ? `告诉模型：${sentence}。` : '改写方式交给剧情决定，模型每次可能演得不一样。', 'amin-meta'));
         box2.append(node('p', '能改写面板的人（{{user}} 是你扮演的角色）。不选分区表示全部分区都能改。AI 写出的改写会标明是谁改的，没有权限的改写不生效。', 'amin-meta'));
         const sections = profile.current.children.filter(item => item.kind === 'group');
         const save = editors => api.options(entry.key, { panel: { on: true, editors } }).then(() => render(), error => say(error.message, 'error'));
@@ -493,7 +513,7 @@ export function mount(target, { service } = {}) {
             const after = value ? value.value.trim() : item.value, newKey = key ? key.value.trim() : item.key;
             await api.set(entry.key, item.id, { ...(key ? { key: key.value } : {}), ...(value ? { value: value.value } : {}), star: star.checked }, `${actor?.value || userName()} 改写面板：${path.join(' / ')}`);
             if (newKey && newKey !== item.key) path[path.length - 1] = newKey;
-            const line = storyLine({ by: actor?.value || userName(), target: entry.profile.current.name, path, before: item.kind === 'field' && item.value ? item.value : undefined, after });
+            const line = storyLine({ by: actor?.value || userName(), target: entry.profile.current.name, path, before: item.kind === 'field' && item.value ? item.value : undefined, after, manner: panelManner(entry.profile) });
             editing = null;
             say(appendStory(line) ? '已保存，并把这次改写追加到聊天输入框，检查后点发送。' : `已保存。聊天输入框当前不可用，可以手动发送：${line}`); render();
         });

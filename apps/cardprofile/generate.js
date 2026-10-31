@@ -88,8 +88,8 @@ export function parseEdits(text) {
     if (!items.length) throw Error('没有给出任何修改。');
     return items.filter(item => item && typeof item === 'object' && !Array.isArray(item)).slice(0, 20);
 }
-export async function requestEdits(ctx, { profile, request, by = '' }, { signal, ai } = {}) {
+export async function requestEdits(ctx, { profile, request, by = '', manner = '' }, { signal, ai } = {}) {
     if (!String(request ?? '').trim()) throw Error('先写下要怎么改。');
-    const payload = { 当前设定: writeCard(profile.current), 要求: String(request).trim(), ...(by ? { 改写者: by } : {}) };
+    const payload = { 当前设定: writeCard(profile.current), 要求: String(request).trim(), ...(by ? { 改写者: by } : {}), ...(manner ? { 改写方式: manner } : {}) };
     return runTask(EDIT_TASK, { ...(ai ? { ai } : {}), ctx, system: editSystemPrompt(), payload, parse: parseEdits, signal, channel: 'cardprofile', emptyMessage: 'AI 返回空内容，没有给出修改。' });
 }

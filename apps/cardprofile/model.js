@@ -58,9 +58,15 @@ export function validateProfile(profile) {
 // Character-panel play: the copy is a panel inside the story, and only the listed editors may
 // rewrite it (each optionally limited to some top-level sections). USER_TOKEN is the player.
 export const USER_TOKEN = '{{user}}';
-export const PANEL_LIMITS = Object.freeze({ editors: 20, sections: 200 });
+export const PANEL_LIMITS = Object.freeze({ editors: 20, sections: 200, method: 300 });
+// How a rewrite happens in the story, and whether the rewritten one notices. Unset = the story decides.
+export const PANEL_METHODS = Object.freeze({ story: '不指定（交给剧情）', panel: '打开面板操作', ability: '使用能力', natural: '自然变化（没有超自然现象）', custom: '自定义' });
+export const PANEL_AWARE = Object.freeze({ story: '不指定（交给剧情）', aware: '会察觉自己被改写', unaware: '不会察觉，以为自己一直如此' });
 function validatePanel(panel) {
     if (!object(panel) || typeof panel.on !== 'boolean' || !Array.isArray(panel.editors) || panel.editors.length > PANEL_LIMITS.editors) fail('角色面板设置无效。');
+    if (panel.method !== undefined && !Object.hasOwn(PANEL_METHODS, panel.method)) fail('面板改写方式无效。');
+    if (panel.methodText !== undefined && (typeof panel.methodText !== 'string' || panel.methodText.length > PANEL_LIMITS.method || panel.methodText.includes('\n'))) fail('面板改写方式的描述无效（不能换行，最多 300 字）。');
+    if (panel.aware !== undefined && !Object.hasOwn(PANEL_AWARE, panel.aware)) fail('面板“是否察觉”设置无效。');
     for (const editor of panel.editors) {
         if (!object(editor) || typeof editor.name !== 'string' || !editor.name.trim() || editor.name.length > LIMITS.key) fail('角色面板的改写者无效。');
         if (!Array.isArray(editor.sections) || editor.sections.length > PANEL_LIMITS.sections || editor.sections.some(id => typeof id !== 'string')) fail('角色面板的改写范围无效。');
@@ -184,7 +190,8 @@ export function setOptions(profile, { replace, diff, propose, proposeMode, lock,
     if (panel !== undefined) {
         const editors = (panel.editors ?? next.panel?.editors ?? []).map(editor => ({ name: String(editor.name ?? '').trim(), sections: [...new Set(editor.sections ?? [])].filter(id => next.current.children.some(node => node.id === id)) }));
         if (editors.some(editor => !editor.name)) fail('改写者需要名字。');
-        next.panel = { on: panel.on ?? next.panel?.on ?? false, editors };
+        const pick = (field, fallback) => panel[field] ?? next.panel?.[field] ?? fallback;
+        next.panel = { on: pick('on', false), editors, method: pick('method', 'story'), methodText: String(pick('methodText', '')).replace(/\s*\n\s*/g, ' ').trim().slice(0, PANEL_LIMITS.method), aware: pick('aware', 'story') };
     }
     if (propose !== undefined) next.propose = !!propose;
     if (proposeMode !== undefined) { if (!PROPOSE_MODES.includes(proposeMode)) fail('建议方式无效。'); next.proposeMode = proposeMode; }

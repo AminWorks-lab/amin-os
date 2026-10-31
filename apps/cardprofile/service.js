@@ -2,7 +2,7 @@ import { KEY, emptyStore, validateStore, normalizeProfile, worldKey, noteKey, NO
 import { candidates, replaceInMessages, replaceInText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
 import { promptInjectors } from '../linkage/injectors.js';
-import { buildRules, extract, checkItem, applyItem, undoItem, messageKey, targetAvatar, resolvePath } from './proposals.js';
+import { buildRules, extract, checkItem, applyItem, undoItem, messageKey, targetAvatar, resolvePath, panelManner } from './proposals.js';
 import { uuid } from '../../uuid.js';
 import { parseCard } from './format.js';
 import { worldbookChoices, freshWorldbook } from '../worldbook-sources.js';
@@ -130,7 +130,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
      *  The player decided who rewrites, so panel permissions are not applied here. */
     async function askEdits(key, { request, by = '' } = {}, { signal, ai } = {}) {
         const ctx = context(), value = profile(key, ctx);
-        const raws = await requestEdits(ctx, { profile: value, request, by }, { signal, ai });
+        const raws = await requestEdits(ctx, { profile: value, request, by, manner: by && value.panel?.on ? panelManner(value) : '' }, { signal, ai });
         return raws.map(raw => { const { by: _ignored, ...rest } = raw; const item = checkItem(value, rest, uuid(), { user: ctx.name1 ?? '' }); if (by) item.by = by; return item; });
     }
     /** Apply the accepted items in order; each failure is reported on the item and skipped. */
