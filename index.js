@@ -76,6 +76,7 @@ export function initialize() {
         dice:()=>import('./apps/dice/service.js').then(m=>m.getSharedDiceService()),
         worldbooks:()=>import('./apps/worldbooks/runtime.js').then(m=>m.getManager()),
         information:()=>import('./apps/information/service.js').then(m=>m.getSharedService()),
+        cardprofile:()=>import('./apps/cardprofile/service.js').then(m=>m.getSharedCardProfileService()),
         effects:()=>import('./apps/effects/service.js').then(m=>m.getSharedService()),
         organizations:()=>import('./apps/organizations/service.js').then(m=>m.getStore()),
         map:()=>import('./apps/map/index.js').then(m=>m.initialize({mount:shell.panes.map,onOpen:()=>shell.showApp('map')})),
@@ -107,7 +108,7 @@ export function initialize() {
     for(const id of ['characters','inventory','relationships','saves','dice','scene','journal','organizations','effects','information','worldbooks','tts'])installExtraFloorButtons(id);
     const ev=ctx.eventTypes??ctx.event_types??{};
     if(ev.CHAT_CHANGED)ctx.eventSource?.on(ev.CHAT_CHANGED,()=>queueMicrotask(()=>shell.refreshActive()));
-    globalThis.AminOS=Object.freeze({version:'0.20.1',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
+    globalThis.AminOS=Object.freeze({version:'0.21.0',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
     return shell;
 }
 

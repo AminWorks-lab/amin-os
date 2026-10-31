@@ -16,7 +16,7 @@ export const PATCH_ROOTS = Object.freeze([
     'amin_os_saves_v1', 'amin_os_scene_v1', 'amin_os_effects_v1', 'amin_os_dice_v1',
     'amin_os_journal_v1', 'amin_os_information_v1', 'amin_os_information_library_v1', 'dynamicMapV1',
     'world_status_hud_history_v1', 'amin_os_organizations_history_v1', 'dynamicMapPositionHistoryV1',
-    'amin_os_linkage_v1', 'amin_os_state2_v1', 'amin_os_state2_backup_v1', 'amin_os_state_v1', 'amin_os_imported_skills_v1', 'amin_os_legacy_source_v1',
+    'amin_os_linkage_v1', 'amin_os_state2_v1', 'amin_os_state2_backup_v1', 'amin_os_state_v1', 'amin_os_imported_skills_v1', 'amin_os_legacy_source_v1', 'amin_os_card_profile_v1',
 ]);
 const roots = new Set(PATCH_ROOTS), variableRoots = new Set(['状态栏', '势力资料', 'AminOS人物', 'AminOS背包', 'AminOS关系', 'AminOS场景', 'AminOS剧情', 'AminOS效果', 'AminOS地图', 'AminOS信息', 'AminOS骰子']);
 

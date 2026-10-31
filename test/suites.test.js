@@ -124,7 +124,7 @@ test('a version 3 layout migrates once; later member tiles and removals are kept
 
 test('the default home shows suite entries instead of their separate apps', () => {
     const targets = defaultTiles().map(t => t.target);
-    assert.equal(targets.length, 14);
+    assert.equal(targets.length, 15);
     for (const id of SUITE_IDS) assert.ok(targets.includes(id), id);
     for (const suite of SUITES) for (const member of suite.members) assert.ok(!targets.includes(member.id), member.id + ' is reached through ' + suite.name);
 });

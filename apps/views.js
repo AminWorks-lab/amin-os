@@ -11,6 +11,7 @@ export const views = {
     dice: lazyView(retry => import(/* view */ './dice/view.js' + retry), '骰子'),
     tts: lazyView(retry => import(/* view */ './tts/view.js' + retry), '语音朗读'),
     worldbooks: lazyView(retry => import(/* view */ './worldbooks/view.js' + retry), '世界书管理'),
+    cardprofile: lazyView(retry => import(/* view */ './cardprofile/view.js' + retry), '角色卡资料'),
     information: lazyView(retry => import(/* view */ './information/view.js' + retry), '信息面板'),
     effects: lazyView(retry => import(/* view */ './effects/view.js' + retry), '能力面板'),
     organizations: lazyView(retry => import(/* view */ './organizations/view.js' + retry), '势力概览'),

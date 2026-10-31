@@ -16,7 +16,7 @@ const tileDefaults=()=>[
  {id:'map',target:'map',label:'',size:'wide'},{id:'status',target:'status',label:'',size:'medium'},
  {id:'abilities',target:'abilities',label:'',size:'wide'},{id:'relationships',target:'relationships',label:'',size:'medium'},
  {id:'library',target:'library',label:'',size:'wide'},{id:'archive',target:'archive',label:'',size:'medium'},
- {id:'reply',target:'reply',label:'',size:'medium'},{id:'tts',target:'tts',label:'',size:'medium'},{id:'preferences',target:'preferences',label:'',size:'medium'},
+ {id:'reply',target:'reply',label:'',size:'medium'},{id:'tts',target:'tts',label:'',size:'medium'},{id:'cardprofile',target:'cardprofile',label:'',size:'medium'},{id:'preferences',target:'preferences',label:'',size:'medium'},
  {id:'linkage',target:'linkage',label:'',size:'slimWide'},
 ];
 // Home targets before 0.19.0, when every suite member had its own default tile.

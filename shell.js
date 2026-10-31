@@ -16,6 +16,7 @@ const APPS=[
     {id:'dice',name:'骰子',sub:'通用掷骰、D20 判定与 CoC 检定',icon:'⚄',color:'lavender'},
     {id:'tts',name:'语音朗读',sub:'东雪莲本地语音',icon:'▷',color:'mint'},
     {id:'worldbooks',name:'世界书管理',sub:'角色全局组合与条目开关',icon:'▥',color:'mint'},
+    {id:'cardprofile',name:'角色卡资料',sub:'角色设定副本、编辑与发送替换',icon:'✎',color:'peach'},
     {id:'information',name:'信息面板',sub:'检索资料与编辑人物、事物和世界',icon:'▤',color:'mint'},
     {id:'effects',name:'能力面板',sub:'世界书技能与当前生效记录',icon:'✧',color:'lavender'},
     {id:'map',name:'地图',sub:'记录地点，探索你的世界',icon:'⌘',color:'mint'},
@@ -36,7 +37,7 @@ const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className
 const ICON_ALIASES={archive:'saves',library:'worldbooks',abilities:'effects',preferences:'settings',story:'journal',floors:'status'};
 function icon(id){
     id=ICON_ALIASES[id]??id;
-    const paths={scene:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M12 7v5l3 2',journal:'M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5',tts:'M3 9h4l5-5v16l-5-5H3z M16 8q5 4 0 8 M19 4q9 8 0 16',worldbooks:'M3 4h7l2 2 2-2h7v16h-7l-2 2-2-2H3z M12 6v16',information:'M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5',effects:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3z',map:'M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2V5z M9 3v16 M15 5v16',status:'M4 5h16v14H4z M8 9h3 M8 13h8 M15 9h1',organizations:'M4 20V9h6v11 M14 20V4h6v16 M2 20h20 M6 12h2 M16 7h2 M16 11h2',reply:'M4 4h16v12H9l-5 4V4z M8 8h8 M8 12h5',stylewriter:'M12 19l7-7 3 3-7 7-3-3z M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z M2 2l7.6 7.6',ai:'M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M5.6 18.4l2.1-2.1 M16.3 7.7l2.1-2.1 M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8'};
+    const paths={scene:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M12 7v5l3 2',journal:'M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5',tts:'M3 9h4l5-5v16l-5-5H3z M16 8q5 4 0 8 M19 4q9 8 0 16',worldbooks:'M3 4h7l2 2 2-2h7v16h-7l-2 2-2-2H3z M12 6v16',information:'M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5',cardprofile:'M4 4h11l5 5v11H4z M15 4v5h5 M8 13h8 M8 17h5 M9 8a1.5 1.5 0 1 0 0.01 0',effects:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3z',map:'M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2V5z M9 3v16 M15 5v16',status:'M4 5h16v14H4z M8 9h3 M8 13h8 M15 9h1',organizations:'M4 20V9h6v11 M14 20V4h6v16 M2 20h20 M6 12h2 M16 7h2 M16 11h2',reply:'M4 4h16v12H9l-5 4V4z M8 8h8 M8 12h5',stylewriter:'M12 19l7-7 3 3-7 7-3-3z M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z M2 2l7.6 7.6',ai:'M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M5.6 18.4l2.1-2.1 M16.3 7.7l2.1-2.1 M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8'};
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
     for(const [key,value]of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.5','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))svg.setAttribute(key,value);
     if(id==='settings')paths.settings='M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6';

@@ -1,5 +1,5 @@
 const listeners=new Map();
-const events=Object.fromEntries(['GENERATION_AFTER_COMMANDS','GENERATION_STOPPED','APP_INITIALIZED','CHAT_CHANGED','MESSAGE_SENT','MESSAGE_RECEIVED','MESSAGE_DELETED','MESSAGE_SWIPED','MESSAGE_UPDATED','GENERATION_ENDED','CHARACTER_MESSAGE_RENDERED'].map(x=>[x,x]));
+const events=Object.fromEntries(['GENERATION_AFTER_COMMANDS','CHAT_COMPLETION_PROMPT_READY','GENERATE_AFTER_COMBINE_PROMPTS','GENERATION_STOPPED','APP_INITIALIZED','CHAT_CHANGED','MESSAGE_SENT','MESSAGE_RECEIVED','MESSAGE_DELETED','MESSAGE_SWIPED','MESSAGE_UPDATED','GENERATION_ENDED','CHARACTER_MESSAGE_RENDERED'].map(x=>[x,x]));
 const state=name=>JSON.stringify({版本:1,项目:{玩家:{姓名:name,生命:{当前:76,最大:100},金币:128,背包:['地图','恢复药剂']},世界:{地点:'星港 · 观测站',时间:'黄昏',天气:'微雨'}}});
 const contexts=['a','b'].map((id,i)=>({id,integrity:'amin-preview-'+id,variables:{状态栏:state(i?'另一位旅人':'旅人')}}));let active=0;
 const settings={dynamicMapNamespace:'amin-preview-only',world_status_hud_v1:{floorButtons:true}};

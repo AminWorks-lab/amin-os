@@ -1,0 +1,33 @@
+/* 角色卡资料: a collapsible tree of the card template. Colours only from --amin-* tokens. */
+.amin-cardprofile-settings { display: flex; flex-wrap: wrap; gap: var(--amin-gap); align-items: end; }
+.amin-cardprofile-settings .amin-field { min-width: 10em; }
+.amin-cardprofile-miss { color: var(--amin-warning); }
+.amin-cardprofile-search { flex: 1 1 12em; min-width: 0; }
+.amin-cardprofile-search input { width: 100%; }
+.amin-cardprofile-tree { display: grid; gap: 4px; }
+.amin-cardprofile-group { border: 1px solid var(--amin-line); border-radius: var(--amin-radius); background: var(--amin-card); }
+.amin-ui .amin-cardprofile-group > summary { cursor: pointer; padding: 4px 10px; margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-weight: 600; list-style: none; }
+.amin-ui .amin-cardprofile-group > summary::-webkit-details-marker { display: none; }
+.amin-ui .amin-cardprofile-group > summary::before { content: '▸'; color: var(--amin-muted); width: 1em; }
+.amin-ui .amin-cardprofile-group[open] > summary::before { content: '▾'; }
+.amin-cardprofile-children { display: grid; gap: 2px; padding: 0 6px 6px 14px; border-left: 2px solid var(--amin-line); margin-left: 10px; }
+.amin-cardprofile-children .amin-cardprofile-group { background: transparent; }
+.amin-cardprofile-leaf { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; padding: 5px 8px; border-radius: var(--amin-radius); cursor: pointer; line-height: 1.5; }
+.amin-cardprofile-leaf:hover, .amin-cardprofile-leaf:focus-visible { background: var(--amin-control); outline: none; }
+.amin-cardprofile-key { color: var(--amin-muted); white-space: nowrap; }
+.amin-cardprofile-leaf .amin-cardprofile-key::after { content: '：'; }
+.amin-cardprofile-value { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; color: var(--amin-text); }
+.amin-cardprofile-text { flex-basis: 100%; }
+.amin-cardprofile-before { flex-basis: 100%; color: var(--amin-muted); font-size: 0.9em; text-decoration: line-through; overflow-wrap: anywhere; }
+.amin-cardprofile-badge { font-size: 0.78em; font-weight: 600; padding: 0 6px; border-radius: 999px; background: var(--amin-accent); color: var(--amin-bg); white-space: nowrap; }
+.amin-cardprofile-badge-soft { background: transparent; color: var(--amin-accent); border: 1px solid var(--amin-accent); }
+.amin-cardprofile-tree mark { background: var(--amin-accent); color: var(--amin-bg); border-radius: 2px; }
+.amin-cardprofile-editor { padding: 8px; border: 1px solid var(--amin-accent); border-radius: var(--amin-radius); background: var(--amin-card); }
+.amin-cardprofile-editor textarea, .amin-cardprofile-editor input:not([type='checkbox']) { width: 100%; box-sizing: border-box; }
+.amin-cardprofile-removed { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.amin-cardprofile-removed span { overflow-wrap: anywhere; color: var(--amin-muted); }
+.amin-cardprofile-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; font-size: 0.9em; }
+.amin-cardprofile-history { margin: 0; padding-left: 1.4em; color: var(--amin-muted); max-height: 40vh; overflow: auto; }
+.amin-cardprofile-sections { margin: 0; padding-left: 1.4em; columns: 2; }
+@media (max-width: 520px) { .amin-cardprofile-sections { columns: 1; } .amin-cardprofile-children { padding-left: 8px; margin-left: 4px; } }
+.amin-ui .amin-cardprofile-group > summary .amin-cardprofile-mini { margin-left: auto; min-height: 0; padding: 1px 10px; font-size: 0.85em; font-weight: 400; }

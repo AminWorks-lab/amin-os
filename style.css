@@ -15,5 +15,6 @@
 @import url('./apps/scene/style.css');
 @import url('./apps/relationships/relationships.css');
 @import url('./apps/suites/suites.css');
+@import url('./apps/cardprofile/style.css');
 
 @import url('./desktop-effects.css');
