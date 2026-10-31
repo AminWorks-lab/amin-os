@@ -64,7 +64,14 @@ export function resolvePath(tree, path) {
     for (const part of parts) {
         const [, name, nth] = part.match(/^(.*?)(?:#(\d+))?$/);
         const matches = (nodes ?? []).filter(node => node.kind !== 'text' && segment(node.key) === name);
-        if (!matches.length) throw Error(`找不到“${[...trail.map(node => node.key), name].join('/')}”。`);
+        if (!matches.length) {
+            // Loose match: ignore spaces and full-width/half-width differences before giving up.
+            const loose = text => text.normalize('NFKC').replace(/\s+/g, '');
+            const near = (nodes ?? []).filter(node => node.kind !== 'text' && loose(segment(node.key)) === loose(name));
+            if (near.length === 1 && !nth) { hit = near[0]; trail.push(hit); nodes = hit.children; continue; }
+            const here = (nodes ?? []).filter(node => node.kind !== 'text').map(node => segment(node.key)).slice(0, 12);
+            throw Error(`找不到“${[...trail.map(node => node.key), name].join('/')}”${here.length ? `（这一层有：${here.join('、')}）` : '（上一层不是分组）'}。`);
+        }
         if (matches.length > 1 && !nth) throw Error(`“${name}”有 ${matches.length} 个同名条目，请写成 ${name}#2 这样的序号。`);
         hit = matches[(Number(nth) || 1) - 1];
         if (!hit) throw Error(`“${name}”没有第 ${nth} 个。`);
