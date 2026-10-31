@@ -353,24 +353,24 @@ export function mount(target, { service } = {}) {
         const methodRow = node('label', '改写方式', 'amin-field'), method = node('select');
         for (const [value, text] of Object.entries(PANEL_METHODS)) { const option = node('option', text); option.value = value; method.append(option); }
         method.value = panel.method ?? 'story';
-        method.onchange = () => api.options(entry.key, { panel: { method: method.value } }).then(() => render(), error => say(error.message, 'error'));
+        method.onchange = () => api.options(entry.key, { panel: { method: method.value } }).then(() => render(), error => { say(`没有保存：${error.message}`, 'error'); render(); });
         const awareRow = node('label', '被改写的人', 'amin-field'), aware = node('select');
         for (const [value, text] of Object.entries(PANEL_AWARE)) { const option = node('option', text); option.value = value; aware.append(option); }
         aware.value = panel.aware ?? 'story';
-        aware.onchange = () => api.options(entry.key, { panel: { aware: aware.value } }).then(() => render(), error => say(error.message, 'error'));
+        aware.onchange = () => api.options(entry.key, { panel: { aware: aware.value } }).then(() => render(), error => { say(`没有保存：${error.message}`, 'error'); render(); });
         methodRow.append(method); awareRow.append(aware); manner.append(methodRow, awareRow);
         box2.append(manner);
         if (['ability', 'custom'].includes(panel.method)) {
             const textRow = node('label', panel.method === 'ability' ? '能力描述（例如：言灵——说出口的设定会成真）' : '改写方式（一句话，会原样告诉模型）', 'amin-field'), text = node('input');
             text.value = panel.methodText ?? ''; text.maxLength = 300;
-            text.onchange = () => api.options(entry.key, { panel: { methodText: text.value } }).then(() => { say('已保存改写方式。'); render(); }, error => say(error.message, 'error'));
+            text.onchange = () => api.options(entry.key, { panel: { methodText: text.value } }).then(() => { say('已保存改写方式。'); render(); }, error => { say(`没有保存：${error.message}`, 'error'); render(); });
             textRow.append(text); box2.append(textRow);
         }
         const sentence = panelManner(profile);
         box2.append(node('p', sentence ? `告诉模型：${sentence}。` : '改写方式交给剧情决定，模型每次可能演得不一样。', 'amin-meta'));
         box2.append(node('p', '能改写面板的人（{{user}} 是你扮演的角色）。不选分区表示全部分区都能改。AI 写出的改写会标明是谁改的，没有权限的改写不生效。', 'amin-meta'));
         const sections = profile.current.children.filter(item => item.kind === 'group');
-        const save = editors => api.options(entry.key, { panel: { on: true, editors } }).then(() => render(), error => say(error.message, 'error'));
+        const save = editors => api.options(entry.key, { panel: { on: true, editors } }).then(() => render(), error => { say(`没有保存：${error.message}`, 'error'); render(); });
         const ctx = globalThis.SillyTavern?.getContext?.();
         const known = [...new Set([USER_TOKEN, ...chatCharacters(ctx).map(card => card.name).filter(Boolean), ...api.snapshot().filter(item => item.profile).map(item => item.profile.current.name)])];
         panel.editors.forEach((editor, index) => {

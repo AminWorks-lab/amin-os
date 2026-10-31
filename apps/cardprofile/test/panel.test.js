@@ -80,3 +80,16 @@ test('让 AI 改 defaults are remembered on the copy', () => {
     assert.deepEqual(profile.ask, { by: '山田凉', story: true });
     assert.equal(setOptions(profile, { panel: { on: true, editors: [] } }).ask.by, '山田凉');
 });
+
+test('settings changed while the previous one is still saving are all kept', async () => {
+    const { createCardProfileService } = await import('../service.js');
+    const ctx = { chatMetadata: {}, chat: [], getCurrentChatId: () => 'c1', characters: [{ avatar: 'b.png', name: '后藤一里', description: TEXT }], characterId: 0,
+        saveMetadata: () => new Promise(resolve => setTimeout(resolve, 30)) };
+    const service = createCardProfileService(() => ctx, { notice() {} });
+    await service.importCard('b.png');
+    await service.options('b.png', { panel: { on: true, editors: [{ name: USER_TOKEN, sections: [] }] } });
+    await Promise.all([service.options('b.png', { panel: { method: 'natural' } }), service.options('b.png', { panel: { aware: 'aware' } }), service.options('b.png', { ask: { by: '阿明' } })]);
+    const panel = ctx.chatMetadata.amin_os_card_profile_v1.profiles['b.png'].panel;
+    assert.equal(panel.method, 'natural'); assert.equal(panel.aware, 'aware');
+    assert.equal(ctx.chatMetadata.amin_os_card_profile_v1.profiles['b.png'].ask.by, '阿明');
+});

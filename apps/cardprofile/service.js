@@ -41,7 +41,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         store.proposals ??= [];
         return store;
     }
-    async function write(label, change) {
+    async function writeOnce(label, change) {
         const ctx = context(), store = read(ctx);
         change(store);
         validateStore(store);
@@ -49,6 +49,23 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         await operation.confirm();
         notify();
         return store;
+    }
+    // Writes run one at a time (a setting changed while the previous one is still saving used to
+    // fail with BUSY and silently stay unsaved), and wait briefly while another app is saving.
+    let queue = Promise.resolve();
+    function write(label, change) {
+        const run = queue.then(async () => {
+            for (let attempt = 0; ; attempt++) {
+                try { return await writeOnce(label, change); }
+                catch (error) {
+                    if (error?.code === 'DIRTY' && attempt === 0) { try { await operation.retrySave(); continue; } catch { throw Error('当前聊天有一次保存没有完成（可能是别的应用的操作），这次修改没有保存。请稍后重试，或刷新酒馆后再改。'); } }
+                    if (error?.code !== 'BUSY' || attempt >= 20) throw error;
+                    await new Promise(resolve => setTimeout(resolve, 250));
+                }
+            }
+        });
+        queue = run.catch(() => {});
+        return run;
     }
     function card(avatar, ctx = context()) {
         const found = chatCharacters(ctx).find(item => item.avatar === avatar);
