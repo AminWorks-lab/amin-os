@@ -1,4 +1,4 @@
-import { getSharedCardProfileService } from './service.js';
+import { getSharedCardProfileService, chatCharacters } from './service.js';
 import { diffProfile, pathLabel, locate, DIFF_MODES, USER_TOKEN, NOTE_KINDS } from './model.js';
 import { describe, storyLine } from './proposals.js';
 import { contextLine } from '../shared/context-line.js';
@@ -348,7 +348,7 @@ export function mount(target, { service } = {}) {
         const sections = profile.current.children.filter(item => item.kind === 'group');
         const save = editors => api.options(entry.key, { panel: { on: true, editors } }).then(() => render(), error => say(error.message, 'error'));
         const ctx = globalThis.SillyTavern?.getContext?.();
-        const known = [...new Set([USER_TOKEN, ...(ctx?.characters ?? []).map(card => card.name).filter(Boolean), ...api.snapshot().filter(item => item.profile).map(item => item.profile.current.name)])];
+        const known = [...new Set([USER_TOKEN, ...chatCharacters(ctx).map(card => card.name).filter(Boolean), ...api.snapshot().filter(item => item.profile).map(item => item.profile.current.name)])];
         panel.editors.forEach((editor, index) => {
             const line = node('div', null, 'amin-cardprofile-editor-row');
             const name = node('input'); name.value = editor.name; name.setAttribute('aria-label', '改写者名字'); name.setAttribute('list', 'amin-cardprofile-names');
@@ -408,7 +408,7 @@ export function mount(target, { service } = {}) {
         const user = userName(), names = (entry.profile.panel?.editors ?? []).map(editor => editor.name === USER_TOKEN ? user : editor.name);
         const ctx = globalThis.SillyTavern?.getContext?.();
         for (const item of api.snapshot()) if (item.profile) names.push(item.profile.current.name);
-        for (const card of ctx?.characters ?? []) if (card?.name) names.push(card.name);
+        for (const card of chatCharacters(ctx)) if (card?.name) names.push(card.name);
         return [...new Set([user, ...names])].filter(name => name && name !== entry.profile.current.name).concat(entry.profile.current.name);
     }
     function appendStory(text) {
