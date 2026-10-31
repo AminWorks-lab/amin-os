@@ -13,7 +13,7 @@ export function mount(target, { service } = {}) {
     notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     page.append(intro, notice, body); target.append(page);
 
-    let avatar = '', query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
+    let avatar = '', worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
     const opened = new Set(), say = (text, state = '') => { notice.textContent = text; notice.dataset.state = state; };
     const button = (parent, text, fn, cls = '') => {
         const b = node('button', text, cls); b.type = 'button';
@@ -41,25 +41,25 @@ export function mount(target, { service } = {}) {
         try { entries = api.snapshot(); intro.textContent = contextLine(globalThis.SillyTavern?.getContext?.(), '本聊天的角色设定副本'); }
         catch (error) { intro.textContent = '角色卡资料'; body.append(node('p', error.message, 'amin-empty')); return; }
         if (!entries.length) { body.append(node('p', '当前聊天没有角色卡。打开一个角色或群聊后再使用。', 'amin-empty')); return; }
-        if (!entries.some(entry => entry.avatar === avatar)) avatar = (entries.find(entry => entry.profile) ?? entries[0]).avatar;
+        if (!entries.some(entry => entry.key === avatar)) avatar = (entries.find(entry => entry.profile) ?? entries[0]).key;
         if (entries.length > 1) {
             const row = node('label', '角色', 'amin-field'), select = node('select');
-            for (const entry of entries) { const option = node('option', entry.name + (entry.profile ? '' : '（未导入）')); option.value = entry.avatar; select.append(option); }
+            for (const entry of entries) { const option = node('option', entry.name + (entry.kind === 'world' ? `（世界书：${entry.book}）` : entry.profile ? '' : '（未导入）')); option.value = entry.key; select.append(option); }
             select.value = avatar; select.onchange = () => { avatar = select.value; editing = null; previewed = null; render(); };
             row.append(select); body.append(row);
         }
-        const entry = entries.find(item => item.avatar === avatar);
-        if (!entry.profile) return importPage(entry);
-        profilePage(entry);
+        const entry = entries.find(item => item.key === avatar);
+        if (!entry.profile) importPage(entry); else profilePage(entry);
+        worldPanel();
         if (focusSearch) { const input = body.querySelector('[data-cardprofile-search="1"]'); input?.focus(); if (input && Number.isInteger(caret)) input.setSelectionRange(caret, caret); }
     }
 
     function importPage(entry) {
         const intro = card(entry.name);
-        intro.append(node('p', '把角色卡描述里“名字=[ 分区:[ *键: 值 ] ]”格式的设定导入为本聊天的副本。角色卡本身不会被修改；导入后，发送时会用副本的当前版本替换角色描述。', 'amin-meta'));
+        intro.append(node('p', '把角色卡描述里“名字=[ 分区:[ *键: 值 ] ]”格式的设定导入为本聊天的副本。角色卡本身不会被修改；导入后，发送时会用副本的当前版本替换角色描述。多人卡的角色设定在世界书里时，用下面的“从世界书导入”。', 'amin-meta'));
         if (!entry.description.trim()) { intro.append(node('p', '这张卡的描述为空。', 'amin-empty')); return; }
         const actions = toolbar(intro);
-        button(actions, '预览导入', () => { previewed = api.preview(entry.avatar); say(''); render(); }, previewed ? '' : 'amin-primary');
+        button(actions, '预览导入', () => { previewed = api.preview(entry.key); say(''); render(); }, previewed ? '' : 'amin-primary');
         if (!previewed) return;
         let groups = 0, fields = 0;
         const count = nodes => { for (const item of nodes) { if (item.kind === 'group') { groups++; count(item.children); } else fields++; } };
@@ -68,7 +68,35 @@ export function mount(target, { service } = {}) {
         const list = node('ul', null, 'amin-cardprofile-sections');
         for (const item of previewed.current.children) list.append(node('li', item.kind === 'group' ? item.key : (item.key ?? item.value)));
         intro.append(list);
-        button(toolbar(intro), '确认导入', async () => { await api.importCard(entry.avatar); previewed = null; say('已导入，发送时将使用本聊天的副本。'); render(); }, 'amin-primary');
+        button(toolbar(intro), '确认导入', async () => { await api.importCard(entry.key); previewed = null; say('已导入，发送时将使用本聊天的副本。'); render(); }, 'amin-primary');
+    }
+
+    // Multi-character cards keep each character in a world-info entry: one copy per entry,
+    // swapped in for the entry's text when it is sent. The entries themselves stay as they are.
+    function worldPanel() {
+        const panel = card('从世界书导入（多人卡）');
+        panel.append(node('p', '多人卡把每个角色的设定放在世界书条目里时，在这里勾选条目，每个条目各生成一份副本。世界书本身不改、条目保持启用；发送时在发送内容里找到条目原文，换成副本的当前版本。', 'amin-meta'));
+        button(toolbar(panel), worlds ? '重新读取' : '读取世界书条目', async () => { worlds = await api.worldCandidates(); picks = new Set(); say(''); render(); }, worlds ? '' : 'amin-primary');
+        if (!worlds) return;
+        for (const text of worlds.failed) panel.append(node('p', `读取失败：${text}`, 'amin-meta amin-cardprofile-miss'));
+        if (!worlds.entries.length) { panel.append(node('p', '本聊天用到的世界书里没有“名字=[ … ]”格式的条目。', 'amin-empty')); return; }
+        const list = node('div', null, 'amin-stack amin-cardprofile-world');
+        for (const item of worlds.entries) {
+            const id = `${item.book}#${item.uid}`, row = node('label', null, 'amin-check'), box = node('input');
+            box.type = 'checkbox'; box.disabled = item.imported; box.checked = item.imported || picks.has(id);
+            box.onchange = () => { if (box.checked) picks.add(id); else picks.delete(id); };
+            const notes = [item.imported && '已导入', item.disabled && '条目未启用', !item.constant && !item.disabled && '非常驻：只在被触发的回合替换'].filter(Boolean);
+            row.append(box, node('span', `${item.title || item.name}（${item.book}）${notes.length ? ' · ' + notes.join(' · ') : ''}`));
+            list.append(row);
+        }
+        panel.append(list);
+        button(toolbar(panel), '导入选中条目', async () => {
+            const chosen = worlds.entries.filter(item => !item.imported && picks.has(`${item.book}#${item.uid}`));
+            if (!chosen.length) { say('先勾选要导入的条目。', 'error'); return; }
+            const keys = await api.importWorld(chosen);
+            worlds = null; picks = new Set(); avatar = keys[0] ?? avatar;
+            say(`已导入 ${keys.length} 个条目，可以在上面的“角色”里切换。`); render();
+        }, 'amin-primary');
     }
 
     function profilePage(entry) {
@@ -82,10 +110,10 @@ export function mount(target, { service } = {}) {
             warn.dataset.state = 'warning';
             warn.append(node('p', '角色卡的描述在导入后被改过。当前仍按本聊天的副本发送；可以保留副本，或按新卡重新导入（副本里的改动会丢失）。', 'amin-meta'));
             const actions = toolbar(warn);
-            button(actions, '保留当前副本', async () => { await api.keepCopy(entry.avatar); say('已保留副本。'); render(); });
+            button(actions, '保留当前副本', async () => { await api.keepCopy(entry.key); say('已保留副本。'); render(); });
             button(actions, '按新卡重新导入', async () => {
                 if (!globalThis.confirm?.('按新卡重新导入会丢弃本聊天副本里的全部改动，确定吗？')) return;
-                await api.reimport(entry.avatar); say('已按新卡重新导入。'); render();
+                await api.reimport(entry.key); say('已按新卡重新导入。'); render();
             }, 'amin-danger');
         }
 
@@ -93,18 +121,18 @@ export function mount(target, { service } = {}) {
         const top = node('div', null, 'amin-cardprofile-settings');
         const replace = node('label', null, 'amin-check'), box = node('input');
         box.type = 'checkbox'; box.checked = profile.replace;
-        box.onchange = async () => { try { await api.options(entry.avatar, { replace: box.checked }); say(box.checked ? '发送时将替换角色描述。' : '已暂停替换，发送原角色卡描述。'); } catch (error) { say(error.message, 'error'); } render(); };
-        replace.append(box, node('span', '发送时用副本替换角色描述'));
+        box.onchange = async () => { try { await api.options(entry.key, { replace: box.checked }); say(box.checked ? '发送时将用副本替换。' : entry.kind === 'world' ? '已暂停替换，发送世界书原文。' : '已暂停替换，发送原角色卡描述。'); } catch (error) { say(error.message, 'error'); } render(); };
+        replace.append(box, node('span', entry.kind === 'world' ? '发送时用副本替换世界书条目原文' : '发送时用副本替换角色描述'));
         const modeRow = node('label', '对照', 'amin-field'), mode = node('select');
         for (const value of DIFF_MODES) { const option = node('option', DIFF_LABELS[value]); option.value = value; mode.append(option); }
         mode.value = profile.diff;
-        mode.onchange = async () => { try { await api.options(entry.avatar, { diff: mode.value }); } catch (error) { say(error.message, 'error'); } render(); };
+        mode.onchange = async () => { try { await api.options(entry.key, { diff: mode.value }); } catch (error) { say(error.message, 'error'); } render(); };
         const propose = node('label', 'AI 按剧情修改', 'amin-field'), proposeMode = node('select');
         for (const [value, text] of [['off', '关闭'], ['review', '先审核（在回复下采纳）'], ['auto', '自动应用（可在回复下撤销）']]) { const option = node('option', text); option.value = value; proposeMode.append(option); }
         proposeMode.value = profile.propose ? profile.proposeMode : 'off';
         proposeMode.onchange = async () => {
             const value = proposeMode.value;
-            try { await api.options(entry.avatar, value === 'off' ? { propose: false } : { propose: true, proposeMode: value }); say({ off: '已关闭 AI 修改。', review: 'AI 的修改建议会显示在对应回复下面，采纳后才生效。', auto: 'AI 的修改会自动应用，在对应回复下面可以逐条撤销。' }[value]); }
+            try { await api.options(entry.key, value === 'off' ? { propose: false } : { propose: true, proposeMode: value }); say({ off: '已关闭 AI 修改。', review: 'AI 的修改建议会显示在对应回复下面，采纳后才生效。', auto: 'AI 的修改会自动应用，在对应回复下面可以逐条撤销。' }[value]); }
             catch (error) { say(error.message, 'error'); }
             render();
         };
@@ -113,11 +141,11 @@ export function mount(target, { service } = {}) {
         const result = entry.result;
         settings.append(node('p', [
             changes.length ? `与初始版本相比有 ${changes.length} 处改动` : '与初始版本相同',
-            !profile.replace ? '替换已暂停' : !result ? '本次打开后还没有发送过' : result.matched ? '最近一次发送已替换' : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
+            !profile.replace ? '替换已暂停' : !result ? '本次打开后还没有发送过' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? '最近一次发送没找到条目原文，按世界书原样发送（条目没激活，或导入后被改过）' : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
         ].join(' · '), result && !result.matched && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
 
         let pending = [];
-        try { pending = api.pending().filter(item => item.avatar === entry.avatar); } catch {}
+        try { pending = api.pending().filter(item => item.avatar === entry.key); } catch {}
         const count = pending.reduce((sum, item) => sum + item.items.filter(value => value.status === 'pending').length, 0);
         if (count) {
             const box = card(`待审核的 AI 建议 · ${count}`);
@@ -168,7 +196,7 @@ export function mount(target, { service } = {}) {
         };
         if (!draw(profile.current.children, tree, null)) tree.append(node('p', q ? '没有匹配的条目。' : onlyChanged ? '还没有改动。' : '副本是空的。', 'amin-empty'));
         body.append(tree);
-        button(toolbar(body), '新增分区', async () => { const id = await api.add(entry.avatar, null, { kind: 'group', key: '新分区', star: false }); opened.add(id); editing = id; render(); });
+        button(toolbar(body), '新增分区', async () => { const id = await api.add(entry.key, null, { kind: 'group', key: '新分区', star: false }); opened.add(id); editing = id; render(); });
 
         const removed = changes.filter(change => change.type === 'removed');
         if (removed.length) {
@@ -176,27 +204,27 @@ export function mount(target, { service } = {}) {
             for (const change of removed) {
                 const row = node('div', null, 'amin-cardprofile-removed');
                 row.append(node('span', pathLabel(change.path)));
-                button(row, '恢复', async () => { await api.restore(entry.avatar, change.id); render(); });
+                button(row, '恢复', async () => { await api.restore(entry.key, change.id); render(); });
                 lost.append(row);
             }
         }
 
         const extra = card(null);
         const preview = node('details'); preview.append(node('summary', '预览发送内容'));
-        preview.ontoggle = () => { if (preview.open && preview.childElementCount === 1) { const pre = node('pre', api.rendered(entry.avatar), 'amin-cardprofile-preview'); preview.append(pre); } };
+        preview.ontoggle = () => { if (preview.open && preview.childElementCount === 1) { const pre = node('pre', api.rendered(entry.key), 'amin-cardprofile-preview'); preview.append(pre); } };
         const history = node('details'); history.append(node('summary', `修改记录 · ${profile.history.length}`));
         const log = node('ol', null, 'amin-cardprofile-history');
         for (const item of [...profile.history].reverse().slice(0, 100)) log.append(node('li', `${new Date(item.at).toLocaleString()} · ${item.label}`));
         history.append(log);
         extra.append(preview, history);
         const danger = toolbar(extra);
-        button(danger, '全部恢复为初始版本', async () => { if (!globalThis.confirm?.('把这个角色的副本全部恢复为导入时的版本吗？')) return; await api.reset(entry.avatar); render(); });
-        button(danger, '删除副本', async () => { if (!globalThis.confirm?.('删除后恢复为直接发送原角色卡描述，副本和修改记录都会删除。确定吗？')) return; await api.remove(entry.avatar); render(); }, 'amin-danger');
+        button(danger, '全部恢复为初始版本', async () => { if (!globalThis.confirm?.('把这个角色的副本全部恢复为导入时的版本吗？')) return; await api.reset(entry.key); render(); });
+        button(danger, '删除副本', async () => { if (!globalThis.confirm?.(entry.kind === 'world' ? '删除后恢复为直接发送世界书条目原文，副本和修改记录都会删除。确定吗？' : '删除后恢复为直接发送原角色卡描述，副本和修改记录都会删除。确定吗？')) return; await api.remove(entry.key); render(); }, 'amin-danger');
     }
 
     function moveButtons(parent, entry, item, total, index) {
-        if (index > 0) button(parent, '上移', async () => { await api.move(entry.avatar, item.id, -1); render(); });
-        if (index < total - 1) button(parent, '下移', async () => { await api.move(entry.avatar, item.id, 1); render(); });
+        if (index > 0) button(parent, '上移', async () => { await api.move(entry.key, item.id, -1); render(); });
+        if (index < total - 1) button(parent, '下移', async () => { await api.move(entry.key, item.id, 1); render(); });
     }
     const badge = (change, inside) => change ? node('span', change.type === 'added' ? '新增' : '已改', 'amin-cardprofile-badge') : inside ? node('span', '内有改动', 'amin-cardprofile-badge amin-cardprofile-badge-soft') : null;
 
@@ -247,25 +275,25 @@ export function mount(target, { service } = {}) {
         const starRow = node('label', null, 'amin-check'), star = node('input'); star.type = 'checkbox'; star.checked = item.star; starRow.append(star, node('span', '带 * 号')); box.append(starRow);
         if (item.kind === 'group') {
             const lockRow = node('label', null, 'amin-check'), lock = node('input'); lock.type = 'checkbox'; lock.checked = (entry.profile.locked ?? []).includes(item.id);
-            lock.onchange = async () => { try { await api.options(entry.avatar, { lock: { id: item.id, on: lock.checked } }); say(lock.checked ? `已锁定“${item.key}”，AI 不会提议修改。` : `已解除锁定“${item.key}”。`); } catch (error) { say(error.message, 'error'); lock.checked = !lock.checked; } };
+            lock.onchange = async () => { try { await api.options(entry.key, { lock: { id: item.id, on: lock.checked } }); say(lock.checked ? `已锁定“${item.key}”，AI 不会提议修改。` : `已解除锁定“${item.key}”。`); } catch (error) { say(error.message, 'error'); lock.checked = !lock.checked; } };
             lockRow.append(lock, node('span', '锁定：AI 不提议修改这个分组')); box.append(lockRow);
         }
         if (change?.type === 'changed' && change.before.kind !== 'group') box.append(node('p', `初始：${change.before.key ? change.before.key + '：' : ''}${change.before.value}`, 'amin-meta'));
         const actions = toolbar(box);
         const save = button(actions, '保存', async () => {
-            await api.set(entry.avatar, item.id, { ...(key ? { key: key.value } : {}), ...(value ? { value: value.value } : {}), star: star.checked });
+            await api.set(entry.key, item.id, { ...(key ? { key: key.value } : {}), ...(value ? { value: value.value } : {}), star: star.checked });
             editing = null; say('已保存。'); render();
         }, 'amin-primary');
         button(actions, '取消', () => { editing = null; render(); });
         if (item.kind === 'group') {
-            button(actions, '新增条目', async () => { const id = await api.add(entry.avatar, item.id, { kind: 'field', key: '新条目', star: true }); opened.add(item.id); editing = id; render(); });
-            button(actions, '新增分组', async () => { const id = await api.add(entry.avatar, item.id, { kind: 'group', key: '新分组', star: true }); opened.add(item.id); opened.add(id); editing = id; render(); });
+            button(actions, '新增条目', async () => { const id = await api.add(entry.key, item.id, { kind: 'field', key: '新条目', star: true }); opened.add(item.id); editing = id; render(); });
+            button(actions, '新增分组', async () => { const id = await api.add(entry.key, item.id, { kind: 'group', key: '新分组', star: true }); opened.add(item.id); opened.add(id); editing = id; render(); });
         }
         moveButtons(actions, entry, item, total, index);
-        if (change?.type !== 'added') button(actions, '恢复初始', async () => { await api.restore(entry.avatar, item.id); editing = null; render(); });
+        if (change?.type !== 'added') button(actions, '恢复初始', async () => { await api.restore(entry.key, item.id); editing = null; render(); });
         button(actions, '删除', async () => {
             if (item.kind === 'group' && item.children.length && !globalThis.confirm?.(`删除“${item.key}”及其中 ${item.children.length} 项吗？`)) return;
-            await api.removeNode(entry.avatar, item.id); editing = null; render();
+            await api.removeNode(entry.key, item.id); editing = null; render();
         }, 'amin-danger');
         queueMicrotask(() => (value ?? key)?.focus());
         return box;

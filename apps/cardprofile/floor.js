@@ -17,7 +17,7 @@ export function renderProposalRow(row, entries, { document = row.ownerDocument, 
     const auto = items.filter(({ item }) => item.auto && item.status === 'accepted');
     details.open = state.open ?? pending.length > 0;
     details.addEventListener('toggle', () => { state.open = details.open; });
-    const who = [...new Set(entries.map(entry => names[entry.avatar]).filter(Boolean))].join('、');
+    const who = [...new Set(entries.map(entry => entry.name ?? names[entry.avatar]).filter(Boolean))].join('、');
     details.append(make('summary', `角色设定${pending.length ? '建议' : '更新'}${who ? ` · ${who}` : ''} · ${pending.length ? `${pending.length} 条待定` : auto.length ? `已自动应用 ${auto.length} 条` : '已处理'}`));
     const list = make('ul', '', 'amin-turn-items amin-cardprofile-proposals');
     for (const { entry, item } of items) {

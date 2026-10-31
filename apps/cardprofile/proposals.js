@@ -16,9 +16,9 @@ const segment = text => clean(text).replace(/^\*+\s*/, '').replace(/\s*[:：]\s*
 export function buildRules(profiles) {
     const names = profiles.map(profile => profile.current.name);
     const locked = profiles.flatMap(profile => (profile.locked ?? []).map(id => locate(profile.current, id)).filter(Boolean).map(hit => pathLabel(hit.path).replace(/ \/ /g, '/')));
-    const who = names.length > 1 ? `（群聊：每项加 "char":"角色名"，可选 ${names.join('、')}）` : '';
+    const who = names.length > 1 ? `（有多个角色：每项必须加 "char":"角色名"，可选 ${names.join('、')}）` : '';
     return [
-        `【角色设定更新】角色描述（${names.join('、')}=[…]）是该角色的当前设定。只有当本轮剧情让设定发生了持续性的变化（关系、身份、外貌服装、装备、能力、偏好、性格成长等）时，才在回复最末尾另起一行输出一个 HTML 注释（不会显示给用户）：`,
+        `【角色设定更新】设定资料（${names.join('、')}=[…]）是这些角色的当前设定。只有当本轮剧情让设定发生了持续性的变化（关系、身份、外貌服装、装备、能力、偏好、性格成长等）时，才在回复最末尾另起一行输出一个 HTML 注释（不会显示给用户）：`,
         `<!--${TAG} [{"op":"set","path":"分区/分组/键","value":"新的完整内容","reason":"本轮剧情依据"}] -->`,
         `op：set 修改已有条目；add 在 path 指向的分组下新增（必填 key 和 value，或用 "items":[{"key":"…","value":"…"}] 新增一个分组）；remove 删除条目。path 按角色描述里的键名逐层用 / 连接（同名键可写 键#2）。一次最多 ${MAX_ITEMS} 项。大多数回合没有变化，不要输出${who}。`,
         locked.length ? `以下分区不要提议修改：${locked.join('、')}。` : '',
@@ -132,15 +132,18 @@ export function messageKey(message, index) {
     return [index, swipe, message?.send_date ?? message?.swipe_info?.[swipe]?.send_date ?? ''].join('|');
 }
 
-/** Which copy a reply belongs to: the explicit char name, the group speaker, or the only copy. */
+/** Which copy a reply belongs to (returns its store key): the explicit char name, the group
+ *  speaker's own card, or the only copy. Multi-character world-info copies need the char name. */
 export function targetAvatar(item, message, profiles) {
+    const key = profile => profile.key ?? profile.avatar;
     const named = clean(item.char);
-    if (named) { const hit = profiles.find(profile => profile.current.name === named || profile.cardName === named); if (hit) return hit.avatar; }
+    if (named) { const hit = profiles.find(profile => profile.current.name === named) ?? profiles.find(profile => profile.cardName === named && profile.source?.type !== 'world'); if (hit) return key(hit); }
+    const cards = profiles.filter(profile => profile.source?.type !== 'world');
     const speaker = message?.original_avatar ?? null;
-    if (speaker && profiles.some(profile => profile.avatar === speaker)) return speaker;
-    const byName = profiles.find(profile => profile.cardName && profile.cardName === message?.name);
-    if (byName) return byName.avatar;
-    return profiles.length === 1 ? profiles[0].avatar : null;
+    if (speaker) { const hit = cards.find(profile => profile.avatar === speaker); if (hit) return key(hit); }
+    const byName = cards.find(profile => profile.cardName && profile.cardName === message?.name);
+    if (byName && profiles.length === cards.length) return key(byName);
+    return profiles.length === 1 ? key(profiles[0]) : null;
 }
 
 export function describe(item) {

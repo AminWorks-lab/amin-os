@@ -10,6 +10,9 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 const fail = message => { throw Object.assign(Error(message), { code: 'CARD_PROFILE_INVALID' }); };
 
 export const emptyStore = () => ({ version: 1, profiles: {} });
+/** Store key: the card avatar for a card description, `wi:书名#uid` for a world-info entry. */
+export const worldKey = (book, uid) => `wi:${book}#${uid}`;
+export const profileKey = profile => profile.source?.type === 'world' ? worldKey(profile.source.book, profile.source.uid) : profile.avatar;
 
 export function validateNode(node, ids) {
     if (!object(node) || typeof node.id !== 'string' || !node.id || ids.has(node.id)) fail('角色资料条目编号无效或重复。');
@@ -32,6 +35,10 @@ export function validateProfile(profile) {
     if (!object(profile) || typeof profile.avatar !== 'string' || !profile.avatar || typeof profile.cardName !== 'string') fail('角色资料来源无效。');
     if (typeof profile.sourceHash !== 'string' || typeof profile.importedAt !== 'string' || !Number.isInteger(profile.nextId) || profile.nextId < 1) fail('角色资料来源无效。');
     if (typeof profile.replace !== 'boolean' || !DIFF_MODES.includes(profile.diff)) fail('角色资料发送设置无效。');
+    if (profile.source !== undefined) {
+        const source = profile.source;
+        if (!object(source) || source.type !== 'world' || typeof source.book !== 'string' || !source.book || !['string', 'number'].includes(typeof source.uid) || typeof source.title !== 'string' || typeof source.text !== 'string' || source.text.length > 400000) fail('角色资料的世界书来源无效。');
+    }
     if (profile.propose !== undefined && typeof profile.propose !== 'boolean') fail('角色资料建议开关无效。');
     if (profile.proposeMode !== undefined && !PROPOSE_MODES.includes(profile.proposeMode)) fail('角色资料建议方式无效。');
     if (profile.locked !== undefined && (!Array.isArray(profile.locked) || profile.locked.length > 1000 || profile.locked.some(id => typeof id !== 'string'))) fail('角色资料锁定分区无效。');
@@ -58,15 +65,15 @@ export function validateStore(store) {
     if (!object(store) || store.version !== 1 || !object(store.profiles)) fail('角色资料存储格式无效。');
     if (store.proposals !== undefined) { if (!Array.isArray(store.proposals) || store.proposals.length > LIMITS.proposals) fail('角色资料建议过多。'); store.proposals.forEach(validateProposal); }
     if (Object.keys(store.profiles).length > LIMITS.profiles) fail('角色资料数量超过上限。');
-    for (const [avatar, profile] of Object.entries(store.profiles)) { validateProfile(profile); if (profile.avatar !== avatar) fail('角色资料归属不一致。'); }
+    for (const [key, profile] of Object.entries(store.profiles)) { validateProfile(profile); if (profileKey(profile) !== key) fail('角色资料归属不一致。'); }
     return store;
 }
 
 /** Create a profile from a card description. Throws a parse error with its line number. */
-export function createProfile({ avatar, cardName = '', description, hash, at = new Date().toISOString() }) {
+export function createProfile({ avatar, cardName = '', description, hash, source, at = new Date().toISOString() }) {
     let next = 1;
     const tree = parseCard(description, () => `n${next++}`);
-    const profile = normalizeProfile({ avatar, cardName, sourceHash: hash, importedAt: at, nextId: next, replace: true, diff: 'summary', baseline: tree, current: copy(tree), history: [] });
+    const profile = normalizeProfile({ avatar, cardName, sourceHash: hash, importedAt: at, nextId: next, replace: true, diff: 'summary', baseline: tree, current: copy(tree), history: [], ...(source ? { source } : {}) });
     return validateProfile(profile);
 }
 

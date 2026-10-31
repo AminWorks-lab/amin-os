@@ -1,9 +1,11 @@
-import { KEY, emptyStore, validateStore, normalizeProfile, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
+import { KEY, emptyStore, validateStore, normalizeProfile, worldKey, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
 import { candidates, replaceInMessages, replaceInText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
 import { promptInjectors } from '../linkage/injectors.js';
 import { buildRules, extract, checkItem, applyItem, undoItem, messageKey, targetAvatar } from './proposals.js';
 import { uuid } from '../../uuid.js';
+import { parseCard } from './format.js';
+import { worldbookChoices, freshWorldbook } from '../worldbook-sources.js';
 import { sha256HexSync } from '../tts/source-hash.js';
 
 const copy = value => structuredClone(value);
@@ -22,7 +24,7 @@ export function chatCharacters(ctx) {
     return card?.avatar ? [card] : [];
 }
 
-export function createCardProfileService(getContext = () => globalThis.SillyTavern?.getContext?.(), { notice = message => globalThis.toastr?.warning?.(message, 'Amin 角色卡资料') } = {}) {
+export function createCardProfileService(getContext = () => globalThis.SillyTavern?.getContext?.(), { notice = message => globalThis.toastr?.warning?.(message, 'Amin 角色卡资料'), worldbooks = null } = {}) {
     const operation = createOperationService(getContext), listeners = new Set();
     const results = new Map(), warned = new Set();
     let installed = false;
@@ -60,13 +62,51 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     const update = (avatar, label, fn) => write(label, store => { store.profiles[avatar] = fn(store.profiles[avatar] ?? profile(avatar)); });
 
     /** The view model: chat characters with their copy, card-change state and last replacement result. */
+    // Copies that belong to the open chat: one per card description, plus world-info entries
+    // imported while one of the chat's characters was active (multi-character cards).
+    function owned(ctx, store) {
+        const avatars = new Set(chatCharacters(ctx).map(item => item.avatar));
+        return Object.entries(store.profiles).filter(([, value]) => value.source?.type === 'world' && avatars.has(value.avatar));
+    }
     function snapshot() {
         const ctx = context(), store = read(ctx), key = chatKey(ctx);
-        return chatCharacters(ctx).map(item => {
+        const cards = chatCharacters(ctx).map(item => {
             const description = descriptionOf(item), value = store.profiles[item.avatar] ?? null;
-            return { avatar: item.avatar, name: item.name ?? item.avatar, description, profile: value,
+            return { key: item.avatar, avatar: item.avatar, kind: 'card', name: item.name ?? item.avatar, description, profile: value,
                 cardChanged: !!value && value.sourceHash !== hashDescription(description), result: results.get(key + '\n' + item.avatar) ?? null };
         });
+        const worlds = owned(ctx, store).map(([id, value]) => ({ key: id, avatar: value.avatar, kind: 'world', name: value.current.name, book: value.source.book, title: value.source.title,
+            description: value.source.text, profile: value, cardChanged: false, result: results.get(key + '\n' + id) ?? null }));
+        return [...cards, ...worlds];
+    }
+    /** World-info entries in the books this chat uses whose content is a bracket template. */
+    async function worldCandidates() {
+        const ctx = context(), store = read(ctx);
+        const books = await (worldbooks?.choices ?? (c => worldbookChoices(c)))(ctx);
+        const found = [], failed = [];
+        for (const book of books) {
+            let data;
+            try { data = book.data ?? await (worldbooks?.load ?? ((c, name) => freshWorldbook(c, name)))(ctx, book.name); }
+            catch (error) { failed.push(`${book.name}：${error.message}`); continue; }
+            for (const entry of Object.values(data?.entries ?? {})) {
+                if (!entry || typeof entry.content !== 'string' || !entry.content.includes('=[')) continue;
+                let tree; try { tree = parseCard(entry.content); } catch { continue; }
+                const uid = entry.uid ?? entry.id;
+                found.push({ book: book.name, uid, title: entry.comment || entry.name || tree.name, name: tree.name, text: entry.content, disabled: !!entry.disable || entry.enabled === false,
+                    constant: !!entry.constant, imported: !!store.profiles[worldKey(book.name, uid)] });
+            }
+        }
+        return { entries: found, failed };
+    }
+    async function importWorld(picks) {
+        const ctx = context(), owner = chatCharacters(ctx)[0];
+        if (!owner) throw Error('当前聊天没有角色卡。');
+        const values = picks.map(pick => createProfile({ avatar: owner.avatar, cardName: owner.name ?? '', description: pick.text, hash: hashDescription(pick.text),
+            source: { type: 'world', book: pick.book, uid: pick.uid, title: String(pick.title ?? '').slice(0, 200), text: pick.text } }));
+        await write(`从世界书导入角色资料：${values.map(value => value.current.name).join('、')}`, store => {
+            for (const value of values) store.profiles[worldKey(value.source.book, value.source.uid)] = value;
+        });
+        return values.map(value => worldKey(value.source.book, value.source.uid));
     }
     /** Parse without saving, for the import preview. */
     function preview(avatar) {
@@ -93,19 +133,20 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         if (!ctx?.chatMetadata?.[KEY]) return;
         let store; try { store = read(ctx); } catch (error) { if (!dryRun) notice(`角色卡资料无法读取，本轮按原角色卡发送：${error.message}`); return; }
         const key = chatKey(ctx), macro = substitute(ctx);
-        for (const item of chatCharacters(ctx)) {
-            const value = store.profiles[item.avatar];
-            if (!value?.replace) continue;
-            const forms = candidates(descriptionOf(item), macro);
-            let text = renderForPrompt(value);
+        const jobs = [
+            ...chatCharacters(ctx).map(item => ({ id: item.avatar, value: store.profiles[item.avatar], original: descriptionOf(item),
+                missing: `没有在发送内容里找到“${item.name}”的角色描述，本轮按原角色卡发送。可能是预设用别的方式引用了描述，详见角色卡资料应用。` })),
+            ...owned(ctx, store).map(([id, value]) => ({ id, value, original: value.source.text,
+                missing: `没有在发送内容里找到世界书条目“${value.source.title || value.current.name}”的原文，本轮按世界书原样发送。可能是条目本轮没有激活，或导入后被修改过。` })),
+        ];
+        for (const job of jobs) {
+            if (!job.value?.replace) continue;
+            let text = renderForPrompt(job.value);
             if (macro) { try { text = macro(text); } catch {} }
-            const matched = target(forms, text);
+            const matched = target(candidates(job.original, macro), text);
             if (dryRun) continue;
-            results.set(key + '\n' + item.avatar, { at: new Date().toISOString(), matched });
-            if (!matched && !warned.has(key + '\n' + item.avatar)) {
-                warned.add(key + '\n' + item.avatar);
-                notice(`没有在发送内容里找到“${item.name}”的角色描述，本轮按原角色卡发送。可能是预设用别的方式引用了描述，详见角色卡资料应用。`);
-            }
+            results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched });
+            if (!matched && !warned.has(key + '\n' + job.id)) { warned.add(key + '\n' + job.id); notice(job.missing); }
         }
         if (!dryRun) notify();
     }
@@ -118,7 +159,8 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     function activeProfiles(ctx) {
         let store; try { store = read(ctx); } catch { return []; }
         const avatars = new Set(chatCharacters(ctx).map(item => item.avatar));
-        return Object.values(store.profiles).filter(value => value.propose && avatars.has(value.avatar));
+        return Object.entries(store.profiles).filter(([id, value]) => value.propose && avatars.has(value.avatar) && (value.source?.type === 'world' || id === value.avatar))
+            .map(([id, value]) => ({ ...value, key: id }));
     }
     function rules() {
         let ctx; try { ctx = getContext(); } catch { return null; }
@@ -160,7 +202,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
                             try { store.profiles[avatar] = applyItem(store.profiles[avatar], item); item.status = 'accepted'; item.auto = true; }
                             catch (error) { item.status = 'invalid'; item.error = error.message; }
                         }
-                        store.proposals.push({ id: uuid(), avatar, key, index: Number(index), at: new Date().toISOString(), items: list });
+                        store.proposals.push({ id: uuid(), avatar, name: store.profiles[avatar].current.name, key, index: Number(index), at: new Date().toISOString(), items: list });
                     }
                     prune(store);
                 });
@@ -220,7 +262,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         installed = true;
     }
     return {
-        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove,
+        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld,
         hooks: { onChatPrompt, onTextPrompt }, rules, receive, proposalsFor,
         pending: () => { const ctx = context(); return read(ctx).proposals.filter(entry => entry.items.some(item => item.status === 'pending')); },
         accept: (entryId, itemIds) => decide(entryId, itemIds, true),
