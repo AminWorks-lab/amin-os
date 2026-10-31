@@ -39,12 +39,11 @@ export function validateProfile(profile) {
     for (const entry of profile.history) if (!object(entry) || typeof entry.at !== 'string' || typeof entry.label !== 'string') fail('角色资料修改记录无效。');
     return profile;
 }
-export const LOCK_PATTERN = /NSFW|R18|R-18|成人|色情|性相关/i;
-/** Settings added in 0.22: AI proposals on, adult sections locked. Fills them in for older copies. */
+/** Settings added in 0.22: AI proposals on, nothing locked until the user locks a group. */
 export function normalizeProfile(profile) {
     const next = { ...profile };
     if (next.propose === undefined) next.propose = true;
-    if (next.locked === undefined) next.locked = next.current.children.filter(node => node.kind === 'group' && LOCK_PATTERN.test(node.key)).map(node => node.id);
+    if (next.locked === undefined) next.locked = [];
     return next;
 }
 export const PROPOSAL_STATUS = Object.freeze(['pending', 'accepted', 'ignored', 'invalid', 'locked']);

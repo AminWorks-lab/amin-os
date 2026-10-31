@@ -10,9 +10,10 @@ import { CARD } from './fixture.js';
 const LOCKED_CARD = CARD.replace(/\n\]$/, '\nNSFW设定:[\n*说明: 略\n]\n]');
 const make = (text = CARD) => createProfile({ avatar: 'f.png', cardName: '芙莉莲', description: text, hash: 'h' });
 
-test('rules name the copy and its locked sections; NSFW sections lock on import', () => {
-    const profile = make(LOCKED_CARD);
-    assert.equal(profile.locked.length, 1);
+const lockSection = profile => setOptions(profile, { lock: { id: profile.current.children.at(-1).id, on: true } });
+test('rules name the copy and the sections the user locked', () => {
+    assert.deepEqual(make(LOCKED_CARD).locked, [], 'nothing is locked on import');
+    const profile = lockSection(make(LOCKED_CARD));
     const rules = buildRules([profile]);
     assert.match(rules, /芙莉莲=\[/);
     assert.match(rules, /<!--amin_card/);
@@ -36,7 +37,7 @@ test('paths resolve by key, ignore * marks and need #n for duplicates', () => {
 });
 
 test('items are checked against the copy and applied on acceptance', () => {
-    let profile = make(LOCKED_CARD);
+    let profile = lockSection(make(LOCKED_CARD));
     const set = checkItem(profile, { op: 'set', path: '基本信息/基本设定/年龄', value: '1001岁', reason: '生日' }, 'a');
     assert.equal(set.status, 'pending'); assert.equal(set.before, '1000岁以上');
     assert.equal(checkItem(profile, { op: 'set', path: 'NSFW设定/说明', value: 'x' }, 'b').status, 'locked');
@@ -82,6 +83,7 @@ test('service injects rules, records proposals from a reply and applies accepted
     await emit('gac', 'normal', {}, false);
     assert.equal(prompts.get('amin-os-card-profile') ?? '', '', 'no copy, no rules');
     await service.importCard('f.png');
+    await service.options('f.png', { lock: { id: ctx.chatMetadata[KEY].profiles['f.png'].current.children.at(-1).id, on: true } });
     await emit('gac', 'normal', {}, false);
     assert.match(prompts.get('amin-os-card-profile'), /amin_card/);
     ctx.chat.push({ is_user: false, name: '芙莉莲', swipe_id: 0, send_date: 't1', mes: '正文\n<!--amin_card [{"op":"set","path":"基本信息/基本设定/年龄","value":"1001岁","reason":"生日"},{"op":"set","path":"NSFW设定/说明","value":"x"},{"op":"set","path":"没有/这项","value":"x"}] -->' });
