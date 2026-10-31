@@ -72,3 +72,11 @@ test('the rewrite manner goes into the rules and the story line', async () => {
     assert.match(storyLine({ by: '阿明', target: '后藤一里', path: ['性格', '自信'], before: '很低', after: '高', manner: panelManner(profile) }), /改成了“高”（改写者使用能力「言灵」来改写；/);
     assert.throws(() => setOptions(profile, { panel: { method: 'magic' } }), /改写方式无效/);
 });
+
+test('让 AI 改 defaults are remembered on the copy', () => {
+    let profile = setOptions(make(), { ask: { by: '山田凉', story: false } });
+    assert.deepEqual(profile.ask, { by: '山田凉', story: false });
+    profile = setOptions(profile, { ask: { story: true } });
+    assert.deepEqual(profile.ask, { by: '山田凉', story: true });
+    assert.equal(setOptions(profile, { panel: { on: true, editors: [] } }).ask.by, '山田凉');
+});

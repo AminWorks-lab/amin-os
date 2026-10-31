@@ -50,6 +50,7 @@ export function validateProfile(profile) {
     if (profile.proposeMode !== undefined && !PROPOSE_MODES.includes(profile.proposeMode)) fail('角色资料建议方式无效。');
     if (profile.locked !== undefined && (!Array.isArray(profile.locked) || profile.locked.length > 1000 || profile.locked.some(id => typeof id !== 'string'))) fail('角色资料锁定分区无效。');
     if (profile.panel !== undefined) validatePanel(profile.panel);
+    if (profile.ask !== undefined && (!object(profile.ask) || typeof profile.ask.by !== 'string' || profile.ask.by.length > LIMITS.key || typeof profile.ask.story !== 'boolean')) fail('“让 AI 改”的默认设置无效。');
     validateTree(profile.baseline); validateTree(profile.current);
     if (!Array.isArray(profile.history) || profile.history.length > LIMITS.history) fail('角色资料修改记录无效。');
     for (const entry of profile.history) if (!object(entry) || typeof entry.at !== 'string' || typeof entry.label !== 'string') fail('角色资料修改记录无效。');
@@ -185,8 +186,10 @@ export function restoreNode(profile, id, { at = new Date().toISOString() } = {})
 export function resetProfile(profile, { at = new Date().toISOString() } = {}) {
     return edit(profile, '全部恢复为初始版本', next => { next.current = copy(next.baseline); }, at);
 }
-export function setOptions(profile, { replace, diff, propose, proposeMode, lock, panel }) {
+export function setOptions(profile, { replace, diff, propose, proposeMode, lock, panel, ask }) {
     const next = copy(profile);
+    // 让 AI 改 remembers who rewrites and whether to write it into the story, per copy.
+    if (ask !== undefined) next.ask = { by: String(ask.by ?? next.ask?.by ?? '').trim().slice(0, LIMITS.key), story: ask.story ?? next.ask?.story ?? true };
     if (panel !== undefined) {
         const editors = (panel.editors ?? next.panel?.editors ?? []).map(editor => ({ name: String(editor.name ?? '').trim(), sections: [...new Set(editor.sections ?? [])].filter(id => next.current.children.some(node => node.id === id)) }));
         if (editors.some(editor => !editor.name)) fail('改写者需要名字。');

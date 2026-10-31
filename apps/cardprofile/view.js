@@ -74,7 +74,8 @@ export function mount(target, { service } = {}) {
 
     // 让 AI 改: describe a change, review the AI's items, apply the chosen ones (optionally as a story event).
     function askPanel(entry) {
-        const state = asks[entry.key] ??= { request: '', by: '', story: true, items: null, running: null };
+        const state = asks[entry.key] ??= { request: '', by: entry.profile.ask?.by ?? '', story: entry.profile.ask?.story ?? true, items: null, running: null };
+        const remember = () => api.options(entry.key, { ask: { by: state.by, story: state.story } }).catch(error => say(error.message, 'error'));
         const panel = card('让 AI 改');
         const askRow = node('label', '要怎么改', 'amin-field'), ask = node('textarea');
         ask.rows = 2; ask.value = state.request; ask.placeholder = '例如：经过这次冒险，她对主角的态度变得亲近，相关的关系和性格条目都更新一下';
@@ -82,12 +83,15 @@ export function mount(target, { service } = {}) {
         askRow.append(ask); panel.append(askRow);
         const byRow = node('label', '由谁改写', 'amin-field'), by = node('select');
         for (const [value, text] of [['', '不指定（只是修改资料）'], ...actorNames(entry).map(name => [name, name])]) { const option = node('option', text); option.value = value; by.append(option); }
-        by.value = state.by; by.onchange = () => { state.by = by.value; render(); };
+        if (state.by && !actorNames(entry).includes(state.by)) { const option = node('option', state.by); option.value = state.by; by.append(option); }
+        by.value = state.by; by.onchange = () => { state.by = by.value; remember().then(render); };
         byRow.append(by); panel.append(byRow);
         if (state.by) {
             const storyRow = node('label', null, 'amin-check'), story = node('input'); story.type = 'checkbox'; story.checked = state.story;
-            story.onchange = () => { state.story = story.checked; };
+            story.onchange = () => { state.story = story.checked; remember(); };
             storyRow.append(story, node('span', '采纳后把改写写入聊天输入框（不自动发送）')); panel.append(storyRow);
+            const manner = entry.profile.panel?.on ? panelManner(entry.profile) : '';
+            if (manner) panel.append(node('p', `改写方式：${manner}（在上面的面板玩法设置里改）`, 'amin-meta'));
         }
         const actions = toolbar(panel);
         if (state.running) button(actions, '取消', () => state.running.abort());
