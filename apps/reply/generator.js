@@ -4,6 +4,7 @@ import { readWorldContext, hostWorldSettings } from './world-context.js';
 import { splitDiceDraft, mergeDiceDraft } from '../dice/draft.js';
 import { parseRequestBody } from '../../ai/request-body.js';
 import { normalizeRecent } from './style-tags.js';
+import { liveCard } from '../cardprofile/live.js';
 const LEGACY_ROLEPLAY_PROMPT='你是用户的回复拟稿助手。为用户本人拟写下一条消息，不替其他角色决定行动。';
 export const DEFAULT_ROLEPLAY_PROMPT='你是剧情角色的回复拟稿助手。为指定的回复主体拟写下一步对白、行动与反应，贴合该角色的人设和当前剧情。主体可以是剧情中的任何角色，不限定为玩家或用户。';
 export const DEFAULT_AUTHOR_PROMPT='你是作者与编剧的剧情策划助手。以作者视角设计接下来如何推进故事，不扮演用户或任何角色，不直接续写正文。';
@@ -37,7 +38,7 @@ export function collectContext(ctx, settings, world = []) {
     }
     const group = (ctx.groups ?? []).find(g => String(g.id) === String(ctx.groupId));
     const members = group ? (ctx.characters ?? []).filter(c => group.members?.includes(c.avatar)).slice(0,8) : [ctx.characters?.[ctx.characterId]].filter(Boolean);
-    const characters = s.character ? members.map(c => ({ name: cut(c.name,100), description: cut(c.data?.description ?? c.description,3000), personality: cut(c.data?.personality ?? c.personality,1500), scenario: cut(c.data?.scenario ?? c.scenario,1500) })) : [];
+    const characters = s.character ? members.map(c => liveCard(ctx, c)).map(c => ({ name: cut(c.name,100), description: cut(c.data?.description ?? c.description,3000), personality: cut(c.data?.personality ?? c.personality,1500), scenario: cut(c.data?.scenario ?? c.scenario,1500) })) : [];
     return { userName: cut(ctx.name1 || '用户',100), persona: s.persona ? cut(ctx.powerUserSettings?.persona_description,4000) : '', characters, history, world: world.filter(e => s.world || (s.character && e.sources?.includes('character'))).map(e => ({ book: e.book, title: e.title ?? e.comment ?? '', content: e.content })) };
 }
 export function sampleDirections(value, count, random = Math.random) {

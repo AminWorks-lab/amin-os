@@ -1,5 +1,6 @@
 import { collectWorldbooks } from '../worldbook-sources.js';
 import { requireStatusPersona } from '../status/sources.js';
+import { liveCard } from '../cardprofile/live.js';
 
 const cardFields = ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'];
 const stable = value => JSON.stringify(value);
@@ -9,7 +10,7 @@ function characterSources(ctx) {
     const group = grouped ? ctx.groups?.find(item => String(item.id) === String(ctx.groupId)) : null;
     const cards = grouped ? (ctx.characters ?? []).filter(card => group?.members?.includes(card.avatar)) : [ctx.characters?.[ctx.characterId]].filter(Boolean);
     if (!cards.length) throw Error('当前没有可读取的角色卡，请选择角色或取消读取角色卡。');
-    return cards.map(card => ({ avatar: String(card.avatar ?? ''), ...Object.fromEntries(cardFields.map(key => [key, String(card.data?.[key] ?? card[key] ?? '')])) }));
+    return cards.map(card => liveCard(ctx, card)).map(card => ({ avatar: String(card.avatar ?? ''), ...Object.fromEntries(cardFields.map(key => [key, String(card.data?.[key] ?? card[key] ?? '')])) }));
 }
 
 function localSources(ctx, sources) {

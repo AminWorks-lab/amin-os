@@ -1,3 +1,4 @@
+import {liveEntry} from '../cardprofile/live.js';
 export function bookCatalog(ctx,config){
  const wi=config.world_info??config,books=new Map();
  const add=(name,source,data)=>{if(typeof name!=='string'||!name.trim())return;const b=books.get(name)??{name,sources:[],data};if(!b.sources.includes(source))b.sources.push(source);books.set(name,b);};
@@ -11,5 +12,5 @@ export function bookCatalog(ctx,config){
 export async function readBook(ctx,book){
  const data=book.data??await ctx.loadWorldInfo?.(book.name);
  if(!data?.entries)throw Error(`无法读取世界书「${book.name}」`);
- return Object.entries(data.entries).filter(([,e])=>e.disable!==true&&e.enabled!==false&&typeof e.content==='string'&&e.content.trim()).map(([id,e])=>({book:book.name,id:String(e.uid??e.id??id),title:e.comment??e.name??'',content:e.content}));
+ return Object.entries(data.entries).filter(([,e])=>e.disable!==true&&e.enabled!==false&&typeof e.content==='string'&&e.content.trim()).map(([id,e])=>({book:book.name,id:String(e.uid??e.id??id),title:e.comment??e.name??'',content:liveEntry(ctx,book.name,e.uid??e.id??id,e.content)}));
 }

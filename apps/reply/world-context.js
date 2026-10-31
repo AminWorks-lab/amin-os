@@ -1,4 +1,5 @@
 // Read selected/bound books directly; do not run keyword scans or change entries.
+import { liveEntry } from '../cardprofile/live.js';
 export async function readWorldContext(ctx, settings, getSettings) {
     if (!settings.character && !settings.world) return { entries: [], books: [] };
     const config = getSettings ? await getSettings() : ctx.worldInfoSettings ?? {};
@@ -30,7 +31,7 @@ export async function readWorldContext(ctx, settings, getSettings) {
         books.push(name);
         for (const [id, e] of Object.entries(data.entries)) {
             if (e.disable === true || e.enabled === false || typeof e.content !== 'string' || !e.content.trim()) continue;
-            entries.push({ book: name, id: String(e.uid ?? e.id ?? id), sources, title: e.comment ?? e.name ?? '', content: e.content });
+            entries.push({ book: name, id: String(e.uid ?? e.id ?? id), sources, title: e.comment ?? e.name ?? '', content: liveEntry(ctx, name, e.uid ?? e.id ?? id, e.content) });
         }
     };
     for (const [name, sources] of names) {

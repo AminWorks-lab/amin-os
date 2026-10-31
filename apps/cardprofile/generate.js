@@ -4,6 +4,7 @@ import { runTask } from '../../ai/task.js';
 import { parseCard, writeCard } from './format.js';
 import { parseModelJSON } from '../../ai/json.js';
 import { worldbookChoices, freshWorldbook } from '../worldbook-sources.js';
+import { liveCard, liveEntry } from './live.js';
 
 export const TASK = '角色卡资料 · 资料生成';
 export const BUDGET = Object.freeze({ cards: 16000, worldbooks: 30000, chat: 12000, message: 1500, messages: 30 });
@@ -43,7 +44,7 @@ async function worldText(ctx, worldbooks) {
         try { data = book.data ?? await (worldbooks?.load ?? ((c, name) => freshWorldbook(c, name)))(ctx, book.name); } catch { continue; }
         for (const entry of Object.values(data?.entries ?? {})) {
             if (!entry || entry.disable || entry.enabled === false || typeof entry.content !== 'string' || !entry.content.trim()) continue;
-            const part = `【${book.name} · ${entry.comment || entry.name || '条目'}】\n${entry.content.trim()}`;
+            const part = `【${book.name} · ${entry.comment || entry.name || '条目'}】\n${liveEntry(ctx, book.name, entry.uid ?? entry.id, entry.content).trim()}`;
             if (size + part.length > BUDGET.worldbooks) return parts;
             parts.push(part); size += part.length;
         }
@@ -53,7 +54,7 @@ async function worldText(ctx, worldbooks) {
 
 export async function collectSources(ctx, { characters = [], worldbooks, use = {} } = {}) {
     const sources = {};
-    if (use.cards !== false) sources.角色卡 = clip(characters.map(card => [`【${card.name}】`, card.description ?? card.data?.description ?? '', card.scenario ? `场景：${card.scenario}` : ''].filter(Boolean).join('\n')).join('\n\n'), BUDGET.cards);
+    if (use.cards !== false) sources.角色卡 = clip(characters.map(card => liveCard(ctx, card)).map(card => [`【${card.name}】`, card.description ?? card.data?.description ?? '', card.scenario ? `场景：${card.scenario}` : ''].filter(Boolean).join('\n')).join('\n\n'), BUDGET.cards);
     if (use.worldbooks !== false) { try { sources.世界书 = (await worldText(ctx, worldbooks)).join('\n\n'); } catch (error) { sources.世界书 = `（读取失败：${error.message}）`; } }
     if (use.chat !== false) {
         const recent = (ctx.chat ?? []).filter(message => message && !message.is_system && typeof message.mes === 'string').slice(-BUDGET.messages)

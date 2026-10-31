@@ -1,5 +1,6 @@
 import {bookCatalog,readBook} from '../effects/books.js';
 import {hostWorldSettings} from '../reply/world-context.js';
+import {liveCard,liveNotes} from '../cardprofile/live.js';
 export const catalog=async ctx=>bookCatalog(ctx,await hostWorldSettings(ctx));
 export async function localSources(ctx,{books=[],includeCard=true,includeChat=true,check=()=>{}}={}){
  const docs=[];check();
@@ -11,8 +12,9 @@ export async function localSources(ctx,{books=[],includeCard=true,includeChat=tr
  }
 
  if(includeCard){const group=(ctx.groups??[]).find(g=>String(g.id)===String(ctx.groupId));const chars=group?(ctx.characters??[]).filter(c=>group.members?.includes(c.avatar)):[ctx.characters?.[ctx.characterId]].filter(Boolean);
-  for(const c of chars){const d=c.data??c;docs.push({id:'card:'+c.avatar,title:'角色卡 · '+c.name,text:JSON.stringify({name:c.name,description:d.description??c.description,personality:d.personality??c.personality,scenario:d.scenario??c.scenario,mes_example:d.mes_example??c.mes_example})});}
+  for(const c0 of chars){const c=liveCard(ctx,c0),d=c.data??c;docs.push({id:'card:'+c.avatar,title:'角色卡 · '+c.name,text:JSON.stringify({name:c.name,description:d.description??c.description,personality:d.personality??c.personality,scenario:d.scenario??c.scenario,mes_example:d.mes_example??c.mes_example})});}
  }
+ if(includeCard)for(const [i,n]of liveNotes(ctx).entries())docs.push({id:'note:'+i,title:n.title,text:n.content});
  if(includeChat)for(const [i,m]of (ctx.chat??[]).entries())if(m.mes&&!m.is_system)docs.push({id:'chat:'+i,title:`聊天第 ${i+1} 楼 · ${m.name??''}`,text:m.mes});
  return docs;
 }

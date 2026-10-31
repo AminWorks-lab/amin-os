@@ -1,4 +1,5 @@
 import {bookCatalog} from './effects/books.js';
+import {liveEntry,liveNotes,NOTES_BOOK} from './cardprofile/live.js';
 const unique=values=>[...new Set(values.filter(v=>typeof v==='string'&&v.trim()).map(v=>v.trim()))];
 export function selectedBookNames(config){return unique(Array.isArray(config.selectedBooks)?config.selectedBooks:Array.isArray(config.extraBooks)?config.extraBooks:String(config.books??config.extraBooks??'').split(/\r?\n/));}
 export function resolvedBookNames(config,books){const selected=selectedBookNames(config);if(!Array.isArray(config.selectedBooks)&&config.legacyBindings){for(const b of books)if(b.sources.includes('当前聊天')||((config.includeGlobalBooks??config.includeGlobal)&&b.sources.includes('全局启用')))selected.push(b.name);}return unique(selected);}
@@ -21,8 +22,9 @@ export async function collectWorldbooks(ctx,config,options={}){
  if(config.legacyBindings){const priority=b=>b.sources.includes('角色绑定')?0:b.sources.includes('角色附加')?1:b.sources.includes('当前聊天')?2:b.data?4:3;wanted.sort((a,b)=>priority(a)-priority(b));}
  for(const b of wanted){check();options.onProgress?.('读取世界书 '+(result.length+1)+'/'+wanted.length+'：'+b.name);const book=b.data??await (options.readBook??((name)=>freshWorldbook(ctx,name,options)))(b.name);check();
   if(!book?.entries||typeof book.entries!=='object')throw Error('世界书读取失败：'+b.name);
-  result.push({name:config.legacyBindings?(b.data?.name||b.name):b.name,entries:Object.values(book.entries).filter(e=>e&&!e.disable&&e.enabled!==false&&typeof e.content==='string').map(e=>({title:e.comment??e.name??'',content:e.content,...(options.includeKeys?{keys:e.key??e.keys??[]}:{})}))});
+  result.push({name:config.legacyBindings?(b.data?.name||b.name):b.name,entries:Object.values(book.entries).filter(e=>e&&!e.disable&&e.enabled!==false&&typeof e.content==='string').map(e=>({title:e.comment??e.name??'',content:liveEntry(ctx,b.name,e.uid??e.id,e.content),...(options.includeKeys?{keys:e.key??e.keys??[]}:{})}))});
  }
+ const notes=liveNotes(ctx);if(notes.length)result.push({name:NOTES_BOOK,entries:notes.map(n=>({title:n.title,content:n.content,...(options.includeKeys?{keys:[]}:{})}))});
  return result;
 }
 export const sourceRole=ctx=>ctx.groupId!=null&&ctx.groupId!==''?'group:'+ctx.groupId:'character:'+(ctx.characters?.[ctx.characterId]?.avatar??'');

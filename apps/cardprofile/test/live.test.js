@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createCardProfileService } from '../service.js';
+import { liveCard, liveEntry, liveNotes } from '../live.js';
+import { collectWorldbooks } from '../../worldbook-sources.js';
+
+const CARD = '后藤一里=[\n性格:[\n*自信: 很低\n]\n]';
+test('other apps read the living copies', async () => {
+    const card = { avatar: 'b.png', name: '后藤一里', description: CARD, data: { description: CARD, personality: '内向' } };
+    const entry = { uid: 3, comment: '喜多', content: '喜多郁代=[\n性格:[\n*开朗: 是\n]\n]' };
+    const ctx = { chatMetadata: {}, chat: [], getCurrentChatId: () => 'c1', characters: [card], characterId: 0, saveMetadata: async () => {} };
+    assert.equal(liveCard(ctx, card), card, 'no copy, original card');
+    const service = createCardProfileService(() => ctx, { notice() {}, worldbooks: { choices: async () => [{ name: '乐队' }], load: async () => ({ entries: { 3: entry } }) } });
+    await service.importCard('b.png');
+    const id = ctx.chatMetadata.amin_os_card_profile_v1.profiles['b.png'].current.children[0].children[0].id;
+    await service.set('b.png', id, { value: '高了一点' });
+    assert.match(liveCard(ctx, card).data.description, /\*自信: 高了一点/);
+    assert.equal(liveCard(ctx, card).data.personality, '内向');
+    const [key] = await service.importWorld((await service.worldCandidates()).entries);
+    const wid = ctx.chatMetadata.amin_os_card_profile_v1.profiles[key].current.children[0].children[0].id;
+    await service.set(key, wid, { value: '非常' });
+    assert.match(liveEntry(ctx, '乐队', 3, entry.content), /\*开朗: 非常/);
+    assert.equal(liveEntry(ctx, '别的书', 3, 'x'), 'x');
+    await service.createNote({ kind: 'world', text: '下北泽=[\n地点:[\n*STARRY: livehouse\n]\n]' });
+    assert.deepEqual(liveNotes(ctx).map(note => note.title), ['世界资料 · 下北泽']);
+    const books = await collectWorldbooks(ctx, { selectedBooks: ['乐队'] }, { loadWorldInfo: async () => ({ selected_world_info: ['乐队'], world_info: {} }), readBook: async () => ({ entries: { 3: entry } }) });
+    assert.match(books[0].entries[0].content, /\*开朗: 非常/);
+    assert.equal(books.at(-1).name, '本聊天的世界资料与角色资料');
+    await service.options('b.png', { replace: false });
+    assert.equal(liveCard(ctx, card), card, 'paused copies are not used');
+});
