@@ -1,4 +1,4 @@
-import { KEY, emptyStore, validateStore, normalizeProfile, worldKey, noteKey, NOTE_KINDS, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
+import { transferPanel, KEY, emptyStore, validateStore, normalizeProfile, worldKey, noteKey, NOTE_KINDS, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
 import { candidates, replaceInMessages, replaceInText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
 import { promptInjectors } from '../linkage/injectors.js';
@@ -338,6 +338,14 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     return {
         install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, createNote, generateNote, notesPrompt, askEdits, applyEdits,
         /** 让 AI 改's 由谁改写 / 写入剧情 for the whole chat (kept when switching between copies). */
+        /** Copy one copy's panel settings (editors, manner) to other copies in this chat. */
+        copyPanel: (fromKey, toKeys) => write('同步面板设置', store => {
+            const from = store.profiles[fromKey];
+            if (!from) throw Error('这份资料已删除。');
+            for (const key of toKeys) if (key !== fromKey && store.profiles[key]) store.profiles[key] = transferPanel(from, store.profiles[key], { on: true });
+        }),
+        /** The panel settings to start from when panel play is turned on for a copy. */
+        panelTemplate: key => { const store = read(context()); return Object.entries(store.profiles).find(([id, value]) => id !== key && value.panel?.on && value.panel.editors.length)?.[0] ?? null; },
         askDefaults: () => { const value = read(context()).ask; return value ? { ...value } : null; },
         setAskDefaults: ({ by = '', story = true } = {}) => write('“让 AI 改”默认设置', store => { store.ask = { by: String(by).trim().slice(0, LIMITS.key), story: !!story }; }),
         hooks: { onChatPrompt, onTextPrompt }, rules, receive, proposalsFor,

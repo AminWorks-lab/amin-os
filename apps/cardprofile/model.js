@@ -73,6 +73,14 @@ function validatePanel(panel) {
         if (!Array.isArray(editor.sections) || editor.sections.length > PANEL_LIMITS.sections || editor.sections.some(id => typeof id !== 'string')) fail('角色面板的改写范围无效。');
     }
 }
+/** A panel's settings moved to another copy: sections are matched by name, unknown ones dropped. */
+export function transferPanel(from, to, { on = from.panel?.on ?? false } = {}) {
+    const names = new Map((from.current.children ?? []).filter(node => node.kind === 'group').map(node => [node.id, node.key]));
+    const ids = new Map((to.current.children ?? []).filter(node => node.kind === 'group').map(node => [node.key, node.id]));
+    const editors = (from.panel?.editors ?? []).map(editor => ({ name: editor.name, sections: editor.sections.map(id => ids.get(names.get(id))).filter(Boolean) }));
+    const { method = 'story', methodText = '', aware = 'story' } = from.panel ?? {};
+    return setOptions(to, { panel: { on, editors, method, methodText, aware } });
+}
 export const resolveName = (name, user) => name === USER_TOKEN ? (user || '用户') : name;
 /** Settings added in 0.22: AI proposals on, nothing locked until the user locks a group. */
 export function normalizeProfile(profile) {

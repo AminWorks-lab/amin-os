@@ -121,3 +121,13 @@ test('让 AI 改 defaults can be kept for the whole chat', async () => {
     await service.setAskDefaults({ by: '山田凉', story: false });
     assert.deepEqual(service.askDefaults(), { by: '山田凉', story: false });
 });
+
+test('panel settings can be copied to another copy, sections matched by name', async () => {
+    const { transferPanel } = await import('../model.js');
+    let a = make();
+    a = setOptions(a, { panel: { on: true, editors: [{ name: '山田凉', sections: [a.current.children[1].id] }], method: 'natural', aware: 'aware' } });
+    const b = createProfile({ avatar: 'k.png', cardName: '', description: '喜多=[\n外貌:[\n*发色: 红\n]\n性格:[\n*开朗: 是\n]\n]', hash: 'h' });
+    const copied = transferPanel(a, b, { on: true });
+    assert.deepEqual(copied.panel.editors, [{ name: '山田凉', sections: [b.current.children[1].id] }]);
+    assert.equal(copied.panel.method, 'natural'); assert.equal(copied.panel.aware, 'aware'); assert.equal(copied.panel.on, true);
+});

@@ -342,8 +342,11 @@ export function mount(target, { service } = {}) {
         box.type = 'checkbox'; box.checked = panel.on;
         box.onchange = async () => {
             try {
-                const editors = panel.editors.length ? panel.editors : [{ name: USER_TOKEN, sections: [] }];
-                await api.options(entry.key, { panel: { on: box.checked, editors }, ...(box.checked && !profile.propose ? { propose: true } : {}) });
+                // First time on: start from another copy's panel settings in this chat, if any.
+                const template = box.checked && !panel.editors.length ? api.panelTemplate(entry.key) : null;
+                if (template) await api.copyPanel(template, [entry.key]);
+                else await api.options(entry.key, { panel: { on: box.checked, editors: panel.editors.length ? panel.editors : [{ name: USER_TOKEN, sections: [] }] } });
+                if (box.checked && !profile.propose) await api.options(entry.key, { propose: true });
                 if (box.checked) layout[entry.key] = 'panel';
                 say(box.checked ? '已开启角色面板玩法：剧情里有权限的人改写面板后，改动会按“AI 按剧情修改”的方式审核或自动应用。' : '已关闭角色面板玩法，恢复普通的角色资料。');
             } catch (error) { say(error.message, 'error'); }
@@ -396,7 +399,13 @@ export function mount(target, { service } = {}) {
         const list = node('datalist'); list.id = 'amin-cardprofile-names';
         for (const value of known) { const option = node('option'); option.value = value; list.append(option); }
         box2.append(list);
-        button(toolbar(box2), '添加改写者', () => save([...panel.editors, { name: '新的改写者', sections: [] }]));
+        const tools = toolbar(box2);
+        button(tools, '添加改写者', () => save([...panel.editors, { name: '新的改写者', sections: [] }]));
+        const others = api.snapshot().filter(item => item.profile && item.key !== entry.key);
+        if (others.length) button(tools, `应用到本聊天其他 ${others.length} 份资料`, async () => {
+            if (!globalThis.confirm?.(`把这份的改写者、改写方式和“被改写的人”设置复制到其他 ${others.length} 份资料，并为它们开启面板玩法吗？分区按名字对应，对不上的分区限制会去掉。`)) return;
+            await api.copyPanel(entry.key, others.map(item => item.key)); say(`已应用到 ${others.length} 份资料。`); render();
+        });
         parent.append(box2);
     }
     // Read-only game-style panel: sections as cards, changed values highlighted. Click to edit.
