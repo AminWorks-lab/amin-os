@@ -4,6 +4,8 @@ import {mediaURL} from './desktop-effects-model.js';
 import {defaultTiles,loadTiles,loadTileGrid,saveTiles,normalizeTiles,moveTileToCell,canPlaceTile,tileSpan,TILE_MAX_ROWS} from './tile-layout.js';
 import {createTileColorEditor,applyTileColors} from './tile-colors.js';
 import {isSmallTile} from './tile-live.js';
+// Wide (放大) windows keep tiles at a desktop size instead of stretching each cell to fill the width.
+const MAX_TILE_UNIT=96;
 
 export function createTileDesktop({home,cards,apps,createIcon,openApp,onLayout}){
  const make=(tag,cls,text)=>{const e=document.createElement(tag);e.className=cls;if(text)e.textContent=text;return e;};
@@ -39,7 +41,7 @@ export function createTileDesktop({home,cards,apps,createIcon,openApp,onLayout})
  const labelFor=t=>t.label.trim()||appFor(t).name;
  function syncSelection(){columns.value=String(grid.columns);scale.value=String(grid.scale);scaleValue.value=grid.scale+'%';scale.setAttribute('aria-valuetext',grid.scale+'%');positionX.max=String(grid.columns);const t=layout.find(t=>t.id===selected);choice.value=selected;sizes.value=t?.size??'medium';target.value=t?.target??apps[0].id;name.value=t?.label??'';image.value=t?.image??'';positionX.value=t?String(t.x+1):'';positionY.value=t?String(t.y+1):'';colors.sync(t);for(const e of [choice,sizes,target,name,image,positionX,positionY,copy,remove,up,down,left,right])e.disabled=!t;buttons.forEach((b,id)=>b.classList.toggle('is-selected',editing&&id===selected));restore.disabled=!undo;}
  function gridRows(){return Math.min(TILE_MAX_ROWS,Math.max(1,...layout.map(t=>t.y+tileSpan(t.size).h))+(editing?extraRows:0));}
- function measure(){const stage=cards.parentElement;if(stage?.classList.contains('amin-tile-stage')){stage.style.width=grid.scale+'%';stage.style.alignSelf='center';}cards.style.gridTemplateColumns=`repeat(${grid.columns},minmax(0,1fr))`;const width=cards.clientWidth,gap=parseFloat(getComputedStyle(cards).columnGap)||6;if(width>0){cards.style.setProperty('--amin-tile-unit',Math.max(1,(width-gap*(grid.columns-1))/grid.columns)+'px');}cards.style.gridTemplateRows=`repeat(${gridRows()},var(--amin-tile-unit))`;}
+ function measure(){const stage=cards.parentElement;if(stage?.classList.contains('amin-tile-stage')){stage.style.width=grid.scale+'%';stage.style.alignSelf='center';}cards.style.gridTemplateColumns=`repeat(${grid.columns},minmax(0,1fr))`;const gap=parseFloat(getComputedStyle(cards).columnGap)||6;cards.style.maxWidth=(MAX_TILE_UNIT*grid.columns+gap*(grid.columns-1))+'px';const width=cards.clientWidth;if(width>0){cards.style.setProperty('--amin-tile-unit',Math.max(1,(width-gap*(grid.columns-1))/grid.columns)+'px');}cards.style.gridTemplateRows=`repeat(${gridRows()},var(--amin-tile-unit))`;}
  // Live summaries: two lines on large tiles, one number or short word on small ones.
  function paintLive(b,t,label=labelFor(t)){
   const value=live[t.target],text=b.querySelector('.amin-card-copy');let node=text?.querySelector('.amin-tile-live');
