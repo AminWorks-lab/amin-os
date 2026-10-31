@@ -103,3 +103,12 @@ test('a path that skips the upper levels resolves when it is unambiguous', async
     assert.equal(resolvePath(profile.current, '家人/描述').node.value, '妹妹');
     assert.throws(() => resolvePath(profile.current, '没有这个'), /找不到“没有这个”/);
 });
+
+test('set on a group goes to its only (or 描述) field', () => {
+    const profile = createProfile({ avatar: 'x.png', cardName: '', description: '甲=[\n关系:[\n关系一:[\n*对象: 乙\n*描述: 同学\n]\n关系二:[\n*描述: 邻居\n]\n关系三:[\n*对象: 丁\n*态度: 冷淡\n]\n]\n]', hash: 'h' });
+    const one = checkItem(profile, { op: 'set', path: '关系/关系一', value: '挚友' }, 'a');
+    assert.equal(one.status, 'pending'); assert.equal(one.path, '关系/关系一/描述'); assert.equal(one.before, '同学');
+    assert.equal(checkItem(profile, { op: 'set', path: '关系/关系二', value: '朋友' }, 'b').path, '关系/关系二/描述');
+    assert.match(checkItem(profile, { op: 'set', path: '关系/关系三', value: 'x' }, 'c').error, /里面有：对象、态度/);
+    assert.match(applyItem(profile, one).current.children[0].children[0].children[1].value, /挚友/);
+});

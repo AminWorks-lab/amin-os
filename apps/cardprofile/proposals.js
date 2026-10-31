@@ -110,6 +110,16 @@ function resolveExact(tree, path) {
     return { node: hit, path: trail };
 }
 
+/** A trail of nodes written back as a path resolvePath accepts (键#2 for repeated keys). */
+export function pathText(tree, trail) {
+    let siblings = tree.children;
+    return trail.map(node => {
+        const same = siblings.filter(other => other.kind !== 'text' && segment(other.key) === segment(node.key));
+        siblings = node.children ?? [];
+        return segment(node.key) + (same.length > 1 ? `#${same.indexOf(node) + 1}` : '');
+    }).join('/');
+}
+
 const lockedBy = (profile, path) => {
     const locked = new Set(profile.locked ?? []);
     return path.find(node => locked.has(node.id)) ?? null;
@@ -137,6 +147,14 @@ export function checkItem(profile, raw, id, { user = '' } = {}) {
         const locked = lockedBy(profile, hit.path);
         if (locked) { item.status = 'locked'; return item; }
         if (item.by && profile.panel?.on) { const allowed = panelPermission(profile, item.by, hit.path, user); if (!allowed.ok) throw Error(allowed.error); }
+        if (op === 'set' && hit.node.kind === 'group') {
+            // set on a group: models mean its one content field (or the one named 描述/内容…).
+            const fields = hit.node.children.filter(node => node.kind === 'field');
+            const pick = fields.length === 1 ? fields[0] : fields.find(node => ['描述', '内容', '说明', '简介', '概述', '简要描述'].includes(segment(node.key)));
+            if (!pick) throw Error(`“${segment(hit.node.key)}”是分组，里面有：${fields.map(node => segment(node.key)).slice(0, 12).join('、') || '（没有条目）'}。请改具体的条目，或用 add/remove。`);
+            item.path = pathText(profile.current, [...hit.path, pick]);
+            hit.node = pick; hit.path = [...hit.path, pick];
+        }
         if (op === 'set') {
             if (hit.node.kind !== 'field') throw Error('只能修改带内容的条目，分组请用 add/remove。');
             if (typeof item.value !== 'string') throw Error('缺少新内容。');
