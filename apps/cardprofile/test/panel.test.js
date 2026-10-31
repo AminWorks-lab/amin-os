@@ -93,3 +93,13 @@ test('settings changed while the previous one is still saving are all kept', asy
     assert.equal(panel.method, 'natural'); assert.equal(panel.aware, 'aware');
     assert.equal(ctx.chatMetadata.amin_os_card_profile_v1.profiles['b.png'].ask.by, '阿明');
 });
+
+test('a path that skips the upper levels resolves when it is unambiguous', async () => {
+    const { resolvePath } = await import('../proposals.js');
+    const profile = createProfile({ avatar: 'x.png', cardName: '', description: '甲=[\n性格:[\n核心:[\n*简要描述: 安静\n]\n]\n关系:[\n友人:[\n*描述: 同学\n]\n家人:[\n*描述: 妹妹\n]\n]\n]', hash: 'h' });
+    assert.equal(resolvePath(profile.current, '简要描述').node.value, '安静');
+    assert.equal(resolvePath(profile.current, '核心/简要描述').path.length, 3);
+    assert.throws(() => resolvePath(profile.current, '描述'), /多个地方/);
+    assert.equal(resolvePath(profile.current, '家人/描述').node.value, '妹妹');
+    assert.throws(() => resolvePath(profile.current, '没有这个'), /找不到“没有这个”/);
+});

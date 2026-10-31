@@ -63,6 +63,28 @@ export function extract(text) {
 
 /** Resolve "分区/分组/键#2" to a node; field/group keys only. Throws a readable error. */
 export function resolvePath(tree, path) {
+    try { return resolveExact(tree, path); }
+    catch (error) {
+        // Models sometimes skip the upper levels ("简要描述/…" instead of "分区/分组/简要描述/…").
+        // Accept that only when the written keys match exactly one place in the tree.
+        const parts = String(path ?? '').split(/\s*\/\s*/).map(segment).filter(Boolean);
+        if (!parts.length || parts.some(part => /#\d+$/.test(part))) throw error;
+        const found = [];
+        const visit = (nodes, trail) => {
+            for (const node of nodes ?? []) {
+                if (node.kind === 'text') continue;
+                const next = [...trail, node];
+                if (next.length > parts.length && next.slice(-parts.length).every((step, index) => segment(step.key) === parts[index])) found.push(next);
+                if (node.kind === 'group') visit(node.children, next);
+            }
+        };
+        visit(tree.children, []);
+        if (found.length === 1) return { node: found[0].at(-1), path: found[0] };
+        if (found.length > 1) throw Error(`“${parts.join('/')}”在多个地方都有，请从分区开始写完整路径。`);
+        throw error;
+    }
+}
+function resolveExact(tree, path) {
     const parts = String(path ?? '').split(/\s*\/\s*/).map(segment).filter(Boolean);
     // Models often start the path with the copy's own name ("伊地知虹夏/重要关系/…"): drop it
     // unless a top-level section really has that name.
