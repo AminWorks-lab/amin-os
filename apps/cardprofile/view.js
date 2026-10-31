@@ -99,10 +99,16 @@ export function mount(target, { service } = {}) {
         for (const value of DIFF_MODES) { const option = node('option', DIFF_LABELS[value]); option.value = value; mode.append(option); }
         mode.value = profile.diff;
         mode.onchange = async () => { try { await api.options(entry.avatar, { diff: mode.value }); } catch (error) { say(error.message, 'error'); } render(); };
-        const propose = node('label', null, 'amin-check'), proposeBox = node('input');
-        proposeBox.type = 'checkbox'; proposeBox.checked = profile.propose;
-        proposeBox.onchange = async () => { try { await api.options(entry.avatar, { propose: proposeBox.checked }); say(proposeBox.checked ? 'AI 会在设定变化时提议修改，建议显示在对应回复下面。' : '已关闭 AI 提议。'); } catch (error) { say(error.message, 'error'); } render(); };
-        propose.append(proposeBox, node('span', '让 AI 按剧情提议修改（在回复下审核）'));
+        const propose = node('label', 'AI 按剧情修改', 'amin-field'), proposeMode = node('select');
+        for (const [value, text] of [['off', '关闭'], ['review', '先审核（在回复下采纳）'], ['auto', '自动应用（可在回复下撤销）']]) { const option = node('option', text); option.value = value; proposeMode.append(option); }
+        proposeMode.value = profile.propose ? profile.proposeMode : 'off';
+        proposeMode.onchange = async () => {
+            const value = proposeMode.value;
+            try { await api.options(entry.avatar, value === 'off' ? { propose: false } : { propose: true, proposeMode: value }); say({ off: '已关闭 AI 修改。', review: 'AI 的修改建议会显示在对应回复下面，采纳后才生效。', auto: 'AI 的修改会自动应用，在对应回复下面可以逐条撤销。' }[value]); }
+            catch (error) { say(error.message, 'error'); }
+            render();
+        };
+        propose.append(proposeMode);
         modeRow.append(mode); top.append(replace, propose, modeRow); settings.append(top);
         const result = entry.result;
         settings.append(node('p', [

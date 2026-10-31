@@ -118,3 +118,20 @@ test('floor row lists items with accept and ignore buttons', () => {
     buttons.find(button => button.textContent === '采纳').listeners.click();
     assert.deepEqual(decided, [['e', ['a'], true]]);
 });
+
+test('自动应用 applies valid proposals at once and each can be undone', async () => {
+    const { ctx, service } = host();
+    await service.importCard('f.png');
+    await service.options('f.png', { proposeMode: 'auto' });
+    ctx.chat.push({ is_user: false, swipe_id: 0, send_date: 'a1', mes: '<!--amin_card [{"op":"set","path":"基本信息/基本设定/年龄","value":"1001岁"},{"op":"add","path":"重要关系","key":"关系二","items":[{"key":"对象","value":"菲伦"}]},{"op":"remove","path":"关键词"},{"op":"set","path":"没有","value":"x"}] -->' });
+    await service.receive(0);
+    const [entry] = service.proposalsFor(0);
+    assert.deepEqual(entry.items.map(item => [item.status, !!item.auto]), [['accepted', true], ['accepted', true], ['accepted', true], ['invalid', false]]);
+    assert.match(service.rendered('f.png'), /1001岁/);
+    assert.match(service.rendered('f.png'), /关系二:\[/);
+    assert.doesNotMatch(service.rendered('f.png'), /关键词:\[/);
+    for (const item of entry.items.slice(0, 3)) await service.undo(entry.id, item.id);
+    assert.equal(service.rendered('f.png').split('\n【')[0], CARD.replace(/\n\]$/, '\nNSFW设定:[\n*说明: 略\n]\n]'), 'undoing every change restores the copy exactly');
+    assert.deepEqual(service.proposalsFor(0)[0].items.slice(0, 3).map(item => item.status), ['undone', 'undone', 'undone']);
+    await assert.rejects(service.undo(entry.id, entry.items[0].id), /已不存在或未应用/);
+});

@@ -2,7 +2,7 @@ import { KEY, emptyStore, validateStore, normalizeProfile, LIMITS, createProfile
 import { candidates, replaceInMessages, replaceInText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
 import { promptInjectors } from '../linkage/injectors.js';
-import { buildRules, extract, checkItem, applyItem, messageKey, targetAvatar } from './proposals.js';
+import { buildRules, extract, checkItem, applyItem, undoItem, messageKey, targetAvatar } from './proposals.js';
 import { uuid } from '../../uuid.js';
 import { sha256HexSync } from '../tts/source-hash.js';
 
@@ -153,7 +153,15 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
                         if (!groups.has(avatar)) groups.set(avatar, []);
                         groups.get(avatar).push(item);
                     }
-                    for (const [avatar, list] of groups) store.proposals.push({ id: uuid(), avatar, key, index: Number(index), at: new Date().toISOString(), items: list });
+                    for (const [avatar, list] of groups) {
+                        // 自动应用: valid items go straight into the copy; each can still be undone under the reply.
+                        if (store.profiles[avatar].proposeMode === 'auto') for (const item of list) {
+                            if (item.status !== 'pending') continue;
+                            try { store.profiles[avatar] = applyItem(store.profiles[avatar], item); item.status = 'accepted'; item.auto = true; }
+                            catch (error) { item.status = 'invalid'; item.error = error.message; }
+                        }
+                        store.proposals.push({ id: uuid(), avatar, key, index: Number(index), at: new Date().toISOString(), items: list });
+                    }
                     prune(store);
                 });
                 return;
@@ -190,6 +198,16 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             }
         });
     }
+    async function undo(entryId, itemId) {
+        await write('撤销角色设定改动', store => {
+            const entry = store.proposals.find(value => value.id === entryId), item = entry?.items.find(value => value.id === itemId);
+            if (!item || item.status !== 'accepted') throw Error('这条改动已不存在或未应用。');
+            const value = store.profiles[entry.avatar];
+            if (!value) throw Error('这个角色的副本已删除。');
+            store.profiles[entry.avatar] = undoItem(value, item);
+            item.status = 'undone';
+        });
+    }
     function install() {
         if (installed) return;
         const ctx = getContext(), ev = ctx?.eventTypes ?? ctx?.event_types ?? {};
@@ -207,6 +225,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         pending: () => { const ctx = context(); return read(ctx).proposals.filter(entry => entry.items.some(item => item.status === 'pending')); },
         accept: (entryId, itemIds) => decide(entryId, itemIds, true),
         ignore: (entryId, itemIds) => decide(entryId, itemIds, false),
+        undo,
         subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
         set: (avatar, id, fields) => update(avatar, '修改角色资料', value => setNode(value, id, fields)),
         add: async (avatar, parentId, fields) => { let id; await update(avatar, '新增角色资料条目', value => { const result = addNode(value, parentId, fields); id = result.id; return result.profile; }); return id; },

@@ -4,33 +4,39 @@ import { observeChatFloors } from '../floor-scheduler.js';
 import { getSharedCardProfileService } from './service.js';
 import { describe } from './proposals.js';
 
-const STATE_TEXT = { accepted: '已采纳', ignored: '已忽略', invalid: '无法应用' };
+const STATE_TEXT = { accepted: '已采纳', ignored: '已忽略', invalid: '无法应用', undone: '已撤销' };
 
 /** Render the proposals of one reply into `row`. Tests pass fake handlers. */
-export function renderProposalRow(row, entries, { document = row.ownerDocument, state = {}, names = {}, onDecide, onOpen } = {}) {
+export function renderProposalRow(row, entries, { document = row.ownerDocument, state = {}, names = {}, onDecide, onUndo, onOpen } = {}) {
     const make = (tag, text = '', className = '') => { const element = document.createElement(tag); if (text) element.textContent = text; if (className) element.className = className; return element; };
     const button = (label, fn, className = '') => { const element = make('button', label, className); element.type = 'button'; element.disabled = !!state.busy; element.addEventListener('click', fn); return element; };
     row.replaceChildren();
     const items = entries.flatMap(entry => entry.items.map(item => ({ entry, item })));
     const pending = items.filter(({ item }) => item.status === 'pending');
     const details = make('details', '', 'amin-turn-details');
+    const auto = items.filter(({ item }) => item.auto && item.status === 'accepted');
     details.open = state.open ?? pending.length > 0;
     details.addEventListener('toggle', () => { state.open = details.open; });
     const who = [...new Set(entries.map(entry => names[entry.avatar]).filter(Boolean))].join('、');
-    details.append(make('summary', `角色设定建议${who ? ` · ${who}` : ''} · ${pending.length ? `${pending.length} 条待定` : '已处理'}`));
+    details.append(make('summary', `角色设定${pending.length ? '建议' : '更新'}${who ? ` · ${who}` : ''} · ${pending.length ? `${pending.length} 条待定` : auto.length ? `已自动应用 ${auto.length} 条` : '已处理'}`));
     const list = make('ul', '', 'amin-turn-items amin-cardprofile-proposals');
     for (const { entry, item } of items) {
         const text = describe(item), li = make('li', '', 'amin-cardprofile-proposal');
         li.dataset.status = item.status;
         li.append(make('strong', text.title));
-        if (text.before) li.append(make('div', `当前：${text.before}`, 'amin-cardprofile-proposal-before'));
+        if (text.before) li.append(make('div', `${['accepted', 'undone'].includes(item.status) ? '原为' : '当前'}：${text.before}`, 'amin-cardprofile-proposal-before'));
         if (text.after) li.append(make('div', `${item.op === 'set' ? '改为' : '内容'}：${text.after}`, 'amin-cardprofile-proposal-after'));
         if (item.reason) li.append(make('div', `依据：${item.reason}`, 'amin-cardprofile-proposal-reason'));
         if (item.status === 'pending') {
             const actions = make('div', '', 'amin-turn-actions');
             actions.append(button('采纳', () => onDecide(entry.id, [item.id], true), 'amin-primary'), button('忽略', () => onDecide(entry.id, [item.id], false)));
             li.append(actions);
-        } else li.append(make('div', STATE_TEXT[item.status] + (item.error ? `：${item.error}` : ''), item.status === 'invalid' ? 'amin-turn-error' : 'amin-turn-state'));
+        } else {
+            const status = make('div', '', 'amin-turn-actions');
+            status.append(make('span', (item.auto && item.status === 'accepted' ? '已自动应用' : STATE_TEXT[item.status]) + (item.error ? `：${item.error}` : ''), item.status === 'invalid' ? 'amin-turn-error' : 'amin-turn-state'));
+            if (item.status === 'accepted' && item.undo && onUndo) status.append(button('撤销', () => onUndo(entry.id, item.id)));
+            li.append(status);
+        }
         list.append(li);
     }
     details.append(list);
@@ -68,6 +74,13 @@ export function installProposalRows({ api = getSharedCardProfileService(), docum
                 if (state.busy) return;
                 state.busy = true; state.error = ''; draw(element);
                 try { await api[accept ? 'accept' : 'ignore'](entryId, ids); }
+                catch (error) { state.error = error?.message ?? String(error); }
+                finally { state.busy = false; draw(element); }
+            },
+            onUndo: async (entryId, itemId) => {
+                if (state.busy) return;
+                state.busy = true; state.error = ''; draw(element);
+                try { await api.undo(entryId, itemId); }
                 catch (error) { state.error = error?.message ?? String(error); }
                 finally { state.busy = false; draw(element); }
             },

@@ -95,14 +95,33 @@ export function applyItem(profile, item, { at = new Date().toISOString() } = {})
     const where = pathLabel(hit.path), why = item.reason ? `（${item.reason}）` : '';
     return edit(profile, `采纳 AI 建议：${item.op === 'set' ? '修改' : item.op === 'add' ? '新增' : '删除'} ${where}${item.op === 'add' ? ' / ' + item.key : ''}${why}`, next => {
         const target = locate(next.current, hit.node.id);
-        if (item.op === 'set') { if (target.node.kind !== 'field') throw Error('只能修改带内容的条目。'); target.node.value = item.value; }
-        else if (item.op === 'remove') target.siblings.splice(target.index, 1);
+        // Each applied item remembers how to undo itself (see undoItem).
+        if (item.op === 'set') { if (target.node.kind !== 'field') throw Error('只能修改带内容的条目。'); item.undo = { id: target.node.id, value: target.node.value }; target.node.value = item.value; }
+        else if (item.op === 'remove') { item.undo = { node: copy(target.node), parentId: hit.path.at(-2)?.id ?? null, index: target.index }; target.siblings.splice(target.index, 1); }
         else {
             if (target.node.kind !== 'group') throw Error('新增的位置必须是分组。');
             const make = (fields) => ({ id: `n${next.nextId++}`, star: true, ...fields });
-            target.node.children.push(item.items
+            const created = item.items
                 ? make({ kind: 'group', key: item.key, children: item.items.map(child => make({ kind: 'field', key: child.key, value: child.value })) })
-                : make({ kind: 'field', key: item.key, value: item.value }));
+                : make({ kind: 'field', key: item.key, value: item.value });
+            target.node.children.push(created); item.undo = { id: created.id };
+        }
+    }, at);
+}
+
+/** Reverse one applied item. Throws when the copy no longer has what it changed. */
+export function undoItem(profile, item, { at = new Date().toISOString() } = {}) {
+    const undo = item.undo;
+    if (!undo) throw Error('这条改动没有可撤销的记录。');
+    const text = describe(item).title;
+    return edit(profile, `撤销 AI 建议：${text}`, next => {
+        if (item.op === 'set') { const hit = locate(next.current, undo.id); if (!hit) throw Error('条目已被删除，无法撤销。'); hit.node.value = undo.value; }
+        else if (item.op === 'add') { const hit = locate(next.current, undo.id); if (!hit) throw Error('新增的条目已被删除。'); hit.siblings.splice(hit.index, 1); }
+        else {
+            if (locate(next.current, undo.node.id)) throw Error('条目已经存在。');
+            const siblings = undo.parentId == null ? next.current.children : locate(next.current, undo.parentId)?.node.children;
+            if (!siblings) throw Error('原来所在的分组已被删除，无法撤销。');
+            siblings.splice(Math.min(undo.index, siblings.length), 0, copy(undo.node));
         }
     }, at);
 }

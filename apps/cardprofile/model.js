@@ -33,6 +33,7 @@ export function validateProfile(profile) {
     if (typeof profile.sourceHash !== 'string' || typeof profile.importedAt !== 'string' || !Number.isInteger(profile.nextId) || profile.nextId < 1) fail('角色资料来源无效。');
     if (typeof profile.replace !== 'boolean' || !DIFF_MODES.includes(profile.diff)) fail('角色资料发送设置无效。');
     if (profile.propose !== undefined && typeof profile.propose !== 'boolean') fail('角色资料建议开关无效。');
+    if (profile.proposeMode !== undefined && !PROPOSE_MODES.includes(profile.proposeMode)) fail('角色资料建议方式无效。');
     if (profile.locked !== undefined && (!Array.isArray(profile.locked) || profile.locked.length > 1000 || profile.locked.some(id => typeof id !== 'string'))) fail('角色资料锁定分区无效。');
     validateTree(profile.baseline); validateTree(profile.current);
     if (!Array.isArray(profile.history) || profile.history.length > LIMITS.history) fail('角色资料修改记录无效。');
@@ -44,9 +45,11 @@ export function normalizeProfile(profile) {
     const next = { ...profile };
     if (next.propose === undefined) next.propose = true;
     if (next.locked === undefined) next.locked = [];
+    if (next.proposeMode === undefined) next.proposeMode = 'review';
     return next;
 }
-export const PROPOSAL_STATUS = Object.freeze(['pending', 'accepted', 'ignored', 'invalid', 'locked']);
+export const PROPOSAL_STATUS = Object.freeze(['pending', 'accepted', 'ignored', 'invalid', 'locked', 'undone']);
+export const PROPOSE_MODES = Object.freeze(['review', 'auto']);
 function validateProposal(entry) {
     if (!object(entry) || typeof entry.id !== 'string' || typeof entry.avatar !== 'string' || typeof entry.key !== 'string' || typeof entry.at !== 'string' || !Number.isInteger(entry.index) || !Array.isArray(entry.items) || entry.items.length > 50) fail('角色资料建议记录无效。');
     for (const item of entry.items) if (!object(item) || typeof item.id !== 'string' || !['set', 'add', 'remove'].includes(item.op) || typeof item.path !== 'string' || !PROPOSAL_STATUS.includes(item.status)) fail('角色资料建议条目无效。');
@@ -149,9 +152,10 @@ export function restoreNode(profile, id, { at = new Date().toISOString() } = {})
 export function resetProfile(profile, { at = new Date().toISOString() } = {}) {
     return edit(profile, '全部恢复为初始版本', next => { next.current = copy(next.baseline); }, at);
 }
-export function setOptions(profile, { replace, diff, propose, lock }) {
+export function setOptions(profile, { replace, diff, propose, proposeMode, lock }) {
     const next = copy(profile);
     if (propose !== undefined) next.propose = !!propose;
+    if (proposeMode !== undefined) { if (!PROPOSE_MODES.includes(proposeMode)) fail('建议方式无效。'); next.proposeMode = proposeMode; }
     if (lock) {
         if (!locate(next.current, lock.id)) fail('分组不存在。');
         const set = new Set(next.locked ?? []);
