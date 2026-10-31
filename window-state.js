@@ -13,6 +13,12 @@ export function drawerPlacement(p,width,height,options={}){
     return {width:w,height:h,x:Math.max(8,Math.min(p.x+126-w,width-w-8)),y:upwards?p.y-h-12:p.y+64};
 }
 
+// Desktop 放大: a large centred window (up to 1280px wide) that leaves a margin on every side.
+export function maximizedPlacement(width,height){
+    const w=Math.max(0,Math.min(1280,width-48)),h=Math.max(0,height-48);
+    return {width:w,height:h,x:Math.round((width-w)/2),y:24};
+}
+
 export function resizedHeight(start,delta,edge,available){
  const max=Math.max(0,Number.isFinite(available)?available:0),min=Math.min(220,max);
  const value=(Number.isFinite(start)?start:min)+(Number.isFinite(delta)?delta:0)*(edge==='top'?-1:1);

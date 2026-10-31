@@ -1,7 +1,7 @@
 import {createTileDesktop} from './tile-desktop.js';
 import {createBrandMark,createCollapseMark} from './brand.js';
 import {getAppearance} from './settings/appearance.js';
-import { clampPosition, drawerPlacement, resizedHeight } from './window-state.js';
+import { clampPosition, drawerPlacement, maximizedPlacement, resizedHeight } from './window-state.js';
 import { STORY_APPS, renderStoryGate } from './apps/shared/story-readiness.js';
 import { openApp as openLinkedApp } from './apps/shared/open-app.js';
 import { SUITES, getSuite, routeApp, suiteOf } from './apps/suites/registry.js';
@@ -52,7 +52,7 @@ export function createShell(){
     const launcherMark=el('span','amin-mark');launcherMark.append(createBrandMark(document,{compact:true}));launcher.append(launcherMark,el('span','amin-launcher-name','Amin os'));
     const drawer=el('section','amin-drawer');drawer.id='amin-drawer';drawer.setAttribute('aria-label','Amin os 应用侧栏');drawer.hidden=true;
     const head=el('header','amin-head'),brand=el('div','amin-brand');const brandCopy=el('div');brandCopy.append(el('div','amin-wordmark','Amin os'));const brandMark=el('span','amin-brand-icon');brandMark.append(createBrandMark());brand.append(brandMark,brandCopy);
-    const collapse=el('button','amin-icon-button');collapse.append(createCollapseMark());collapse.type='button';collapse.title='收起';collapse.setAttribute('aria-label','收起 Amin os');head.append(brand,collapse);
+    const collapse=el('button','amin-icon-button');collapse.append(createCollapseMark());collapse.type='button';collapse.title='收起';collapse.setAttribute('aria-label','收起 Amin os');const maximize=el('button','amin-icon-button amin-maximize');maximize.type='button';head.append(brand,maximize,collapse);
     const nav=el('nav','amin-app-nav');nav.setAttribute('aria-label','应用导航');
     const homeButton=el('button','amin-home-tab','←');homeButton.type='button';homeButton.title='返回开始屏';homeButton.setAttribute('aria-label','Amin os 首页');nav.append(homeButton);const appHeading=el('span','amin-current-app');nav.append(appHeading);
     const area=el('div','amin-area'),home=el('div','amin-home');
@@ -72,23 +72,25 @@ export function createShell(){
     root.append(drawer,launcher);document.body.append(root);
     let saved;try{saved=JSON.parse(localStorage.getItem(STORE));}catch{}
     const viewport=()=>({width:Math.min(document.documentElement.clientWidth||innerWidth,window.visualViewport?.width||innerWidth),height:window.visualViewport?.height||innerHeight,x:window.visualViewport?.offsetLeft||0,y:window.visualViewport?.offsetTop||0});
-    const initial=viewport();let manualHeight=Number.isFinite(saved?.height)&&saved.height>0?saved.height:null,resizing=null;let configuredHeight=getAppearance()?.snapshot().window.height;
+    let maximized=saved?.maximized===true;const initial=viewport();let manualHeight=Number.isFinite(saved?.height)&&saved.height>0?saved.height:null,resizing=null;let configuredHeight=getAppearance()?.snapshot().window.height;
     let position=clampPosition(saved??{x:initial.width-142,y:initial.height-78},initial.width,initial.height);
     function place(){
         const {width,height,x,y}=viewport();
-        root.dataset.mobile=String(width<=640);root.dataset.open=String(opened);resizeGrip.hidden=width<=640;
+        const big=maximized&&width>640;
+        root.dataset.mobile=String(width<=640);root.dataset.open=String(opened);root.dataset.maximized=String(big);resizeGrip.hidden=width<=640||big;maximize.hidden=width<=640;
+        maximize.textContent=big?'❐':'□';maximize.title=big?'还原窗口':'放大窗口';maximize.setAttribute('aria-label',maximize.title);maximize.setAttribute('aria-pressed',String(big));
         position=clampPosition(position,width,height);launcher.style.left=(position.x+x)+'px';launcher.style.top=(position.y+y)+'px';
         const options=getAppearance()?.snapshot().window;
-        let rect=drawerPlacement(position,width,height,{...options,...(manualHeight===null?{}:{height:manualHeight})});
+        let rect=big?maximizedPlacement(width,height):drawerPlacement(position,width,height,{...options,...(manualHeight===null?{}:{height:manualHeight})});
         Object.assign(drawer.style,{left:(rect.x+x)+'px',top:(rect.y+y)+'px',width:rect.width+'px',height:rect.height+'px'});
-        if(width>640&&opened&&active==='home'&&manualHeight===null){
+        if(!big&&width>640&&opened&&active==='home'&&manualHeight===null){
             const contentHeight=Math.ceil(head.getBoundingClientRect().height+nav.getBoundingClientRect().height+home.scrollHeight+4);
             rect=drawerPlacement(position,width,height,{...options,height:Math.min(rect.height,contentHeight)});
             Object.assign(drawer.style,{top:(rect.y+y)+'px',height:rect.height+'px'});
         }
         syncGrip();
     }
-    function save(){try{localStorage.setItem(STORE,JSON.stringify({...position,height:manualHeight}));}catch{}}
+    function save(){try{localStorage.setItem(STORE,JSON.stringify({...position,height:manualHeight,maximized}));}catch{}}
     function resizeLimits(){const v=viewport(),r=drawerPlacement(position,v.width,v.height,{height:Number.MAX_SAFE_INTEGER});return {edge:r.y<position.y?'top':'bottom',available:r.height};}
     function syncGrip(){const limits=resizeLimits();resizeGrip.dataset.edge=limits.edge;resizeGrip.setAttribute('aria-valuemin',String(Math.round(Math.min(220,limits.available))));resizeGrip.setAttribute('aria-valuemax',String(Math.round(limits.available)));resizeGrip.setAttribute('aria-valuenow',String(Math.round(parseFloat(drawer.style.height)||0)));resizeGrip.setAttribute('aria-valuetext',`${Math.round(parseFloat(drawer.style.height)||0)} 像素`);}
     function endResize(cancel=false){if(!resizing)return;const previous=resizing;resizing=null;if(cancel)manualHeight=previous.original;root.classList.remove('amin-resizing-height');if(resizeGrip.hasPointerCapture(previous.id))resizeGrip.releasePointerCapture(previous.id);place();save();}
@@ -118,7 +120,7 @@ export function createShell(){
     }
     const resume=()=>active==='home'?open():showApp(active);
     launcher.addEventListener('click',()=>{if(suppressClick){suppressClick=false;return;}if(opened)close();else resume();});
-    collapse.addEventListener('click',close);homeButton.addEventListener('click',showHome);
+    collapse.addEventListener('click',close);maximize.addEventListener('click',()=>{maximized=!maximized;place();save();});homeButton.addEventListener('click',showHome);
     drawer.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();close();}});
     launcher.addEventListener('keydown',e=>{const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};if(moves[e.key]){e.preventDefault();position.x+=moves[e.key][0]*10;position.y+=moves[e.key][1]*10;place();save();}});
     launcher.addEventListener('pointerdown',e=>{if(!e.isPrimary||e.button!==0)return;suppressClick=false;drag={id:e.pointerId,x:e.clientX,y:e.clientY,start:{...position},moved:false};launcher.setPointerCapture(e.pointerId);});

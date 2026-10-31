@@ -34,7 +34,7 @@ export function mount(target){
    const liveRow=el('label',null,'amin-field amin-check'),liveCheck=el('input');liveCheck.type='checkbox';liveCheck.checked=draft.desktop.liveTiles!==false;liveCheck.onchange=()=>draft.desktop.liveTiles=liveCheck.checked;liveRow.append(liveCheck,el('span','磁贴显示实时信息'));desktopGrid.append(liveRow);
    const appearance=section('全局外观','应用默认使用这里的设置，也可在“单个应用”中覆盖。');fields(grid(appearance),draft.global);
    const dimensions=section('侧栏尺寸','屏幕空间不足时自动缩小，位置保持在可见范围内。'),dimensionsGrid=grid(dimensions);
-   numeric(dimensionsGrid,'桌面侧栏宽度',draft.window.width,340,800,v=>draft.window.width=v);numeric(dimensionsGrid,'侧栏最大高度',draft.window.height,400,1000,v=>draft.window.height=v);
+   numeric(dimensionsGrid,'桌面侧栏宽度',draft.window.width,340,1400,v=>draft.window.width=v);numeric(dimensionsGrid,'侧栏最大高度',draft.window.height,400,1600,v=>draft.window.height=v);
    const layout=section('磁贴排列','立即恢复磁贴的默认顺序和尺寸。');button(toolbar(layout),'恢复磁贴默认布局',()=>{resetTileLayout();report('磁贴已恢复默认顺序和尺寸。');});
   }else if(page==='apps'){
    body.append(el('p','展开应用设置主题、字号和间距；未单独配置的应用自动跟随全局。分组（如“资料库”）里的每个应用也可分别设置。','amin-meta'));
