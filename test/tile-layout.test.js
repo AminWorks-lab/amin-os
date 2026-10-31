@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {defaultTiles,normalizeTiles,moveTile,migrateTiles,loadTiles,saveTiles,TILE_KEY,LEGACY_TILE_KEY,PREVIOUS_TILE_KEY,TILE_COLUMNS,TILE_SPANS,moveTileToCell,canPlaceTile,loadTileGrid,saveTileGrid,normalizeTileGrid} from '../tile-layout.js';
 test('release applications appear once while later user removals remain removed',()=>{
  const data=new Map([[TILE_KEY,JSON.stringify({version:2,tiles:[{id:'mine',target:'map',label:'我的地图',size:'wide'}]})]]),storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
- const migrated=loadTiles(storage);assert.deepEqual(migrated.map(t=>t.target),['map','characters','inventory','relationships','archive','cardprofile','linkage']);assert.equal(migrated[0].label,'我的地图');
+ const migrated=loadTiles(storage);assert.deepEqual(migrated.map(t=>t.target),['map','characters','inventory','relationships','archive','linkage']);assert.equal(migrated[0].label,'我的地图');
  assert.deepEqual(loadTiles(storage),migrated);saveTiles(storage,migrated.filter(t=>t.target!=='archive'));assert.equal(loadTiles(storage).some(t=>t.target==='archive'),false);
 });
 test('corrupt or old layouts retain every application exactly once',()=>{
  assert.deepEqual(normalizeTiles(null),defaultTiles());
  const normalized=migrateTiles([{id:'reply',size:'wide'},{id:'reply',size:'small'},{id:'map',size:'huge'},{id:'unknown',size:'wide'},null]);
- assert.deepEqual(normalized.map(t=>t.id),['reply','map','characters','inventory','scene','journal','status','abilities','relationships','library','archive','tts','cardprofile','preferences','linkage']);
+ assert.deepEqual(normalized.map(t=>t.id),['reply','map','characters','inventory','scene','journal','status','abilities','relationships','library','archive','tts','preferences','linkage']);
  assert.equal(normalized[0].size,'wide');assert.equal(normalized[1].size,'wide');
 });
 test('drag moves before or after target, keeping sizes and source immutable',()=>{
@@ -127,4 +127,14 @@ test('version 2 layouts without known targets also gain the linkage tile at the 
  const loaded=loadTiles(storage),bottom=Math.max(...defaultTiles().filter(t=>t.target!=='linkage').map(t=>t.y+TILE_SPANS[t.size].h));
  assert.equal(loaded.at(-1).target,'linkage');assert.equal(loaded.at(-1).y,bottom);
  assert.equal(loaded.filter(t=>t.target==='linkage').length,1);
+});
+
+test('the 0.21 角色卡资料 tile is removed once it joins 资料库, custom copies stay', () => {
+    const data = new Map(), storage = { getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v) };
+    const old = [...defaultTiles(), { id: 'cardprofile', target: 'cardprofile', label: '', size: 'medium' }, { id: 'mine', target: 'cardprofile', label: '我的卡', size: 'small' }];
+    data.set(TILE_KEY, JSON.stringify({ version: 4, knownTargets: [...defaultTiles().map(t => t.target), 'cardprofile'], grid: { columns: 6, scale: 100 }, tiles: old }));
+    const loaded = loadTiles(storage);
+    assert.equal(loaded.some(t => t.id === 'cardprofile'), false);
+    assert.equal(loaded.some(t => t.id === 'mine'), true);
+    assert.deepEqual(loadTiles(storage), loaded);
 });

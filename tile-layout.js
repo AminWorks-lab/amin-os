@@ -16,7 +16,7 @@ const tileDefaults=()=>[
  {id:'map',target:'map',label:'',size:'wide'},{id:'status',target:'status',label:'',size:'medium'},
  {id:'abilities',target:'abilities',label:'',size:'wide'},{id:'relationships',target:'relationships',label:'',size:'medium'},
  {id:'library',target:'library',label:'',size:'wide'},{id:'archive',target:'archive',label:'',size:'medium'},
- {id:'reply',target:'reply',label:'',size:'medium'},{id:'tts',target:'tts',label:'',size:'medium'},{id:'cardprofile',target:'cardprofile',label:'',size:'medium'},{id:'preferences',target:'preferences',label:'',size:'medium'},
+ {id:'reply',target:'reply',label:'',size:'medium'},{id:'tts',target:'tts',label:'',size:'medium'},{id:'preferences',target:'preferences',label:'',size:'medium'},
  {id:'linkage',target:'linkage',label:'',size:'slimWide'},
 ];
 // Home targets before 0.19.0, when every suite member had its own default tile.
@@ -99,7 +99,9 @@ export function loadTiles(storage){
   const data=readSaved(storage,TILE_KEY)??readSaved(storage,PREVIOUS_TILE_KEY);
   if(data){
    const grid=normalizeTileGrid(data.grid),grouped=data.version<4,introduced=['characters','inventory','relationships','saves','linkage'];
-   const tiles=normalizeTiles(grouped?groupSuiteTiles(data.tiles,grid.columns):data.tiles,grid.columns);
+   // 0.21 added a 角色卡资料 tile; 0.22.1 moved the app into 资料库, so that auto-added tile goes (custom copies stay).
+   const merged=Array.isArray(data.knownTargets)&&data.knownTargets.includes('cardprofile')?data.tiles.filter(t=>!(t?.id==='cardprofile'&&t.target==='cardprofile')):data.tiles;
+   const tiles=normalizeTiles(grouped?groupSuiteTiles(merged,grid.columns):merged,grid.columns);
    let known=Array.isArray(data.knownTargets)?data.knownTargets:SEPARATE_TARGETS.filter(id=>!introduced.includes(id));if(grouped)known=withSuites(known);
    const missing=tileDefaults().filter(t=>!known.includes(t.target)&&!tiles.some(item=>item.target===t.target));
    const ids=new Set(tiles.map(t=>t.id));for(const tile of missing){let id=tile.id;while(ids.has(id))id+='-new';ids.add(id);tiles.push(appendBelow(tiles,{...tile,id},grid.columns));}

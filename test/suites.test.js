@@ -17,7 +17,7 @@ const memory = (entries = []) => { const data = new Map(entries); return { data,
 test('the four suites group the overlapping apps and every member opens on its suite tab', () => {
     assert.deepEqual(SUITES.map(s => [s.id, s.name, s.members.map(m => m.id)]), [
         ['archive', '存档与历史', ['saves', 'story', 'floors']],
-        ['library', '资料库', ['information', 'organizations', 'worldbooks']],
+        ['library', '资料库', ['cardprofile', 'information', 'organizations', 'worldbooks']],
         ['abilities', '能力与检定', ['effects', 'dice']],
         ['preferences', '设置', ['settings', 'ai']],
     ]);
@@ -124,7 +124,7 @@ test('a version 3 layout migrates once; later member tiles and removals are kept
 
 test('the default home shows suite entries instead of their separate apps', () => {
     const targets = defaultTiles().map(t => t.target);
-    assert.equal(targets.length, 15);
+    assert.equal(targets.length, 14);
     for (const id of SUITE_IDS) assert.ok(targets.includes(id), id);
     for (const suite of SUITES) for (const member of suite.members) assert.ok(!targets.includes(member.id), member.id + ' is reached through ' + suite.name);
 });
