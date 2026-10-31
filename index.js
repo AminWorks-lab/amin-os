@@ -105,10 +105,11 @@ export function initialize() {
         enabled:()=>getAppearance()?.snapshot().desktop.liveTiles!==false,subscribeSettings:fn=>getAppearance()?.subscribe(fn)});
     installReplyFloorButtons();
     installTurnSummaries();
+    import('./apps/cardprofile/floor.js').then(m=>m.installProposalRows()).catch(error=>console.warn('[Amin os] Card profile proposals unavailable:',error));
     for(const id of ['characters','inventory','relationships','saves','dice','scene','journal','organizations','effects','information','worldbooks','tts'])installExtraFloorButtons(id);
     const ev=ctx.eventTypes??ctx.event_types??{};
     if(ev.CHAT_CHANGED)ctx.eventSource?.on(ev.CHAT_CHANGED,()=>queueMicrotask(()=>shell.refreshActive()));
-    globalThis.AminOS=Object.freeze({version:'0.21.2',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
+    globalThis.AminOS=Object.freeze({version:'0.22.0',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
     return shell;
 }
 

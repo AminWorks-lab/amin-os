@@ -1,5 +1,6 @@
 import { getSharedCardProfileService } from './service.js';
 import { diffProfile, pathLabel, DIFF_MODES } from './model.js';
+import { describe } from './proposals.js';
 import { contextLine } from '../shared/context-line.js';
 
 const node = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -98,12 +99,39 @@ export function mount(target, { service } = {}) {
         for (const value of DIFF_MODES) { const option = node('option', DIFF_LABELS[value]); option.value = value; mode.append(option); }
         mode.value = profile.diff;
         mode.onchange = async () => { try { await api.options(entry.avatar, { diff: mode.value }); } catch (error) { say(error.message, 'error'); } render(); };
-        modeRow.append(mode); top.append(replace, modeRow); settings.append(top);
+        const propose = node('label', null, 'amin-check'), proposeBox = node('input');
+        proposeBox.type = 'checkbox'; proposeBox.checked = profile.propose;
+        proposeBox.onchange = async () => { try { await api.options(entry.avatar, { propose: proposeBox.checked }); say(proposeBox.checked ? 'AI 会在设定变化时提议修改，建议显示在对应回复下面。' : '已关闭 AI 提议。'); } catch (error) { say(error.message, 'error'); } render(); };
+        propose.append(proposeBox, node('span', '让 AI 按剧情提议修改（在回复下审核）'));
+        modeRow.append(mode); top.append(replace, propose, modeRow); settings.append(top);
         const result = entry.result;
         settings.append(node('p', [
             changes.length ? `与初始版本相比有 ${changes.length} 处改动` : '与初始版本相同',
             !profile.replace ? '替换已暂停' : !result ? '本次打开后还没有发送过' : result.matched ? '最近一次发送已替换' : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
         ].join(' · '), result && !result.matched && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
+
+        let pending = [];
+        try { pending = api.pending().filter(item => item.avatar === entry.avatar); } catch {}
+        const count = pending.reduce((sum, item) => sum + item.items.filter(value => value.status === 'pending').length, 0);
+        if (count) {
+            const box = card(`待审核的 AI 建议 · ${count}`);
+            box.append(node('p', '也可以在对应回复下面直接采纳或忽略。', 'amin-meta'));
+            const list = node('ul', null, 'amin-cardprofile-proposals');
+            for (const proposal of pending) for (const item of proposal.items) {
+                if (item.status !== 'pending') continue;
+                const text = describe(item), li = node('li', null, 'amin-cardprofile-proposal');
+                li.dataset.status = 'pending';
+                li.append(node('strong', `第 ${proposal.index + 1} 楼 · ${text.title}`));
+                if (text.before) li.append(node('div', `当前：${text.before}`, 'amin-cardprofile-proposal-before'));
+                if (text.after) li.append(node('div', `${item.op === 'set' ? '改为' : '内容'}：${text.after}`, 'amin-cardprofile-proposal-after'));
+                if (item.reason) li.append(node('div', `依据：${item.reason}`, 'amin-cardprofile-proposal-reason'));
+                const actions = toolbar(li);
+                button(actions, '采纳', async () => { await api.accept(proposal.id, [item.id]); render(); }, 'amin-primary');
+                button(actions, '忽略', async () => { await api.ignore(proposal.id, [item.id]); render(); });
+                list.append(li);
+            }
+            box.append(list);
+        }
 
         const tools = toolbar(body);
         const searchRow = node('label', null, 'amin-field amin-cardprofile-search'), search = node('input');
@@ -173,6 +201,7 @@ export function mount(target, { service } = {}) {
         const summary = node('summary');
         summary.append(marked((item.star ? '*' : '') + item.key, 'amin-cardprofile-key'));
         const mark = badge(byId.get(item.id), touched.has(item.id)); if (mark) summary.append(mark);
+        if ((entry.profile.locked ?? []).includes(item.id)) summary.append(node('span', '🔒 AI 不改', 'amin-cardprofile-lock'));
         details.append(summary);
         if (editing === item.id) details.append(editor(entry, item, byId.get(item.id), total, index));
         const children = node('div', null, 'amin-cardprofile-children');
@@ -210,6 +239,11 @@ export function mount(target, { service } = {}) {
             value.onkeydown = event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) save.click(); };
         }
         const starRow = node('label', null, 'amin-check'), star = node('input'); star.type = 'checkbox'; star.checked = item.star; starRow.append(star, node('span', '带 * 号')); box.append(starRow);
+        if (item.kind === 'group') {
+            const lockRow = node('label', null, 'amin-check'), lock = node('input'); lock.type = 'checkbox'; lock.checked = (entry.profile.locked ?? []).includes(item.id);
+            lock.onchange = async () => { try { await api.options(entry.avatar, { lock: { id: item.id, on: lock.checked } }); say(lock.checked ? `已锁定“${item.key}”，AI 不会提议修改。` : `已解除锁定“${item.key}”。`); } catch (error) { say(error.message, 'error'); lock.checked = !lock.checked; } };
+            lockRow.append(lock, node('span', '锁定：AI 不提议修改这个分组')); box.append(lockRow);
+        }
         if (change?.type === 'changed' && change.before.kind !== 'group') box.append(node('p', `初始：${change.before.key ? change.before.key + '：' : ''}${change.before.value}`, 'amin-meta'));
         const actions = toolbar(box);
         const save = button(actions, '保存', async () => {

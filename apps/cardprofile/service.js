@@ -1,6 +1,9 @@
-import { KEY, emptyStore, validateStore, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
+import { KEY, emptyStore, validateStore, normalizeProfile, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
 import { candidates, replaceInMessages, replaceInText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
+import { promptInjectors } from '../linkage/injectors.js';
+import { buildRules, extract, checkItem, applyItem, messageKey, targetAvatar } from './proposals.js';
+import { uuid } from '../../uuid.js';
 import { sha256HexSync } from '../tts/source-hash.js';
 
 const copy = value => structuredClone(value);
@@ -29,7 +32,11 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
 
     function read(ctx = context()) {
         const raw = ctx.chatMetadata[KEY];
-        return raw === undefined ? emptyStore() : validateStore(copy(raw));
+        if (raw === undefined) return emptyStore();
+        const store = validateStore(copy(raw));
+        for (const [avatar, value] of Object.entries(store.profiles)) store.profiles[avatar] = normalizeProfile(value);
+        store.proposals ??= [];
+        return store;
     }
     async function write(label, change) {
         const ctx = context(), store = read(ctx);
@@ -107,10 +114,88 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         if (!data || typeof data.prompt !== 'string') return;
         apply((forms, text) => { const result = replaceInText(data.prompt, forms, text); data.prompt = result.prompt; return result.matched; }, !!data.dryRun);
     }
+    // ---- AI proposals ----
+    function activeProfiles(ctx) {
+        let store; try { store = read(ctx); } catch { return []; }
+        const avatars = new Set(chatCharacters(ctx).map(item => item.avatar));
+        return Object.values(store.profiles).filter(value => value.propose && avatars.has(value.avatar));
+    }
+    function rules() {
+        let ctx; try { ctx = getContext(); } catch { return null; }
+        if (!ctx?.chatMetadata?.[KEY]) return null;
+        const profiles = activeProfiles(ctx);
+        return profiles.length ? buildRules(profiles) : null;
+    }
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    /** Record proposals from a finished reply. Retries while another app is saving the chat. */
+    async function receive(index) {
+        let ctx; try { ctx = getContext(); } catch { return; }
+        const message = ctx?.chat?.[Number(index)];
+        if (!message || message.is_user || message.is_system || !ctx.chatMetadata?.[KEY]) return;
+        const { items, errors } = extract(message.mes);
+        if (!items.length) { if (errors.length) notice(errors[0]); return; }
+        const profiles = activeProfiles(ctx);
+        if (!profiles.length) return;
+        const key = messageKey(message, Number(index)), chat = chatKey(ctx);
+        for (let attempt = 0; attempt < 8; attempt++) {
+            try {
+                const current = getContext();
+                if (chatKey(current) !== chat || current.chat?.[Number(index)] !== message) return;
+                await write('记录角色设定建议', store => {
+                    if (store.proposals.some(entry => entry.key === key)) return;
+                    const groups = new Map();
+                    for (const raw of items) {
+                        const avatar = targetAvatar(raw, message, profiles);
+                        const value = avatar && store.profiles[avatar];
+                        if (!value) continue;
+                        const item = checkItem(value, raw, uuid());
+                        if (item.status === 'locked') continue;
+                        if (!groups.has(avatar)) groups.set(avatar, []);
+                        groups.get(avatar).push(item);
+                    }
+                    for (const [avatar, list] of groups) store.proposals.push({ id: uuid(), avatar, key, index: Number(index), at: new Date().toISOString(), items: list });
+                    prune(store);
+                });
+                return;
+            } catch (error) {
+                if (!['BUSY', 'DIRTY'].includes(error?.code) || attempt === 7) { notice(`角色设定建议没有记录：${error.message}`); return; }
+                await wait(400 * (attempt + 1));
+            }
+        }
+    }
+    function prune(store) {
+        while (store.proposals.length > LIMITS.proposals) {
+            const index = store.proposals.findIndex(entry => !entry.items.some(item => item.status === 'pending'));
+            store.proposals.splice(index < 0 ? 0 : index, 1);
+        }
+    }
+    function proposalsFor(index) {
+        const ctx = context(), message = ctx.chat?.[index];
+        if (!message || !ctx.chatMetadata?.[KEY]) return [];
+        const key = messageKey(message, index);
+        return read(ctx).proposals.filter(entry => entry.key === key);
+    }
+    async function decide(entryId, itemIds, accept) {
+        await write(accept ? '采纳角色设定建议' : '忽略角色设定建议', store => {
+            const entry = store.proposals.find(value => value.id === entryId);
+            if (!entry) throw Error('这条建议已不存在。');
+            for (const item of entry.items) {
+                if (!itemIds.includes(item.id) || item.status !== 'pending') continue;
+                if (accept) {
+                    const value = store.profiles[entry.avatar];
+                    if (!value) throw Error('这个角色的副本已删除。');
+                    try { store.profiles[entry.avatar] = applyItem(value, item); item.status = 'accepted'; }
+                    catch (error) { item.status = 'invalid'; item.error = error.message; }
+                } else item.status = 'ignored';
+            }
+        });
+    }
     function install() {
         if (installed) return;
         const ctx = getContext(), ev = ctx?.eventTypes ?? ctx?.event_types ?? {};
         if (!ctx?.eventSource?.on) return;
+        promptInjectors(getContext).register('amin-os-card-profile', { build: rules, position: 1, depth: 0 });
+        if (ev.MESSAGE_RECEIVED) ctx.eventSource.on(ev.MESSAGE_RECEIVED, index => { receive(index).catch(() => {}); });
         if (ev.CHAT_COMPLETION_PROMPT_READY) ctx.eventSource.on(ev.CHAT_COMPLETION_PROMPT_READY, onChatPrompt);
         if (ev.GENERATE_AFTER_COMBINE_PROMPTS) ctx.eventSource.on(ev.GENERATE_AFTER_COMBINE_PROMPTS, onTextPrompt);
         if (ev.CHAT_CHANGED) ctx.eventSource.on(ev.CHAT_CHANGED, notify);
@@ -118,7 +203,10 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     }
     return {
         install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove,
-        hooks: { onChatPrompt, onTextPrompt },
+        hooks: { onChatPrompt, onTextPrompt }, rules, receive, proposalsFor,
+        pending: () => { const ctx = context(); return read(ctx).proposals.filter(entry => entry.items.some(item => item.status === 'pending')); },
+        accept: (entryId, itemIds) => decide(entryId, itemIds, true),
+        ignore: (entryId, itemIds) => decide(entryId, itemIds, false),
         subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
         set: (avatar, id, fields) => update(avatar, '修改角色资料', value => setNode(value, id, fields)),
         add: async (avatar, parentId, fields) => { let id; await update(avatar, '新增角色资料条目', value => { const result = addNode(value, parentId, fields); id = result.id; return result.profile; }); return id; },

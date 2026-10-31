@@ -31,3 +31,11 @@
 .amin-cardprofile-sections { margin: 0; padding-left: 1.4em; columns: 2; }
 @media (max-width: 520px) { .amin-cardprofile-sections { columns: 1; } .amin-cardprofile-children { padding-left: 8px; margin-left: 4px; } }
 .amin-ui .amin-cardprofile-group > summary .amin-cardprofile-mini { margin-left: auto; min-height: 0; padding: 1px 10px; font-size: 0.85em; font-weight: 400; }
+/* Proposal rows under replies (they also carry .amin-turn-row) and the pending list in the app. */
+.amin-cardprofile-proposals { list-style: none; padding-inline-start: 0 !important; display: grid; gap: 8px; }
+.amin-cardprofile-proposal { display: grid; gap: 2px; padding: 6px 8px; border-left: 3px solid var(--amin-accent, currentColor); background: var(--amin-control, transparent); border-radius: 4px; color: var(--amin-text, inherit); }
+.amin-cardprofile-proposal:not([data-status='pending']) { border-left-color: var(--amin-line, rgba(127,127,127,.35)); opacity: .75; }
+.amin-cardprofile-proposal-before { color: var(--amin-muted, inherit); text-decoration: line-through; overflow-wrap: anywhere; }
+.amin-cardprofile-proposal-after { overflow-wrap: anywhere; }
+.amin-cardprofile-proposal-reason { color: var(--amin-muted, inherit); font-size: .92em; overflow-wrap: anywhere; }
+.amin-cardprofile-lock { font-size: .78em; color: var(--amin-muted); white-space: nowrap; }

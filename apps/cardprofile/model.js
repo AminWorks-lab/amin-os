@@ -4,7 +4,7 @@ import { parseCard, writeCard } from './format.js';
 
 export const KEY = 'amin_os_card_profile_v1';
 export const DIFF_MODES = Object.freeze(['summary', 'inline', 'off']);
-export const LIMITS = Object.freeze({ profiles: 50, nodes: 5000, history: 500, key: 80, value: 20000 });
+export const LIMITS = Object.freeze({ profiles: 50, nodes: 5000, history: 500, key: 80, value: 20000, proposals: 300 });
 const copy = value => structuredClone(value);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const fail = message => { throw Object.assign(Error(message), { code: 'CARD_PROFILE_INVALID' }); };
@@ -32,13 +32,29 @@ export function validateProfile(profile) {
     if (!object(profile) || typeof profile.avatar !== 'string' || !profile.avatar || typeof profile.cardName !== 'string') fail('角色资料来源无效。');
     if (typeof profile.sourceHash !== 'string' || typeof profile.importedAt !== 'string' || !Number.isInteger(profile.nextId) || profile.nextId < 1) fail('角色资料来源无效。');
     if (typeof profile.replace !== 'boolean' || !DIFF_MODES.includes(profile.diff)) fail('角色资料发送设置无效。');
+    if (profile.propose !== undefined && typeof profile.propose !== 'boolean') fail('角色资料建议开关无效。');
+    if (profile.locked !== undefined && (!Array.isArray(profile.locked) || profile.locked.length > 1000 || profile.locked.some(id => typeof id !== 'string'))) fail('角色资料锁定分区无效。');
     validateTree(profile.baseline); validateTree(profile.current);
     if (!Array.isArray(profile.history) || profile.history.length > LIMITS.history) fail('角色资料修改记录无效。');
     for (const entry of profile.history) if (!object(entry) || typeof entry.at !== 'string' || typeof entry.label !== 'string') fail('角色资料修改记录无效。');
     return profile;
 }
+export const LOCK_PATTERN = /NSFW|R18|R-18|成人|色情|性相关/i;
+/** Settings added in 0.22: AI proposals on, adult sections locked. Fills them in for older copies. */
+export function normalizeProfile(profile) {
+    const next = { ...profile };
+    if (next.propose === undefined) next.propose = true;
+    if (next.locked === undefined) next.locked = next.current.children.filter(node => node.kind === 'group' && LOCK_PATTERN.test(node.key)).map(node => node.id);
+    return next;
+}
+export const PROPOSAL_STATUS = Object.freeze(['pending', 'accepted', 'ignored', 'invalid', 'locked']);
+function validateProposal(entry) {
+    if (!object(entry) || typeof entry.id !== 'string' || typeof entry.avatar !== 'string' || typeof entry.key !== 'string' || typeof entry.at !== 'string' || !Number.isInteger(entry.index) || !Array.isArray(entry.items) || entry.items.length > 50) fail('角色资料建议记录无效。');
+    for (const item of entry.items) if (!object(item) || typeof item.id !== 'string' || !['set', 'add', 'remove'].includes(item.op) || typeof item.path !== 'string' || !PROPOSAL_STATUS.includes(item.status)) fail('角色资料建议条目无效。');
+}
 export function validateStore(store) {
     if (!object(store) || store.version !== 1 || !object(store.profiles)) fail('角色资料存储格式无效。');
+    if (store.proposals !== undefined) { if (!Array.isArray(store.proposals) || store.proposals.length > LIMITS.proposals) fail('角色资料建议过多。'); store.proposals.forEach(validateProposal); }
     if (Object.keys(store.profiles).length > LIMITS.profiles) fail('角色资料数量超过上限。');
     for (const [avatar, profile] of Object.entries(store.profiles)) { validateProfile(profile); if (profile.avatar !== avatar) fail('角色资料归属不一致。'); }
     return store;
@@ -48,7 +64,7 @@ export function validateStore(store) {
 export function createProfile({ avatar, cardName = '', description, hash, at = new Date().toISOString() }) {
     let next = 1;
     const tree = parseCard(description, () => `n${next++}`);
-    const profile = { avatar, cardName, sourceHash: hash, importedAt: at, nextId: next, replace: true, diff: 'summary', baseline: tree, current: copy(tree), history: [] };
+    const profile = normalizeProfile({ avatar, cardName, sourceHash: hash, importedAt: at, nextId: next, replace: true, diff: 'summary', baseline: tree, current: copy(tree), history: [] });
     return validateProfile(profile);
 }
 
@@ -75,7 +91,7 @@ export function indexById(tree) {
 }
 
 // ---- edits: each returns a new profile and appends one history entry ----
-function edit(profile, labelText, change, at) {
+export function edit(profile, labelText, change, at = new Date().toISOString()) {
     const next = copy(profile);
     change(next);
     next.history = [...next.history, { at, label: labelText }].slice(-LIMITS.history);
@@ -134,8 +150,15 @@ export function restoreNode(profile, id, { at = new Date().toISOString() } = {})
 export function resetProfile(profile, { at = new Date().toISOString() } = {}) {
     return edit(profile, '全部恢复为初始版本', next => { next.current = copy(next.baseline); }, at);
 }
-export function setOptions(profile, { replace, diff }) {
+export function setOptions(profile, { replace, diff, propose, lock }) {
     const next = copy(profile);
+    if (propose !== undefined) next.propose = !!propose;
+    if (lock) {
+        if (!locate(next.current, lock.id)) fail('分组不存在。');
+        const set = new Set(next.locked ?? []);
+        if (lock.on) set.add(lock.id); else set.delete(lock.id);
+        next.locked = [...set];
+    }
     if (replace !== undefined) next.replace = !!replace;
     if (diff !== undefined) { if (!DIFF_MODES.includes(diff)) fail('对照格式无效。'); next.diff = diff; }
     return validateProfile(next);
