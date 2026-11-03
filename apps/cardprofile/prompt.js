@@ -24,12 +24,19 @@ function replaceIn(text, forms, replacement) {
 }
 
 /** Mutates the messages in place. Returns true when one occurrence was replaced. */
-export function replaceInMessages(messages, forms, replacement) {
+const isAssistant = message => message?.role === 'assistant' || message?.role === 'model';
+export const messageText = message => typeof message?.content === 'string' ? message.content : Array.isArray(message?.content) ? message.content.map(part => typeof part?.text === 'string' ? part.text : '').join('\n') : '';
+/** Mutates the messages in place. Returns true when one occurrence was replaced.
+ *  System/user messages are searched first. Assistant messages come last and only when they are
+ *  not chat history (`history`: the chat's message texts): providers such as Gemini sign the
+ *  model's own replies (thought signatures) and reject a request whose signed text changed, but
+ *  presets often put the character definitions in an assistant-role block. */
+export function replaceInMessages(messages, forms, replacement, { history = [] } = {}) {
     if (!Array.isArray(messages) || !forms.length) return false;
-    for (const message of messages) {
-        // Never touch the model's own earlier replies: providers such as Gemini sign them
-        // (thought signatures) and reject a request whose signed text was changed.
-        if (message?.role === 'assistant' || message?.role === 'model') continue;
+    const past = history.map(text => String(text ?? '').trim()).filter(text => text.length >= 2);
+    const fromChat = message => { const text = messageText(message); return past.some(item => text.includes(item)); };
+    const ordered = [...messages.filter(message => !isAssistant(message)), ...messages.filter(message => isAssistant(message) && !fromChat(message))];
+    for (const message of ordered) {
         if (typeof message?.content === 'string') {
             const result = replaceIn(message.content, forms, replacement);
             if (result.matched) { message.content = result.text; return true; }

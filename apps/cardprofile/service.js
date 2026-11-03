@@ -1,5 +1,5 @@
 import { transferPanel, KEY, emptyStore, validateStore, normalizeProfile, worldKey, noteKey, NOTE_KINDS, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
-import { candidates, replaceInMessages, replaceInText } from './prompt.js';
+import { candidates, replaceInMessages, replaceInText, messageText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
 import { promptInjectors } from '../linkage/injectors.js';
 import { buildRules, extract, checkItem, applyItem, undoItem, messageKey, targetAvatar, resolvePath, panelManner } from './proposals.js';
@@ -167,6 +167,20 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         });
         return done;
     }
+    /** The world-info entry was edited after import: match its current text from now on (the copy is kept). */
+    async function refreshWorldSource(key) {
+        const ctx = context(), value = profile(key, ctx);
+        if (value.source?.type !== 'world') throw Error('这份资料不是从世界书导入的。');
+        const books = await (worldbooks?.choices ?? (c => worldbookChoices(c)))(ctx), book = books.find(item => item.name === value.source.book);
+        if (!book) throw Error(`当前聊天没有启用世界书“${value.source.book}”。`);
+        const data = book.data ?? await (worldbooks?.load ?? ((c, name) => freshWorldbook(c, name)))(ctx, book.name);
+        const entry = Object.values(data?.entries ?? {}).find(item => String(item?.uid ?? item?.id) === String(value.source.uid));
+        if (!entry || typeof entry.content !== 'string') throw Error('世界书里找不到这个条目了，可能被删除。');
+        if (entry.content === value.source.text) return false;
+        await write('按世界书现内容更新原文', store => { store.profiles[key] = { ...store.profiles[key], source: { ...store.profiles[key].source, text: entry.content }, sourceHash: hashDescription(entry.content) }; });
+        for (const id of [...warned]) if (id.endsWith('\n' + key)) warned.delete(id);
+        return true;
+    }
     /** Parse without saving, for the import preview. */
     function preview(avatar) {
         const item = card(avatar), description = descriptionOf(item);
@@ -187,7 +201,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
 
     // ---- prompt replacement ----
     function substitute(ctx) { return typeof ctx.substituteParams === 'function' ? text => ctx.substituteParams(text) : null; }
-    function apply(target, dryRun) {
+    function apply(target, dryRun, seen = () => false) {
         let ctx; try { ctx = getContext(); } catch { return; }
         if (!ctx?.chatMetadata?.[KEY]) return;
         let store; try { store = read(ctx); } catch (error) { if (!dryRun) notice(`角色卡资料无法读取，本轮按原角色卡发送：${error.message}`); return; }
@@ -196,8 +210,9 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             ...chatCharacters(ctx).map(item => ({ id: item.avatar, value: store.profiles[item.avatar], original: descriptionOf(item),
                 missing: `没有在发送内容里找到“${item.name}”的角色描述，本轮按原角色卡发送。可能是预设用别的方式引用了描述，详见角色卡资料应用。` })),
             ...owned(ctx, store).map(([id, value]) => ({ id, value, original: value.source.text,
-                missing: `没有在发送内容里找到世界书条目“${value.source.title || value.current.name}”的原文，本轮按世界书原样发送。可能是条目本轮没有激活，或导入后被修改过。` })),
+                world: value.source.title || value.current.name })),
         ];
+        const missing = [];
         for (const job of jobs) {
             if (!job.value?.replace) continue;
             let text = renderForPrompt(job.value);
@@ -205,14 +220,31 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             const matched = target(candidates(job.original, macro), text);
             if (dryRun) continue;
             results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched });
-            if (!matched && !warned.has(key + '\n' + job.id)) { warned.add(key + '\n' + job.id); notice(job.missing); }
+            if (!matched && !warned.has(key + '\n' + job.id)) {
+                warned.add(key + '\n' + job.id);
+                if (!job.world) { notice(job.missing); continue; }
+                // Tell "not sent this turn" from "sent, but no longer the text that was imported".
+                const head = String(job.original).trim().split('\n')[0].trim();
+                missing.push({ name: job.world, changed: head.length >= 3 && seen(head) });
+            }
+        }
+        if (!dryRun && missing.length) {
+            const changed = missing.filter(item => item.changed).map(item => item.name), absent = missing.filter(item => !item.changed).map(item => item.name);
+            notice([
+                changed.length ? `世界书条目“${changed.join('、')}”发送了，但内容和导入时不一样（导入后被改过，或被正则、宏改写），本轮按世界书原样发送。可以在角色卡资料里点“按世界书现内容更新原文”。` : '',
+                absent.length ? `世界书条目“${absent.join('、')}”本轮没有发送（没有激活），所以没有替换。` : '',
+            ].filter(Boolean).join('\n'));
         }
         if (!dryRun) notify();
     }
-    function onChatPrompt(data) { if (data && Array.isArray(data.chat)) apply((forms, text) => replaceInMessages(data.chat, forms, text), !!data.dryRun); }
+    function onChatPrompt(data) {
+        if (!data || !Array.isArray(data.chat)) return;
+        let history = []; try { history = (getContext()?.chat ?? []).map(message => message?.mes).filter(text => typeof text === 'string'); } catch {}
+        apply((forms, text) => replaceInMessages(data.chat, forms, text, { history }), !!data.dryRun, head => data.chat.some(message => messageText(message).includes(head)));
+    }
     function onTextPrompt(data) {
         if (!data || typeof data.prompt !== 'string') return;
-        apply((forms, text) => { const result = replaceInText(data.prompt, forms, text); data.prompt = result.prompt; return result.matched; }, !!data.dryRun);
+        apply((forms, text) => { const result = replaceInText(data.prompt, forms, text); data.prompt = result.prompt; return result.matched; }, !!data.dryRun, head => data.prompt.includes(head));
     }
     // ---- AI proposals ----
     function activeProfiles(ctx) {
@@ -336,7 +368,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         installed = true;
     }
     return {
-        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, createNote, generateNote, notesPrompt, askEdits, applyEdits,
+        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, refreshWorldSource, createNote, generateNote, notesPrompt, askEdits, applyEdits,
         /** 让 AI 改's 由谁改写 / 写入剧情 for the whole chat (kept when switching between copies). */
         /** Copy one copy's panel settings (editors, manner) to other copies in this chat. */
         copyPanel: (fromKey, toKeys) => write('同步面板设置', store => {

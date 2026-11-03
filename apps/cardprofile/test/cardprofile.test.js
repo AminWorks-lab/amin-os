@@ -179,3 +179,12 @@ test('replacement never edits earlier assistant replies', async () => {
     assert.equal(replaceInMessages(messages, ['原文'], '新文'), true);
     assert.deepEqual(messages.map(m => m.content), ['原文', '设定：新文']);
 });
+
+test('a preset assistant block can be replaced, chat history assistant replies cannot', async () => {
+    const { replaceInMessages } = await import('../prompt.js');
+    const messages = [{ role: 'system', content: '规则' }, { role: 'assistant', content: '角色定义：原文' }, { role: 'assistant', content: '她说：原文' }];
+    assert.equal(replaceInMessages(messages, ['原文'], '新文', { history: ['她说：原文'] }), true);
+    assert.deepEqual(messages.map(m => m.content), ['规则', '角色定义：新文', '她说：原文']);
+    const onlyHistory = [{ role: 'assistant', content: '她说：原文' }];
+    assert.equal(replaceInMessages(onlyHistory, ['原文'], '新文', { history: ['她说：原文'] }), false);
+});

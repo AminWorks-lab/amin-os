@@ -331,6 +331,10 @@ export function mount(target, { service } = {}) {
         history.append(log);
         extra.append(preview, history);
         const danger = toolbar(extra);
+        if (entry.kind === 'world') button(danger, '按世界书现内容更新原文', async () => {
+            const changed = await api.refreshWorldSource(entry.key);
+            say(changed ? '已更新：之后按世界书条目现在的内容查找并替换，副本里的修改都保留。' : '世界书条目和导入时一样，不需要更新。'); render();
+        });
         button(danger, '全部恢复为初始版本', async () => { if (!globalThis.confirm?.('把这个角色的副本全部恢复为导入时的版本吗？')) return; await api.reset(entry.key); render(); });
         button(danger, '删除副本', async () => { if (!globalThis.confirm?.(entry.kind === 'note' ? '删除这份资料和它的修改记录吗？' : entry.kind === 'world' ? '删除后恢复为直接发送世界书条目原文，副本和修改记录都会删除。确定吗？' : '删除后恢复为直接发送原角色卡描述，副本和修改记录都会删除。确定吗？')) return; await api.remove(entry.key); render(); }, 'amin-danger');
     }

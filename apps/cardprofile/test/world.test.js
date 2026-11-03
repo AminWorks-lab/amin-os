@@ -84,3 +84,19 @@ test('AI draft parsing keeps only the template', async () => {
     assert.match(text, /^世界=\[/);
     assert.match(asked[0].prompt, /四人乐队/); assert.match(asked[0].prompt, /STARRY 是一家 livehouse/); assert.doesNotMatch(asked[0].prompt, /amin_card/);
 });
+
+test('an entry edited after import is reported as changed and can be refreshed', async () => {
+    const { ctx, service, notices } = host();
+    const [key] = await service.importWorld((await service.worldCandidates()).entries.slice(0, 1));
+    const edited = KITA.replace('16岁', '18岁');
+    service.hooks.onChatPrompt({ chat: [{ role: 'system', content: edited }], dryRun: false });
+    assert.ok(notices.some(text => /发送了，但内容和导入时不一样/.test(text)));
+    book.entries[0].content = edited;
+    try {
+        assert.equal(await service.refreshWorldSource(key), true);
+        const chat = [{ role: 'system', content: edited }];
+        service.hooks.onChatPrompt({ chat, dryRun: false });
+        assert.notEqual(chat[0].content, edited, 'replaced again after refreshing');
+        assert.equal(ctx.chatMetadata.amin_os_card_profile_v1.profiles[key].source.text, edited);
+    } finally { book.entries[0].content = KITA; }
+});
