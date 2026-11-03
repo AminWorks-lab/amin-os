@@ -172,3 +172,10 @@ test('matches descriptions after SillyTavern trims, drops \\r and collapses blan
     assert.equal(replaceInMessages(messages, forms, '新'), true);
     assert.equal(messages[0].content, 'x\n新\ny');
 });
+
+test('replacement never edits earlier assistant replies', async () => {
+    const { replaceInMessages } = await import('../prompt.js');
+    const messages = [{ role: 'assistant', content: '原文' }, { role: 'system', content: '设定：原文' }];
+    assert.equal(replaceInMessages(messages, ['原文'], '新文'), true);
+    assert.deepEqual(messages.map(m => m.content), ['原文', '设定：新文']);
+});

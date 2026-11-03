@@ -27,6 +27,9 @@ function replaceIn(text, forms, replacement) {
 export function replaceInMessages(messages, forms, replacement) {
     if (!Array.isArray(messages) || !forms.length) return false;
     for (const message of messages) {
+        // Never touch the model's own earlier replies: providers such as Gemini sign them
+        // (thought signatures) and reject a request whose signed text was changed.
+        if (message?.role === 'assistant' || message?.role === 'model') continue;
         if (typeof message?.content === 'string') {
             const result = replaceIn(message.content, forms, replacement);
             if (result.matched) { message.content = result.text; return true; }
