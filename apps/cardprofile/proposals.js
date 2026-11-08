@@ -36,7 +36,7 @@ export function buildRules(profiles, { user = '' } = {}) {
     return [
         `【角色设定更新】设定资料（${names.join('、')}=[…]）是这些角色（或世界）的当前设定。只有当本轮剧情让设定发生了持续性的变化（关系、身份、外貌服装、装备、能力、偏好、性格成长、世界局势与规则等）时，才在回复最末尾另起一行输出一个 HTML 注释（不会显示给用户）：`,
         `<!--${TAG} [{"op":"set","path":"分区/分组/键","value":"新的完整内容","reason":"本轮剧情依据"}] -->`,
-        `op：set 修改已有条目；add 在 path 指向的分组下新增（必填 key 和 value，或用 "items":[{"key":"…","value":"…"}] 新增一个分组）；remove 删除条目。path 按设定里的键名逐层用 / 连接，从分区开始写，不要带最外层的名字（同名键可写 键#2，键名本身带 / 的照原样写）。一次最多 ${MAX_ITEMS} 项。大多数回合没有变化，不要输出${who}。`,
+        `op：set 修改已有条目（分组不能整体 set，要改分组里的哪几条就逐条写 set）；add 在 path 指向的分组下新增（必填 key 和 value，或用 "items":[{"key":"…","value":"…"}] 新增一个分组）；remove 删除条目。path 按设定里的键名逐层用 / 连接，从分区开始写，不要带最外层的名字（同名键可写 键#2，键名本身带 / 的照原样写）。一次最多 ${MAX_ITEMS} 项。大多数回合没有变化，不要输出${who}。`,
         locked.length ? `以下分区不要提议修改：${locked.join('、')}。` : '',
         ...profiles.filter(profile => profile.panel?.on).map(profile => {
             const editors = panelEditors(profile, user);
@@ -178,6 +178,30 @@ export function panelPermission(profile, by, path, user) {
     return { ok: true };
 }
 
+const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** "*时期/年龄: 大二 *事件: 组乐队" written for a whole group: the entries of the group it names,
+ *  as [{key, path, before, value}] (only changed ones). null when the value names none. */
+function splitGroupValue(tree, hit, value) {
+    const fields = hit.node.children.filter(node => node.kind === 'field');
+    if (!fields.length) return null;
+    const keys = [...new Set(fields.map(node => segment(node.key)))].sort((a, b) => b.length - a.length);
+    // Known keys with or without "*", and any other "*键:" so its text is not glued to the entry before.
+    const marker = new RegExp(`(?:^|[\\s；;，,。])(?:\\*?\\s*(${keys.map(escape).join('|')})|\\*\\s*([^*:：\\s][^*:：]{0,30}?))\\s*[:：]\\s*`, 'g');
+    const hits = [...value.matchAll(marker)];
+    if (!hits.some(match => match[1])) return null;
+    if (!hits.length || value.slice(0, hits[0].index).trim()) return null;
+    const left = new Map();
+    for (const node of fields) { const key = segment(node.key); left.set(key, [...(left.get(key) ?? []), node]); }
+    const out = [];
+    hits.forEach((match, index) => {
+        const text = value.slice(match.index + match[0].length, hits[index + 1]?.index ?? value.length).trim().replace(/[；;，,]\s*$/, '').trim();
+        const node = left.get(match[1])?.shift();
+        if (!node || !text || text === node.value) return;
+        out.push({ key: segment(node.key), path: pathText(tree, [...hit.path, node]), before: node.value, value: text });
+    });
+    return out;
+}
+
 export function checkItem(profile, raw, id, { user = '' } = {}) {
     const op = ['set', 'add', 'remove'].includes(raw.op) ? raw.op : raw.op === 'update' ? 'set' : raw.op === 'delete' ? 'remove' : raw.op;
     const item = { id, op: ['set', 'add', 'remove'].includes(op) ? op : 'set', path: clean(raw.path).slice(0, 400), reason: clean(raw.reason).slice(0, 500), status: 'pending' };
@@ -206,7 +230,14 @@ export function checkItem(profile, raw, id, { user = '' } = {}) {
         const locked = lockedBy(profile, hit.path);
         if (locked) { item.status = 'locked'; return item; }
         if (item.by && profile.panel?.on) { const allowed = panelPermission(profile, item.by, hit.path, user); if (!allowed.ok) throw Error(allowed.error); }
-        if (item.op === 'set' && hit.node.kind === 'group') {
+        const split = item.op === 'set' && hit.node.kind === 'group' && typeof item.value === 'string' ? splitGroupValue(profile.current, hit, item.value) : null;
+        if (split) {
+            // set on a group with "*键: 值 *键: 值": one change per entry the value names.
+            if (!split.length) throw Error('与当前内容相同。');
+            item.fields = split;
+            item.before = split.map(field => `${field.key}：${field.before}`).join('；');
+            item.value = split.map(field => `${field.key}：${field.value}`).join('；');
+        } else if (item.op === 'set' && hit.node.kind === 'group') {
             // set on a group: models mean its one content field (or the one named 描述/内容…).
             const fields = hit.node.children.filter(node => node.kind === 'field');
             const pick = fields.length === 1 ? fields[0] : fields.find(node => ['描述', '内容', '说明', '简介', '概述', '简要描述'].includes(segment(node.key)));
@@ -214,7 +245,8 @@ export function checkItem(profile, raw, id, { user = '' } = {}) {
             item.path = pathText(profile.current, [...hit.path, pick]);
             hit.node = pick; hit.path = [...hit.path, pick];
         }
-        if (item.op === 'set') {
+        if (item.op === 'set' && item.fields) { /* checked above */ }
+        else if (item.op === 'set') {
             if (hit.node.kind !== 'field') throw Error('只能修改带内容的条目，分组请用 add/remove。');
             if (typeof item.value !== 'string') throw Error('缺少新内容。');
             if (item.value === hit.node.value) throw Error('与当前内容相同。');
@@ -236,7 +268,16 @@ export function applyItem(profile, item, { at = new Date().toISOString() } = {})
     return edit(profile, `${item.by ? `${item.by} 改写面板` : '采纳 AI 建议'}：${item.op === 'set' ? '修改' : item.op === 'add' ? '新增' : '删除'} ${where}${item.op === 'add' ? ' / ' + item.key : ''}${why}`, next => {
         const target = hit.node ? locate(next.current, hit.node.id) : null;
         // Each applied item remembers how to undo itself (see undoItem).
-        if (item.op === 'set') { if (target.node.kind !== 'field') throw Error('只能修改带内容的条目。'); item.undo = { id: target.node.id, value: target.node.value }; target.node.value = item.value; }
+        if (item.op === 'set' && item.fields) {
+            const done = [];
+            for (const field of item.fields) {
+                const found = resolvePath(next.current, field.path);
+                if (found.node.kind !== 'field') throw Error('只能修改带内容的条目。');
+                done.push({ id: found.node.id, value: found.node.value }); found.node.value = field.value;
+            }
+            item.undo = { fields: done };
+        }
+        else if (item.op === 'set') { if (target.node.kind !== 'field') throw Error('只能修改带内容的条目。'); item.undo = { id: target.node.id, value: target.node.value }; target.node.value = item.value; }
         else if (item.op === 'remove') { item.undo = { node: copy(target.node), parentId: hit.path.at(-2)?.id ?? null, index: target.index }; target.siblings.splice(target.index, 1); }
         else {
             if (target && target.node.kind !== 'group') throw Error('新增的位置必须是分组。');
@@ -260,7 +301,10 @@ export function undoItem(profile, item, { at = new Date().toISOString() } = {}) 
     if (!undo) throw Error('这条改动没有可撤销的记录。');
     const text = describe(item).title;
     return edit(profile, `撤销 AI 建议：${text}`, next => {
-        if (item.op === 'set') { const hit = locate(next.current, undo.id); if (!hit) throw Error('条目已被删除，无法撤销。'); hit.node.value = undo.value; }
+        if (item.op === 'set' && undo.fields) {
+            for (const field of undo.fields) { const hit = locate(next.current, field.id); if (!hit) throw Error('条目已被删除，无法撤销。'); hit.node.value = field.value; }
+        }
+        else if (item.op === 'set') { const hit = locate(next.current, undo.id); if (!hit) throw Error('条目已被删除，无法撤销。'); hit.node.value = undo.value; }
         else if (item.op === 'add') { const hit = locate(next.current, undo.id); if (!hit) throw Error('新增的条目已被删除。'); hit.siblings.splice(hit.index, 1); }
         else {
             if (locate(next.current, undo.node.id)) throw Error('条目已经存在。');

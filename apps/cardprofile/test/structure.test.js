@@ -69,3 +69,15 @@ test('keys that contain "/" stay whole in paths', () => {
     }
     assert.equal(checkItem(profile, { op: 'set', path: '经历与背景/关键经历/a', value: 'c' }, 'i').status, 'pending');
 });
+
+test('set on a group with "*键: 值" pieces changes each named entry', () => {
+    let profile = createProfile({ avatar: 'a', hash: 'h', description: '凉=[\n经历与背景:[\n关键经历:[\n经历五:[\n*时期/年龄: 高中\n*事件: 加入乐队\n]\n]\n]\n]' });
+    const item = checkItem(profile, { op: 'set', path: '经历与背景/关键经历/经历五', value: '*时期/年龄: 大二 *事件: 第一次办专场' }, 'i');
+    assert.equal(item.status, 'pending');
+    assert.deepEqual(item.fields.map(field => [field.key, field.value]), [['时期/年龄', '大二'], ['事件', '第一次办专场']]);
+    profile = applyItem(profile, item);
+    assert.match(writeCard(profile.current), /\*时期\/年龄: 大二\n\*事件: 第一次办专场/);
+    profile = undoItem(profile, item);
+    assert.match(writeCard(profile.current), /\*时期\/年龄: 高中\n\*事件: 加入乐队/);
+    assert.equal(checkItem(profile, { op: 'set', path: '经历与背景/关键经历/经历五', value: '随便写的一段' }, 'j').status, 'invalid');
+});
