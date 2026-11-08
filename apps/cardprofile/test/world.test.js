@@ -40,7 +40,8 @@ test('world-info entries are listed, imported one copy each, and swapped in the 
     assert.equal(notices.length, 0);
     const missing = [{ role: 'system', content: NIJIKA }];
     service.hooks.onChatPrompt({ chat: missing, dryRun: false });
-    assert.ok(notices.some(text => text.includes('世界书条目“喜多郁代”')), 'an entry that was not sent is reported');
+    assert.equal(notices.length, 0, 'an entry that was not triggered is normal: no toast');
+    assert.equal(service.snapshot().find(item => item.name === '喜多郁代')?.result?.absent, true, 'the app shows it as not triggered');
     await service.remove(keys[0]);
     assert.equal(Object.keys(ctx.chatMetadata[KEY].profiles).length, 1);
 });

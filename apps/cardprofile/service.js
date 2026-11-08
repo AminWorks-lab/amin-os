@@ -219,20 +219,23 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             if (macro) { try { text = macro(text); } catch {} }
             const matched = target(candidates(job.original, macro), text);
             if (dryRun) continue;
-            results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched });
+            // A world-info entry missing from the prompt is usually just not triggered this turn
+            // (its keywords did not come up): normal, so it is shown in the app, not as a toast.
+            const head = job.world && !matched ? String(job.original).trim().split('\n')[0].trim() : '';
+            const changed = !!job.world && !matched && head.length >= 3 && seen(head);
+            results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched, ...(job.world && !matched ? { absent: !changed } : {}) });
             if (!matched && !warned.has(key + '\n' + job.id)) {
+                if (job.world && !changed) continue;
                 warned.add(key + '\n' + job.id);
                 if (!job.world) { notice(job.missing); continue; }
-                // Tell "not sent this turn" from "sent, but no longer the text that was imported".
-                const head = String(job.original).trim().split('\n')[0].trim();
-                missing.push({ name: job.world, changed: head.length >= 3 && seen(head) });
+                missing.push({ name: job.world, changed });
             }
         }
         if (!dryRun && missing.length) {
-            const changed = missing.filter(item => item.changed).map(item => item.name), absent = missing.filter(item => !item.changed).map(item => item.name);
+            const changed = missing.map(item => item.name);
             notice([
                 changed.length ? `世界书条目“${changed.join('、')}”发送了，但内容和导入时不一样（导入后被改过，或被正则、宏改写），本轮按世界书原样发送。可以在角色卡资料里点“按世界书现内容更新原文”。` : '',
-                absent.length ? `世界书条目“${absent.join('、')}”本轮没有发送（没有激活），所以没有替换。` : '',
+
             ].filter(Boolean).join('\n'));
         }
         if (!dryRun) notify();
