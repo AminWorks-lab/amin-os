@@ -1,7 +1,8 @@
 import {parseRequestBody,buildRequestBody} from './request-body.js';
 import { waitForSignal } from './signal.js';
+import { HOST_ROUTE, canRelay, relayPayload, relayError, relayForbidden, relayStreamError } from './host-relay.js';
 const targetQueues=new Map();
-const defaults={requestBody:'',stream:false,queueMode:'serial',enabled:false,baseUrl:'',model:'',maxTokens:4096,timeoutSeconds:120,rememberKey:false,apiKey:'',structuredOutput:false};
+const defaults={requestBody:'',stream:false,queueMode:'serial',enabled:false,baseUrl:'',model:'',maxTokens:4096,timeoutSeconds:120,rememberKey:false,apiKey:'',structuredOutput:false,hostRelay:true};
 export function endpointFor(baseUrl){
  let url;try{url=new URL(baseUrl.trim());}catch{throw new Error('请输入完整的 API 地址，例如 https://api.example.com/v1');}
  if(!['https:','http:'].includes(url.protocol)||url.username||url.password||url.search||url.hash)throw new Error('API 地址只允许 http/https，不要在地址内填写密钥、参数或账号密码');
@@ -11,7 +12,7 @@ export function validateApiSettings(value){
  const c={...defaults,...value};
  const extra=parseRequestBody(c.requestBody);c.requestBody=Object.keys(extra).length?JSON.stringify(extra,null,2):'';
  if(typeof c.stream!=='boolean'||!['serial','parallel'].includes(c.queueMode))throw Error('运行策略无效');
- if(typeof c.enabled!=='boolean'||typeof c.rememberKey!=='boolean'||typeof c.structuredOutput!=='boolean'||typeof c.baseUrl!=='string'||typeof c.model!=='string'||typeof c.apiKey!=='string')throw new Error('API 配置格式无效');
+ if(typeof c.enabled!=='boolean'||typeof c.rememberKey!=='boolean'||typeof c.structuredOutput!=='boolean'||typeof c.hostRelay!=='boolean'||typeof c.baseUrl!=='string'||typeof c.model!=='string'||typeof c.apiKey!=='string')throw new Error('API 配置格式无效');
  if(!Number.isInteger(c.maxTokens)||c.maxTokens<1||c.maxTokens>131072)throw new Error('输出长度需为 1–131072 的整数');
  if(!Number.isFinite(c.timeoutSeconds)||c.timeoutSeconds<10||c.timeoutSeconds>600)throw new Error('超时时间需为 10–600 秒');
  c.baseUrl=c.baseUrl.trim();c.model=c.model.trim();c.apiKey=c.apiKey.trim();
@@ -40,28 +41,50 @@ export function createStructuredSupport(storage,namespace){
 export const structuredChannel=config=>`${endpointFor(config.baseUrl)}|${config.model}`;
 const sessionStructured=createStructuredSupport(null,'session');
 const mentionsResponseFormat=async response=>{try{return /response_format/i.test(await response.text());}catch{return false;}};
-async function generateTextInternal(ctx,config,request,{fetchImpl=globalThis.fetch,signal,structured=sessionStructured}={}){
+async function generateTextInternal(ctx,config,request,{fetchImpl=globalThis.fetch,signal,structured=sessionStructured,host=globalThis}={}){
  const c=validateApiSettings(config);
  if(!c.enabled){if(typeof ctx?.generateRaw!=='function')throw new Error('请配置酒馆模型，或在设置中启用独立 API');const {messages,schema,...hostRequest}=request;if(messages)hostRequest.prompt=messages.filter((_,i)=>i>0).map(m=>`[${m.role}]\n${m.content}`).join('\n\n');return ctx.generateRaw(hostRequest);}
  const controller=new AbortController(),abort=()=>controller.abort();
  if(signal?.aborted)abort();signal?.addEventListener('abort',abort,{once:true});
  const timer=setTimeout(abort,c.timeoutSeconds*1000);
+ let relay=canRelay(c,host);
  try{
   const headers={'Content-Type':'application/json'};if(c.apiKey)headers.Authorization=`Bearer ${c.apiKey}`;
-  const channel=structuredChannel(c),post=body=>fetchImpl(endpointFor(c.baseUrl),{method:'POST',headers,credentials:'omit',redirect:'error',cache:'no-store',signal:controller.signal,body:JSON.stringify(body)});
+  const endpoint=endpointFor(c.baseUrl),channel=structuredChannel(c);
+  const direct=body=>fetchImpl(endpoint,{method:'POST',headers,credentials:'omit',redirect:'error',cache:'no-store',signal:controller.signal,body:JSON.stringify(body)});
+  // In TauriTavern the request is sent by its Rust backend, which keeps running while the app is in the background.
+  const post=async body=>{
+   if(!relay)return {response:await direct(body)};
+   const response=await fetchImpl(HOST_ROUTE,{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',signal:controller.signal,body:JSON.stringify(relayPayload(c,body,endpoint))});
+   if(response.ok)return {response};
+   const detail=await relayError(response);
+   if(relayForbidden(detail)){relay=false;return {response:await direct(body)};}
+   return {response,detail};
+  };
+  const failure=async ({response,detail})=>{
+   if(detail)return new Error(`独立 API 请求失败（经 TT 后台发送${response.status!==502?`，HTTP ${response.status}`:''}）${detail.message?`：${detail.message}`:'，请检查地址、密钥、模型名称及额度'}`);
+   return new Error(`独立 API 请求失败（HTTP ${response.status}），请检查地址、密钥、模型名称及额度`);
+  };
   const {schema,...plain}=request,wantsSchema=!!(schema&&c.structuredOutput&&!structured.unsupported(channel));
-  let body=buildRequestBody(c,wantsSchema?request:plain),response=await post(body);
+  let body=buildRequestBody(c,wantsSchema?request:plain),result=await post(body);
   // An endpoint without json_schema support answers 400 naming response_format: drop it, retry once and remember.
-  if(!response.ok&&response.status===400&&wantsSchema&&Object.hasOwn(body,'response_format')&&await mentionsResponseFormat(response)){structured.mark(channel);body=buildRequestBody(c,plain);response=await post(body);}
-  if(!response.ok)throw new Error(`独立 API 请求失败（HTTP ${response.status}），请检查地址、密钥、模型名称及额度`);
+  if(!result.response.ok&&wantsSchema&&Object.hasOwn(body,'response_format')){
+   const rejected=result.detail?/response_format/i.test(result.detail.text):result.response.status===400&&await mentionsResponseFormat(result.response);
+   if(rejected){structured.mark(channel);body=buildRequestBody(c,plain);result=await post(body);}
+  }
+  const {response}=result;
+  if(!response.ok)throw await failure(result);
   if(body.stream&&response.headers?.get('content-type')?.includes('text/event-stream'))return await readStream(response,controller.signal);
   let data;try{data=await response.json();}catch{throw new Error('API 返回的不是有效 JSON 响应');}
+  if(data?.error)throw new Error(`独立 API 返回错误：${typeof data.error?.message==='string'?data.error.message:'请检查地址、密钥、模型名称及额度'}`);
   const choice=data?.choices?.[0];if(choice?.finish_reason==='length')throw new Error('模型输出被截断，请增加输出长度后重新生成');
   const content=choice?.message?.content;
   const text=typeof content==='string'?content:Array.isArray(content)?content.filter(x=>x.type==='text'&&typeof x.text==='string').map(x=>x.text).join(''):'';
   if(!text.trim())throw new Error('API 未返回文本，请确认使用兼容 Chat Completions 的模型');return text;
  }catch(error){
   if(controller.signal.aborted)throw new Error(signal?.aborted?'已取消生成，未应用结果':'独立 API 请求超时，请稍后重试或增加超时时间');
+  // TT reports a cancelled endpoint authorization dialog as an abort of the host route.
+  if(relay&&error?.name==='AbortError')throw new Error('TT 没有获准访问这个 API 地址（授权弹窗被取消），本次未发送。重新生成时在弹窗里选择允许，或在 AI 设置里关闭“在 TT 里经酒馆后台发送”。');
   if(error instanceof TypeError)throw Object.assign(new Error('无法连接独立 API，请检查网络、地址以及服务是否允许浏览器跨域请求'),{code:'AI_NETWORK'});throw error;
  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
 }
@@ -79,7 +102,7 @@ export const pageVisibility={
   return new Promise((resolve,reject)=>{const done=()=>{if(doc.visibilityState==='hidden')return;cleanup();resolve();},stop=()=>{cleanup();reject(signal.reason);},cleanup=()=>{doc.removeEventListener('visibilitychange',done);signal?.removeEventListener('abort',stop);};
    doc.addEventListener('visibilitychange',done);signal?.addEventListener('abort',stop,{once:true});});},
 };
-const BACKGROUND_MESSAGE='TT 酒馆切到后台时，系统暂停了网络连接，本次生成中断，未应用任何结果。回到前台后已自动重试一次，仍未成功；请让应用保持在前台直到生成完成，再重新生成。';
+const BACKGROUND_MESSAGE='TT 酒馆切到后台时，系统暂停了网络连接，本次生成中断，未应用任何结果。回到前台后已自动重试一次，仍未成功。可在 AI 设置里开启“在 TT 里经酒馆后台发送”（需填写 API 密钥），并在手机设置里把 TT 的电池优化设为“不限制”；或让应用保持在前台直到生成完成，再重新生成。';
 async function withBackgroundRetry(run,signal,visibility){
  const seen=visibility.count();
  try{return await run();}
@@ -107,6 +130,6 @@ export function createApiProfiles(storage,namespace){let instances=profileInstan
 async function readStream(response,signal){
  if(!response.body)throw Error('API 未返回流式内容');const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',text='',finished=false;
  const abort=()=>void reader.cancel();signal.addEventListener('abort',abort,{once:true});
- const event=block=>{const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).join('\n');if(!data)return;if(data==='[DONE]'){finished=true;return;}const value=JSON.parse(data);if(value.error)throw Error('流式 API 返回错误');const choice=value.choices?.[0];if(choice?.finish_reason==='length')throw Error('模型输出被截断，请增加输出长度');if(choice?.finish_reason==='stop')finished=true;const delta=choice?.delta?.content;if(typeof delta==='string')text+=delta;};
+ const event=block=>{const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).join('\n');if(!data)return;if(data==='[DONE]'){finished=true;return;}const value=JSON.parse(data);if(value.error)throw Error('流式 API 返回错误');const hostError=relayStreamError(value);if(hostError)throw Error(`独立 API 请求失败（经 TT 后台发送）：${hostError}`);const choice=value.choices?.[0];if(choice?.finish_reason==='length')throw Error('模型输出被截断，请增加输出长度');if(choice?.finish_reason==='stop')finished=true;const delta=choice?.delta?.content;if(typeof delta==='string')text+=delta;};
  try{while(true){const chunk=await reader.read();if(signal.aborted)throw Error('生成已取消');buffer+=decoder.decode(chunk.value??new Uint8Array(),{stream:!chunk.done}).replace(/\r\n/g,'\n');let split;while((split=buffer.indexOf('\n\n'))>=0){event(buffer.slice(0,split));buffer=buffer.slice(split+2);}if(chunk.done){if(buffer.trim())event(buffer);break;}if(finished)break;}if(!finished)throw Error('模型流式响应中断，未应用结果');if(!text.trim())throw Error('API 未返回文本');return text;}finally{signal.removeEventListener('abort',abort);await reader.cancel().catch(()=>{});reader.releaseLock();}
 }

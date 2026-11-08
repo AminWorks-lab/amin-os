@@ -35,7 +35,9 @@ export function mount(target){
   mode.parentElement.classList.add('amin-span-full');
   const address=field(connectionGrid,'API 地址',input(config.baseUrl,'url')),model=field(connectionGrid,'模型名称',input(config.model)),key=field(connectionGrid,'API 密钥',input(config.apiKey,'password'));key.autocomplete='off';key.spellcheck=false;address.placeholder='https://api.example.com/v1';
   const remember=field(connectionGrid,'记住密钥（仅本浏览器）',input('','checkbox'));remember.checked=config.rememberKey;
-  const updateMode=()=>{address.disabled=model.disabled=key.disabled=remember.disabled=mode.value==='host';};mode.onchange=updateMode;updateMode();
+  const relay=field(connectionGrid,'在 TT 里经酒馆后台发送（切到后台也继续）',input('','checkbox'));relay.checked=config.hostRelay!==false;
+  connection.append(el('p','只在 TauriTavern 里生效，且需要填写 API 密钥：请求交给 TT 自带的后台发送（安卓会显示“正在生成”通知），手机切到后台或锁屏时生成继续，回到前台后再应用结果。第一次用某个地址时 TT 会弹窗请你允许访问。普通浏览器里照常直接发送。','amin-meta'));
+  const updateMode=()=>{address.disabled=model.disabled=key.disabled=remember.disabled=relay.disabled=mode.value==='host';};mode.onchange=updateMode;updateMode();
   const modelGrid=grid(connection),modelList=field(modelGrid,'可用模型',select([{id:'',name:'请先拉取模型列表'}],''));modelList.disabled=true;
   const execution=card(api,'生成与任务','进行中的任务保留启动时的配置。'),executionGrid=grid(execution);
   const tokens=field(executionGrid,'最大输出 tokens',input(config.maxTokens,'number')),timeout=field(executionGrid,'等待上限（秒，含排队）',input(config.timeoutSeconds,'number'));
@@ -49,7 +51,7 @@ export function mount(target){
   const advancedBody=el('div',null,'amin-stack'),requestBody=el('textarea');requestBody.rows=10;requestBody.spellcheck=false;requestBody.style.fontFamily='monospace';requestBody.value=config.requestBody||'';requestBody.placeholder='{\n  "temperature": 0.8,\n  "top_p": 0.95\n}';field(advancedBody,'requestBody（JSON 对象）',requestBody);
   advancedBody.append(el('p','留空使用默认请求体。按顶层字段覆盖，嵌套对象整体替换；null 删除字段。例如用 max_tokens: null 配合 max_completion_tokens。model、messages 和 stream 也可覆盖；覆盖 messages 会替换应用提示词，可能影响输出格式。可在“任务记录”查看实际请求。不要在这里填写 API 密钥或请求头；此处随配置明文保存。','amin-meta'));
   toolbar(advancedBody,button('检查并格式化 JSON',()=>{try{requestBody.value=JSON.stringify(parseRequestBody(requestBody.value),null,2);report('JSON 格式正确，请保存后应用。');}catch(e){report(e.message,'error');}}));advanced.append(advancedBody);api.append(advanced);
-  const read=()=>({requestBody:requestBody.value,enabled:mode.value==='custom',baseUrl:address.value,model:model.value,apiKey:key.value,rememberKey:remember.checked,maxTokens:Number(tokens.value),timeoutSeconds:Number(timeout.value),queueMode:queue.value,stream:stream.checked,structuredOutput:structured.checked});
+  const read=()=>({requestBody:requestBody.value,enabled:mode.value==='custom',baseUrl:address.value,model:model.value,apiKey:key.value,rememberKey:remember.checked,maxTokens:Number(tokens.value),timeoutSeconds:Number(timeout.value),queueMode:queue.value,stream:stream.checked,structuredOutput:structured.checked,hostRelay:relay.checked});
   let resolvedConnection;
   const invalidateModels=()=>{modelController?.abort();resolvedConnection=undefined;modelList.replaceChildren();const placeholder=el('option','请重新拉取模型列表');placeholder.value='';modelList.append(placeholder);modelList.disabled=true;};
   for(const control of [address,key])control.addEventListener('input',invalidateModels);
