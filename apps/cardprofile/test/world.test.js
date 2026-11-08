@@ -40,8 +40,8 @@ test('world-info entries are listed, imported one copy each, and swapped in the 
     assert.equal(notices.length, 0);
     const missing = [{ role: 'system', content: NIJIKA }];
     service.hooks.onChatPrompt({ chat: missing, dryRun: false });
-    assert.equal(notices.length, 0, 'an entry that was not triggered is normal: no toast');
-    assert.equal(service.snapshot().find(item => item.name === '喜多郁代')?.result?.absent, true, 'the app shows it as not triggered');
+    assert.ok(notices.some(text => text.includes('世界书条目“喜多郁代”本轮完全不在发送内容里')), 'an entry that was not sent is reported');
+    assert.equal(service.snapshot().find(item => item.name === '喜多郁代')?.result?.absent, true);
     await service.remove(keys[0]);
     assert.equal(Object.keys(ctx.chatMetadata[KEY].profiles).length, 1);
 });
@@ -91,7 +91,7 @@ test('an entry edited after import is reported as changed and can be refreshed',
     const [key] = await service.importWorld((await service.worldCandidates()).entries.slice(0, 1));
     const edited = KITA.replace('16岁', '18岁');
     service.hooks.onChatPrompt({ chat: [{ role: 'system', content: edited }], dryRun: false });
-    assert.ok(notices.some(text => /发送了，但内容和导入时不一样/.test(text)));
+    assert.ok(notices.some(text => /发送了，但和导入时的原文对不上（4 行里有 1 行不一样，比如「\*年龄: 16岁」）/.test(text)));
     book.entries[0].content = edited;
     try {
         assert.equal(await service.refreshWorldSource(key), true);
@@ -100,4 +100,15 @@ test('an entry edited after import is reported as changed and can be refreshed',
         assert.notEqual(chat[0].content, edited, 'replaced again after refreshing');
         assert.equal(ctx.chatMetadata.amin_os_card_profile_v1.profiles[key].source.text, edited);
     } finally { book.entries[0].content = KITA; }
+});
+
+test('an entry whose spacing changed is still replaced; a changed line is reported', async () => {
+    const { replaceInMessages, candidates, coverage } = await import('../prompt.js');
+    const original = '虹夏=[\n基本:[\n*年龄: 16\n*性格: 开朗\n]\n]';
+    const chat = [{ role: 'system', content: '前文\n虹夏=[  \n\n基本:[\n*年龄: 16 \n*性格: 开朗\n]\n]\n后文' }];
+    assert.equal(replaceInMessages(chat, candidates(original), 'NEW'), true);
+    assert.equal(chat[0].content, '前文\nNEW\n后文');
+    const check = coverage(candidates(original), '虹夏=[\n基本:[\n*年龄: 17\n*性格: 开朗\n]\n]');
+    assert.deepEqual([check.lines, check.found, check.sample], [4, 3, '*年龄: 16']);
+    assert.equal(coverage(candidates(original), '别的内容').found, 0);
 });

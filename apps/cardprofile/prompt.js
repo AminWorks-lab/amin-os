@@ -15,12 +15,44 @@ export function candidates(description, substitute) {
     return forms.sort((a, b) => b.length - a.length);
 }
 
+const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const meaningful = text => String(text ?? '').replace(/\r/g, '').split('\n').map(line => line.trim()).filter(Boolean);
+/** The same lines with any spaces at line ends and any blank lines between them (presets,
+ *  regex scripts and editors often change only those). null for one-line texts. */
+const looseCache = new Map();
+function loose(form) {
+    if (looseCache.has(form)) return looseCache.get(form);
+    const lines = meaningful(form);
+    const pattern = lines.length >= 2 ? new RegExp(lines.map(line => escape(line).replace(/\s+/g, '\\s+')).join('[ \\t\\u3000]*\\n\\s*')) : null;
+    if (looseCache.size > 200) looseCache.clear();
+    looseCache.set(form, pattern);
+    return pattern;
+}
 function replaceIn(text, forms, replacement) {
     for (const form of forms) {
         const at = text.indexOf(form);
         if (at >= 0) return { text: text.slice(0, at) + replacement + text.slice(at + form.length), matched: true };
     }
+    for (const form of forms) {
+        const match = loose(form)?.exec(text);
+        if (match) return { text: text.slice(0, match.index) + replacement + text.slice(match.index + match[0].length), matched: true };
+    }
     return { text, matched: false };
+}
+
+/** How much of the original text is in the prompt, line by line: {lines, found, sample}
+ *  (sample: the first line that is missing). Tells "not sent at all" from "sent but changed". */
+export function coverage(forms, prompt) {
+    const text = String(prompt ?? '').replace(/\s+/g, ' ');
+    let best = null;
+    for (const form of forms) {
+        const lines = meaningful(form).filter(line => line.length >= 4 && line !== ']');
+        if (!lines.length) continue;
+        const missing = lines.filter(line => !text.includes(line.replace(/\s+/g, ' ')));
+        const result = { lines: lines.length, found: lines.length - missing.length, sample: missing[0] ?? '' };
+        if (!best || result.found > best.found) best = result;
+    }
+    return best ?? { lines: 0, found: 0, sample: '' };
 }
 
 /** Mutates the messages in place. Returns true when one occurrence was replaced. */

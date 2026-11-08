@@ -269,8 +269,8 @@ export function mount(target, { service } = {}) {
         const result = entry.result;
         settings.append(node('p', [
             changes.length ? `与初始版本相比有 ${changes.length} 处改动` : '与初始版本相同',
-            !profile.replace ? (entry.kind === 'note' ? '暂停发送' : '替换已暂停') : !result ? '本次打开后还没有发送过' : entry.kind === 'note' ? '最近一次发送已附上' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? (result.absent ? '最近一次发送时这个世界书条目没有激活（关键词没触发，世界书本身没发送它），所以没替换；激活时会自动替换' : '最近一次发送时条目内容和导入时不一样，按世界书原样发送（可以点“按世界书现内容更新原文”）') : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
-        ].join(' · '), result && !result.matched && !result.absent && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
+            !profile.replace ? (entry.kind === 'note' ? '暂停发送' : '替换已暂停') : !result ? '本次打开后还没有发送过' : entry.kind === 'note' ? '最近一次发送已附上' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? (result.absent ? '最近一次发送时这个世界书条目完全不在发送内容里（没激活，或超出世界书 token 预算被挤掉），所以没替换' : `最近一次发送时条目和导入时的原文对不上（${result.lines ?? '?'} 行里有 ${(result.lines ?? 0) - (result.found ?? 0)} 行不一样${result.sample ? `，比如「${result.sample}」` : ''}），按世界书原样发送；条目改过的话点“按世界书现内容更新原文”`) : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
+        ].join(' · '), result && !result.matched && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
 
         askPanel(entry);
 

@@ -1,5 +1,5 @@
 import { transferPanel, KEY, emptyStore, validateStore, normalizeProfile, worldKey, noteKey, NOTE_KINDS, LIMITS, createProfile, setNode, addNode, removeNode, moveNode, restoreNode, resetProfile, setOptions, renderForPrompt } from './model.js';
-import { candidates, replaceInMessages, replaceInText, messageText } from './prompt.js';
+import { candidates, coverage, replaceInMessages, replaceInText, messageText } from './prompt.js';
 import { createOperationService } from '../shared/operations.js';
 import { promptInjectors } from '../linkage/injectors.js';
 import { buildRules, extract, checkItem, applyItem, undoItem, messageKey, targetAvatar, resolvePath, panelManner } from './proposals.js';
@@ -201,7 +201,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
 
     // ---- prompt replacement ----
     function substitute(ctx) { return typeof ctx.substituteParams === 'function' ? text => ctx.substituteParams(text) : null; }
-    function apply(target, dryRun, seen = () => false) {
+    function apply(target, dryRun, promptText = () => '') {
         let ctx; try { ctx = getContext(); } catch { return; }
         if (!ctx?.chatMetadata?.[KEY]) return;
         let store; try { store = read(ctx); } catch (error) { if (!dryRun) notice(`角色卡资料无法读取，本轮按原角色卡发送：${error.message}`); return; }
@@ -212,30 +212,28 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             ...owned(ctx, store).map(([id, value]) => ({ id, value, original: value.source.text,
                 world: value.source.title || value.current.name })),
         ];
-        const missing = [];
+        const absent = [], changed = [];
+        let whole = null;
         for (const job of jobs) {
             if (!job.value?.replace) continue;
             let text = renderForPrompt(job.value);
             if (macro) { try { text = macro(text); } catch {} }
-            const matched = target(candidates(job.original, macro), text);
+            const forms = candidates(job.original, macro);
+            // Read before replacing: a miss is then measured against what the prompt really had.
+            const matched = target(forms, text);
             if (dryRun) continue;
-            // A world-info entry missing from the prompt is usually just not triggered this turn
-            // (its keywords did not come up): normal, so it is shown in the app, not as a toast.
-            const head = job.world && !matched ? String(job.original).trim().split('\n')[0].trim() : '';
-            const changed = !!job.world && !matched && head.length >= 3 && seen(head);
-            results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched, ...(job.world && !matched ? { absent: !changed } : {}) });
-            if (!matched && !warned.has(key + '\n' + job.id)) {
-                if (job.world && !changed) continue;
-                warned.add(key + '\n' + job.id);
-                if (!job.world) { notice(job.missing); continue; }
-                missing.push({ name: job.world, changed });
-            }
+            let check = null;
+            if (!matched && job.world) { whole ??= promptText(); check = coverage(forms, whole); }
+            results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched, ...(check ? { absent: check.found * 2 < check.lines, lines: check.lines, found: check.found, sample: check.sample.slice(0, 60) } : {}) });
+            if (matched || warned.has(key + '\n' + job.id)) continue;
+            warned.add(key + '\n' + job.id);
+            if (!job.world) { notice(job.missing); continue; }
+            (check.found * 2 < check.lines ? absent : changed).push({ name: job.world, ...check });
         }
-        if (!dryRun && missing.length) {
-            const changed = missing.map(item => item.name);
+        if (!dryRun && (absent.length || changed.length)) {
             notice([
-                changed.length ? `世界书条目“${changed.join('、')}”发送了，但内容和导入时不一样（导入后被改过，或被正则、宏改写），本轮按世界书原样发送。可以在角色卡资料里点“按世界书现内容更新原文”。` : '',
-
+                ...changed.map(item => `世界书条目“${item.name}”发送了，但和导入时的原文对不上（${item.lines} 行里有 ${item.lines - item.found} 行不一样，比如「${item.sample.slice(0, 30)}」），本轮按世界书原样发送。条目改过的话，在角色卡资料里点“按世界书现内容更新原文”。`),
+                absent.length ? `世界书条目“${absent.map(item => item.name).join('、')}”本轮完全不在发送内容里，所以没有替换。常驻（蓝灯）条目也可能因为超出世界书的 token 预算被挤掉，可以在世界书设置里调高预算或上下文百分比。` : '',
             ].filter(Boolean).join('\n'));
         }
         if (!dryRun) notify();
@@ -243,11 +241,11 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     function onChatPrompt(data) {
         if (!data || !Array.isArray(data.chat)) return;
         let history = []; try { history = (getContext()?.chat ?? []).map(message => message?.mes).filter(text => typeof text === 'string'); } catch {}
-        apply((forms, text) => replaceInMessages(data.chat, forms, text, { history }), !!data.dryRun, head => data.chat.some(message => messageText(message).includes(head)));
+        apply((forms, text) => replaceInMessages(data.chat, forms, text, { history }), !!data.dryRun, () => data.chat.map(messageText).join('\n'));
     }
     function onTextPrompt(data) {
         if (!data || typeof data.prompt !== 'string') return;
-        apply((forms, text) => { const result = replaceInText(data.prompt, forms, text); data.prompt = result.prompt; return result.matched; }, !!data.dryRun, head => data.prompt.includes(head));
+        apply((forms, text) => { const result = replaceInText(data.prompt, forms, text); data.prompt = result.prompt; return result.matched; }, !!data.dryRun, () => data.prompt);
     }
     // ---- AI proposals ----
     function activeProfiles(ctx) {
@@ -362,7 +360,9 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         if (installed) return;
         const ctx = getContext(), ev = ctx?.eventTypes ?? ctx?.event_types ?? {};
         if (!ctx?.eventSource?.on) return;
-        promptInjectors(getContext).register('amin-os-card-profile', { build: rules, position: 1, depth: 0 });
+        // With the character definitions (in-prompt), not after the last message: a block at the
+        // very end outranks the preset's own closing instructions (length, format, date line).
+        promptInjectors(getContext).register('amin-os-card-profile', { build: rules, position: 0, depth: 0 });
         promptInjectors(getContext).register('amin-os-card-profile-notes', { build: notesPrompt, position: 0, depth: 0 });
         if (ev.MESSAGE_RECEIVED) ctx.eventSource.on(ev.MESSAGE_RECEIVED, index => { receive(index).catch(() => {}); });
         if (ev.CHAT_COMPLETION_PROMPT_READY) ctx.eventSource.on(ev.CHAT_COMPLETION_PROMPT_READY, onChatPrompt);
