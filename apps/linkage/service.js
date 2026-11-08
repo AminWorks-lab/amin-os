@@ -47,7 +47,7 @@ const sourceEqual = (a,b) => a.identity === b.identity && a.index === b.index &&
 const changesEqual = (record, changes) => record.changesHash ? record.changesHash === hash(changes) : same(record.changes, changes);
 const failWith = (category, text) => Object.assign(Error(text), { linkageCategory: category });
 function parse(raw, options) {
-    try { return parseUpdate(raw, { repair: true, ...options }); }
+    try { return parseUpdate(raw, { repair: true, skip: true, ...options }); }
     catch (error) { error.linkageCategory ??= 'format'; throw error; }
 }
 const REJECTION_LIMIT = 10, TURN_LIMIT = 20, HINT_KEY = 'amin-os-regenerate-hint-v1';

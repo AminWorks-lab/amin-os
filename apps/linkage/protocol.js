@@ -66,7 +66,7 @@ function lenientBlocks(text, markers, notes) {
 /** Validate one update. Legacy action names (e.g. set_fact, add_node) are
  * mapped to the adapter's current name unless `canonical:false` asks for the
  * literal payload, as idempotency checks against old receipts need. */
-export function parseUpdate(input, { canonical = true, repair = false, notes, ...repairOptions } = {}) {
+export function parseUpdate(input, { canonical = true, repair = false, skip = false, notes, ...repairOptions } = {}) {
     let raw = input;
     if (typeof input === 'string') {
         if (input.length > 2 * 1024 * 1024) throw Error('一次联动更新超过 2 MiB。');
@@ -85,12 +85,24 @@ export function parseUpdate(input, { canonical = true, repair = false, notes, ..
     // Opt-in: fix predictable model slips before the strict checks; see repair.js.
     if (repair) { const result = repairUpdate(raw, repairOptions); raw = result.update; notes?.push(...result.notes); }
     if (!plain(raw) || raw.version !== 1 || Object.keys(raw).some(k => !['version','changes'].includes(k)) || !Array.isArray(raw.changes) || raw.changes.length > 64) throw Error('联动更新必须使用 version:1 和最多 64 项 changes。');
-    for (const change of raw.changes) {
+    const check = change => {
         if (!plain(change) || Object.keys(change).some(k => !['module','action','target','data','reason'].includes(k)) || !Object.hasOwn(MODULES, change.module)) throw Error('更新包含未知模块或字段。');
         if (typeof change.action !== 'string' || !/^[a-z][a-zA-Z0-9_.-]{0,63}$/.test(change.action) || !plain(change.data)) throw Error('更新 action 或 data 格式无效。');
         if (change.target !== undefined && (typeof change.target !== 'string' || !change.target || change.target.length > 300)) throw Error('更新 target 必须是已有对象标识或明确的新对象标识。');
         if (typeof change.reason !== 'string' || !change.reason.trim() || change.reason.length > 2000) throw Error('每项更新必须说明已经发生的剧情依据（最多 2000 字）。');
+    };
+    if (repair) {
+        // A blank target means "no target" (advance-time and other module-wide actions).
+        raw = { ...raw, changes: raw.changes.map(change => { if (!plain(change) || typeof change.target !== 'string' || change.target.trim()) return change; const { target, ...rest } = change; return rest; }) };
     }
+    if (repair && skip) {
+        // Per-turn updates: one malformed item is skipped, not the whole batch.
+        const kept = [], dropped = [];
+        for (const [index, change] of raw.changes.entries()) { try { check(change); kept.push(change); } catch (error) { dropped.push(`第 ${index + 1} 项：${error.message}`); } }
+        if (dropped.length && !kept.length) throw Error(dropped[0].replace(/^第 \d+ 项：/, ''));
+        if (dropped.length) notes?.push(`有 ${dropped.length} 项格式不对，已跳过：${dropped.slice(0, 3).join('；')}`);
+        raw = { ...raw, changes: kept };
+    } else for (const change of raw.changes) check(change);
     const update = structuredClone(raw);
     if (canonical) for (const change of update.changes) change.action = canonicalAction(getAdapter(change.module)?.spec, change.action);
     return update;

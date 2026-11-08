@@ -90,6 +90,19 @@ test('lenient parsing merges split blocks, ignores stray tags and accepts a comp
     assert.throws(()=>parseUpdate(block([a])+block([b])),/只有一个完整/,'strict parsing is unchanged');
 });
 
+test('a blank target is dropped and one malformed item no longer voids the batch',()=>{
+    const a=change('status','set-field','玩家.金币',{value:1});
+    let notes=[];
+    const time={module:'scene',action:'advance-time',target:'',data:{minutes:30},reason:'过了半小时'};
+    const parsed=parseUpdate('<amin_update>'+JSON.stringify(batch(time,a))+'</amin_update>',{repair:true,notes});
+    assert.equal(parsed.changes.length,2); assert.equal('target' in parsed.changes[0],false);
+    notes=[];
+    const bad={module:'status',action:'set-field',target:42,data:{value:1},reason:'x'};
+    assert.deepEqual(parseUpdate('<amin_update>'+JSON.stringify(batch(bad,a))+'</amin_update>',{repair:true,skip:true,notes}).changes,[a]);
+    assert.ok(notes.some(n=>/1 项格式不对.*第 1 项/.test(n)));
+    assert.throws(()=>parseUpdate('<amin_update>'+JSON.stringify(batch(bad,a))+'</amin_update>'),/target/,'strict parsing is unchanged');
+});
+
 test('missing or overlong reasons no longer void the whole update',()=>{
     const a=change('status','set-field','玩家.金币',{value:1}), b={module:'status',action:'set-field',target:'玩家.金币',data:{value:2}};
     let notes=[];
