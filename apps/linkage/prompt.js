@@ -204,10 +204,10 @@ export function buildDataPrompt(ctx) {
 const PROTOCOL_HEADER = [
     '【Amin OS · 剧情更新协议】',
     '正常输出剧情正文，末尾附一个完整 <amin_update>JSON</amin_update>；不用 <state>、变量语法或代码围栏。',
-    'JSON={"version":1,"changes":[{"module","action","target","data":{},"reason":"本轮依据"}]}，最多64项；无确认变化则 changes:[]；无效项会被跳过，依赖它的项也会失败。',
-    '- 只记录本轮已发生且确有变化的事实；尝试、计划、猜测或单独骰点不是结果。未知不等于零；不伪造数值、时间或来源。',
+    'JSON={"version":1,"changes":[{"module","action","target","data":{},"reason":"本轮依据"}]}，最多64项；无确认变化则 changes:[]；无效项会被跳过。',
+    '- 只记录本轮已发生且确有变化的事实；尝试、计划、猜测不是结果。未知不等于零；不伪造数值、时间或来源。',
     '- 已有对象复制资料中的稳定ID，不按名称连接。新建一律用 "@new:别名"（英文字母开头）作 target，嵌套新ID（stats[].id、fields[].id、newId）同理；同批引用同一别名，先建被引用对象。不得自编 UUID。',
-    '- 记法：action(data字段)，?可选，a|b 枚举，m..n 闭区间，[x] 数组；无参数写 data:{}；未列字段不可写。来源楼层由插件自动绑定。',
+    '- 记法：action(data字段)，?可选，a|b 枚举，m..n 闭区间，[x] 数组；无参数写 data:{}；未列字段不可写。',
     '- 不得改开关、权限、设置、世界书、全局库、存档、骰点或聊天正文。',
 ].join('\n');
 
@@ -223,6 +223,7 @@ export function buildUpdateRules(ctx, { purpose = 'story', write = purpose === '
         rules ? `【原应用数值规则】\n${rules}` : '',
         settings.extraRules ? `【用户补充要求】\n${settings.extraRules}` : '',
         rules || settings.extraRules ? '以上补充只决定何时、改什么；格式始终是 amin_update 模块操作。' : '',
+        '【收尾】必写 </amin_update>，写完即结束。',
     ].filter(Boolean).join('\n\n').replaceAll('{{', '\\u007b\\u007b');
 }
 
