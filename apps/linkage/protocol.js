@@ -12,6 +12,24 @@ function tags(text) {
         index: match.index, length: match[0].length, closing: match[0].includes('/'),
     }));
 }
+/** The complete objects at the start of a truncated {"version":1,"changes":[…  payload. */
+export function salvageChanges(text) {
+    const start = text.search(/"changes"\s*:\s*\[/);
+    if (start < 0 || !/"version"\s*:\s*1\b/.test(text)) return null;
+    const changes = [];
+    let index = text.indexOf('[', start) + 1, depth = 0, open = -1, quoted = false, escaped = false;
+    for (; index < text.length; index++) {
+        const char = text[index];
+        if (quoted) { if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === '"') quoted = false; continue; }
+        if (char === '"') { quoted = true; continue; }
+        if (char === '{') { if (depth++ === 0) open = index; }
+        else if (char === '}') {
+            if (--depth === 0 && open >= 0) { try { changes.push(JSON.parse(text.slice(open, index + 1))); } catch { return changes.length ? { update: { version: 1, changes } } : null; } open = -1; }
+        } else if (char === ']' && depth === 0) break;
+    }
+    return changes.length ? { update: { version: 1, changes } } : null;
+}
+
 // Models split one turn into several blocks, mention the tag in prose, or get
 // cut off before the closing tag. With repair on, every complete block that
 // parses is merged in order; an unclosed last block is used when its JSON is
@@ -26,15 +44,21 @@ function lenientBlocks(text, markers, notes) {
     }
     if (open) payloads.push({ text: text.slice(open.index + open.length), closed: false });
     const parsed = [], errors = [];
+    let salvaged = false;
     for (const payload of payloads) {
         if (!payload.text.trim()) continue;
         try { parsed.push(parseModelJSON(payload.text, { label: '联动更新' })); }
-        catch (error) { errors.push(payload.closed ? error : Error('更新块缺少结束标签 </amin_update>，内容不完整，可能是回复长度不够被截断；请调大回复长度后重新生成。')); }
+        catch (error) {
+            // Cut off mid-JSON (reply length): keep the changes that were written out completely.
+            const saved = payload.closed ? null : salvageChanges(payload.text);
+            if (saved) { parsed.push(saved.update); salvaged = true; notes?.push(`回复被截断，更新块不完整；已使用写完整的 ${saved.update.changes.length} 项，丢弃最后没写完的部分。建议调大回复长度。`); continue; }
+            errors.push(payload.closed ? error : Error('更新块缺少结束标签 </amin_update>，内容不完整，可能是回复长度不够被截断；请调大回复长度后重新生成。'));
+        }
     }
     if (!parsed.length) throw errors[0] ?? Error('每条消息必须只有一个完整的 amin_update 更新块。');
     if (parsed.some(item => !plain(item) || item.version !== 1 || !Array.isArray(item.changes))) return parsed.length === 1 ? parsed[0] : { version: 1, changes: null };
     if (parsed.length > 1) notes?.push(`回复包含 ${parsed.length} 个更新块，已按顺序合并。`);
-    if (!payloads.at(-1).closed && errors.length === 0 && parsed.length) notes?.push('最后一个更新块缺少结束标签，内容完整，已照常使用。');
+    if (!payloads.at(-1).closed && !salvaged && errors.length === 0 && parsed.length) notes?.push('最后一个更新块缺少结束标签，内容完整，已照常使用。');
     if (errors.length) notes?.push(`有 ${errors.length} 个更新块无法解析，已忽略：${errors[0].message}`);
     if (stray) notes?.push('回复中有多余的 amin_update 标签，已忽略。');
     return parsed.length === 1 ? parsed[0] : { version: 1, changes: parsed.flatMap(item => item.changes) };

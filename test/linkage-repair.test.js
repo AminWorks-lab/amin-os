@@ -83,6 +83,10 @@ test('lenient parsing merges split blocks, ignores stray tags and accepts a comp
     assert.deepEqual(parseUpdate('我会写 <amin_update> 块。\n'+block([a]),{repair:true,notes}).changes,[a]); assert.ok(notes.some(n=>/多余/.test(n)));
     assert.deepEqual(parseUpdate('正文<amin_update>'+JSON.stringify(batch(a)),{repair:true}).changes,[a]);
     assert.throws(()=>parseUpdate('正文<amin_update>{"version":1,"changes":[{"module"',{repair:true}),/缺少结束标签.*截断/);
+    notes=[];
+    const cut='正文<amin_update>'+JSON.stringify(batch(a,b)).replace(/\]\}$/,'').slice(0,-8);
+    assert.deepEqual(parseUpdate(cut,{repair:true,notes}).changes,[a],'complete changes before the cut are kept');
+    assert.ok(notes.some(n=>/截断.*1 项/.test(n)));
     assert.throws(()=>parseUpdate(block([a])+block([b])),/只有一个完整/,'strict parsing is unchanged');
 });
 
