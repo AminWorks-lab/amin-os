@@ -112,3 +112,17 @@ test('an entry whose spacing changed is still replaced; a changed line is report
     assert.deepEqual([check.lines, check.found, check.sample], [4, 3, '*年龄: 16']);
     assert.equal(coverage(candidates(original), '别的内容').found, 0);
 });
+
+test('检查没发送的原因 reads the entry settings and the last prompt', async () => {
+    const { service } = host();
+    const keys = await service.importWorld((await service.worldCandidates()).entries);
+    service.hooks.onChatPrompt({ chat: [{ role: 'system', content: '没有世界书内容' }], dryRun: false });
+    assert.match((await service.diagnoseWorld(keys[0])).join('\n'), /同一位置的其他常驻条目也都不在发送内容里，预设里很可能关掉了“世界信息（角色定义之前）”/);
+    service.hooks.onChatPrompt({ chat: [{ role: 'system', content: NIJIKA }], dryRun: false });
+    assert.match((await service.diagnoseWorld(keys[0])).join('\n'), /token 预算/);
+    book.entries[0].group = '乐队'; book.entries[1].group = '乐队'; book.entries[0].probability = 50;
+    try {
+        const reasons = (await service.diagnoseWorld(keys[0])).join('\n');
+        assert.match(reasons, /包含组“乐队”/); assert.match(reasons, /概率是 50%/);
+    } finally { delete book.entries[0].group; delete book.entries[1].group; delete book.entries[0].probability; }
+});

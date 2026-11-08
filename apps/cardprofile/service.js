@@ -28,6 +28,7 @@ export function chatCharacters(ctx) {
 export function createCardProfileService(getContext = () => globalThis.SillyTavern?.getContext?.(), { notice = message => globalThis.toastr?.warning?.(message, 'Amin 角色卡资料'), worldbooks = null } = {}) {
     const operation = createOperationService(getContext), listeners = new Set();
     const results = new Map(), warned = new Set();
+    let lastPrompt = null;
     let installed = false;
     const notify = () => { for (const fn of [...listeners]) { try { fn(); } catch {} } };
     const context = () => { const ctx = getContext(); if (!ctx?.chatMetadata || !(ctx.getCurrentChatId?.() ?? ctx.chatId)) throw Error('请先打开一个聊天。'); return ctx; };
@@ -181,6 +182,42 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         for (const id of [...warned]) if (id.endsWith('\n' + key)) warned.delete(id);
         return true;
     }
+    /** Why a world-info entry was not in the last prompt: reads the entry's own settings and
+     *  checks the rest of the book against that prompt. Returns a list of readable reasons. */
+    async function diagnoseWorld(key) {
+        const ctx = context(), value = profile(key, ctx);
+        if (value.source?.type !== 'world') throw Error('这份资料不是从世界书导入的。');
+        const books = await (worldbooks?.choices ?? (c => worldbookChoices(c)))(ctx), book = books.find(item => item.name === value.source.book);
+        if (!book) return [`当前聊天没有启用世界书“${value.source.book}”，条目不会发送。在聊天或角色的世界书设置里启用它。`];
+        const data = book.data ?? await (worldbooks?.load ?? ((c, name) => freshWorldbook(c, name)))(ctx, book.name);
+        const entries = Object.values(data?.entries ?? {}).filter(Boolean);
+        const entry = entries.find(item => String(item.uid ?? item.id) === String(value.source.uid));
+        if (!entry) return ['世界书里找不到这个条目了，可能被删除或换了编号。删除副本后重新导入。'];
+        const reasons = [];
+        if (entry.disable) reasons.push('条目被禁用了（开关是关的）。');
+        if (!entry.constant) reasons.push('条目不是常驻（蓝灯），要关键词出现才会发送。');
+        if (entry.useProbability !== false && Number.isFinite(entry.probability) && entry.probability < 100) reasons.push(`条目的触发概率是 ${entry.probability}%，不是每轮都发送。`);
+        if (entry.group) { const same = entries.filter(item => item !== entry && !item.disable && String(item.group ?? '').split(/,\s*/).some(name => String(entry.group).split(/,\s*/).includes(name))); if (same.length) reasons.push(`条目在包含组“${entry.group}”里，同组还有 ${same.length} 条；同一组每轮只会选一条发送。`); }
+        const filter = entry.characterFilter;
+        if (filter && ((filter.names ?? []).length || (filter.tags ?? []).length)) reasons.push(`条目设置了角色过滤（${filter.isExclude ? '排除' : '只给'}：${[...(filter.names ?? []), ...(filter.tags ?? [])].join('、')}），当前角色可能不符合。`);
+        if (Array.isArray(entry.triggers) && entry.triggers.length) reasons.push(`条目只在这些生成类型时发送：${entry.triggers.join('、')}。`);
+        for (const [field, label] of [['delay', '延迟'], ['cooldown', '冷却'], ['sticky', '粘滞']]) if (Number(entry[field]) > 0) reasons.push(`条目设置了${label} ${entry[field]}，有些轮次不会发送。`);
+        if (entry.delayUntilRecursion) reasons.push('条目设置了“延迟到递归”，只有被其他条目递归触发时才发送。');
+        if (Number(entry.position) === 7) reasons.push(`条目的位置是“出口（outlet）”，只会出现在预设或卡里写了 {{outlet::${entry.outletName || '名字'}}} 的地方。`);
+        if (typeof entry.content === 'string' && entry.content !== value.source.text) reasons.push('条目内容和导入时不一样（导入后改过）。点“按世界书现内容更新原文”。');
+        const prompt = lastPrompt?.chat === chatKey(ctx) ? lastPrompt.text : '';
+        if (prompt && !reasons.length) {
+            // Other always-on entries at the same place: if none of them is in the prompt either,
+            // the preset does not send that world-info slot at all.
+            const place = Number(entry.position ?? 0);
+            const others = entries.filter(item => item !== entry && item.constant && !item.disable && Number(item.position ?? 0) === place && typeof item.content === 'string' && item.content.trim().length >= 8);
+            const seen = others.filter(item => coverage([item.content.trim()], prompt).found > 0);
+            const slot = { 0: '世界信息（角色定义之前）', 1: '世界信息（角色定义之后）' }[place];
+            if (others.length && !seen.length) reasons.push(`同一位置的其他常驻条目也都不在发送内容里${slot ? `，预设里很可能关掉了“${slot}”这一块` : ''}。在预设的提示词列表里把它打开。`);
+            else reasons.push('条目设置看起来没问题，同位置的其他条目也发送了。最可能是世界书 token 预算不够，这条被挤掉了：在世界书设置里调高“上下文百分比”或“预算上限”，或者给这条打开“忽略预算”。');
+        } else if (!prompt && !reasons.length) reasons.push('条目设置看起来没问题。先发送一次消息，再点这个按钮，可以对照那次的发送内容继续检查。');
+        return reasons;
+    }
     /** Parse without saving, for the import preview. */
     function preview(avatar) {
         const item = card(avatar), description = descriptionOf(item);
@@ -223,7 +260,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             const matched = target(forms, text);
             if (dryRun) continue;
             let check = null;
-            if (!matched && job.world) { whole ??= promptText(); check = coverage(forms, whole); }
+            if (!matched && job.world) { whole ??= promptText(); lastPrompt = { chat: key, text: whole }; check = coverage(forms, whole); }
             results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched, ...(check ? { absent: check.found * 2 < check.lines, lines: check.lines, found: check.found, sample: check.sample.slice(0, 60) } : {}) });
             if (matched || warned.has(key + '\n' + job.id)) continue;
             warned.add(key + '\n' + job.id);
@@ -233,7 +270,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         if (!dryRun && (absent.length || changed.length)) {
             notice([
                 ...changed.map(item => `世界书条目“${item.name}”发送了，但和导入时的原文对不上（${item.lines} 行里有 ${item.lines - item.found} 行不一样，比如「${item.sample.slice(0, 30)}」），本轮按世界书原样发送。条目改过的话，在角色卡资料里点“按世界书现内容更新原文”。`),
-                absent.length ? `世界书条目“${absent.map(item => item.name).join('、')}”本轮完全不在发送内容里，所以没有替换。常驻（蓝灯）条目也可能因为超出世界书的 token 预算被挤掉，可以在世界书设置里调高预算或上下文百分比。` : '',
+                absent.length ? `世界书条目“${absent.map(item => item.name).join('、')}”本轮完全不在发送内容里，所以没有替换。打开角色卡资料里这份资料，点“检查没发送的原因”可以看具体原因（常驻条目也可能被预设关掉的世界信息块或 token 预算挡掉）。` : '',
             ].filter(Boolean).join('\n'));
         }
         if (!dryRun) notify();
@@ -371,7 +408,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
         installed = true;
     }
     return {
-        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, refreshWorldSource, createNote, generateNote, notesPrompt, askEdits, applyEdits,
+        install, read: () => read(), snapshot, preview, importCard, reimport, keepCopy, remove, worldCandidates, importWorld, refreshWorldSource, diagnoseWorld, createNote, generateNote, notesPrompt, askEdits, applyEdits,
         /** 让 AI 改's 由谁改写 / 写入剧情 for the whole chat (kept when switching between copies). */
         /** Copy one copy's panel settings (editors, manner) to other copies in this chat. */
         copyPanel: (fromKey, toKeys) => write('同步面板设置', store => {

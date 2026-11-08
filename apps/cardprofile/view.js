@@ -14,7 +14,7 @@ export function mount(target, { service } = {}) {
     page.append(intro, notice, body); target.append(page);
 
     let avatar = '', layout = {}, asks = {}, shared = null, draft = null, generating = null, worlds = null, picks = new Set(), query = '', onlyChanged = false, editing = null, previewed = null, busy = false;
-    const opened = new Set(), say = (text, state = '') => { notice.textContent = text; notice.dataset.state = state; };
+    const opened = new Set(), say = (text, state = '') => { notice.textContent = text; notice.dataset.state = state; notice.style.whiteSpace = 'pre-line'; };
     const button = (parent, text, fn, cls = '') => {
         const b = node('button', text, cls); b.type = 'button';
         b.onclick = async event => {
@@ -269,7 +269,7 @@ export function mount(target, { service } = {}) {
         const result = entry.result;
         settings.append(node('p', [
             changes.length ? `与初始版本相比有 ${changes.length} 处改动` : '与初始版本相同',
-            !profile.replace ? (entry.kind === 'note' ? '暂停发送' : '替换已暂停') : !result ? '本次打开后还没有发送过' : entry.kind === 'note' ? '最近一次发送已附上' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? (result.absent ? '最近一次发送时这个世界书条目完全不在发送内容里（没激活，或超出世界书 token 预算被挤掉），所以没替换' : `最近一次发送时条目和导入时的原文对不上（${result.lines ?? '?'} 行里有 ${(result.lines ?? 0) - (result.found ?? 0)} 行不一样${result.sample ? `，比如「${result.sample}」` : ''}），按世界书原样发送；条目改过的话点“按世界书现内容更新原文”`) : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
+            !profile.replace ? (entry.kind === 'note' ? '暂停发送' : '替换已暂停') : !result ? '本次打开后还没有发送过' : entry.kind === 'note' ? '最近一次发送已附上' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? (result.absent ? '最近一次发送时这个世界书条目完全不在发送内容里，所以没替换。点下面的“检查没发送的原因”' : `最近一次发送时条目和导入时的原文对不上（${result.lines ?? '?'} 行里有 ${(result.lines ?? 0) - (result.found ?? 0)} 行不一样${result.sample ? `，比如「${result.sample}」` : ''}），按世界书原样发送；条目改过的话点“按世界书现内容更新原文”`) : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
         ].join(' · '), result && !result.matched && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
 
         askPanel(entry);
@@ -352,6 +352,9 @@ export function mount(target, { service } = {}) {
         history.append(log);
         extra.append(preview, history);
         const danger = toolbar(extra);
+        if (entry.kind === 'world') button(danger, '检查没发送的原因', async () => {
+            try { const reasons = await api.diagnoseWorld(entry.key); say(reasons.join('\n')); } catch (error) { say(error.message, 'error'); }
+        });
         if (entry.kind === 'world') button(danger, '按世界书现内容更新原文', async () => {
             const changed = await api.refreshWorldSource(entry.key);
             say(changed ? '已更新：之后按世界书条目现在的内容查找并替换，副本里的修改都保留。' : '世界书条目和导入时一样，不需要更新。'); render();
