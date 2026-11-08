@@ -16,7 +16,7 @@ class Node {
  querySelectorAll(selector){return [...walk(this)].filter(n=>selector==='[data-running]'&&n.dataset.running);}
 }
 function* walk(node){yield node;for(const child of node.children)yield* walk(child);}
-const button=(root,label)=>[...walk(root)].find(n=>n.tagName==='button'&&n.textContent===label);
+const button=(root,label)=>[...walk(root)].find(n=>(n.tagName==='button'&&n.textContent===label)||(n.attributes.role==='button'&&n.attributes['aria-label']===label));
 const field=(root,label)=>[...walk(root)].find(n=>n.attributes['aria-label']===label);
 const click=async(root,label)=>{const b=button(root,label);assert.ok(b,'Missing button: '+label);await b.onclick();};
 const type=(root,label,value)=>{const f=field(root,label);assert.ok(f,'Missing field: '+label);f.value=value;f.oninput();return f;};

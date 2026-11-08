@@ -1,0 +1,21 @@
+/* 信息面板: reuses the 角色卡资料 tree / panel classes; only the extras live here. Colours only from --amin-* tokens. */
+.amin-information .amin-toolbar { align-items: end; }
+.amin-info-picker { flex: 1 1 14em; min-width: 0; margin: 0; }
+.amin-info-picker select { width: 100%; }
+.amin-info-title { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.amin-info-title .amin-section-heading { margin: 0; font-size: 1.2em; color: var(--amin-accent); letter-spacing: 0.04em; }
+.amin-info-kind { font-size: 0.82em; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--amin-line); color: var(--amin-muted); }
+.amin-information .amin-cardprofile-group > summary .amin-meta { font-weight: 400; font-size: 0.85em; }
+.amin-info-status { font-size: 0.75em; padding: 0 6px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--amin-line); color: var(--amin-muted); line-height: 1.6; }
+.amin-info-status[data-status='known'] { border-color: transparent; background: var(--amin-control); }
+.amin-info-status[data-status='inferred'] { border-color: var(--amin-warning); color: var(--amin-warning); }
+.amin-info-status[data-status='invented'], .amin-info-status[data-status='edited'] { border-color: var(--amin-accent); color: var(--amin-accent); }
+.amin-info-status[data-status='unknown'] { border-style: dashed; }
+.amin-info-status-mini { font-size: 0.7em; align-self: center; }
+.amin-info-unknown { color: var(--amin-muted); font-style: italic; }
+.amin-ui .amin-info-sources { flex-basis: 100%; margin: 0; font-size: 0.88em; }
+.amin-ui .amin-info-sources > summary { cursor: pointer; color: var(--amin-muted); margin: 0; font-weight: 400; display: inline-block; }
+.amin-info-sources blockquote { margin: 2px 0 6px; padding-left: 8px; border-left: 2px solid var(--amin-line); color: var(--amin-text); overflow-wrap: anywhere; }
+.amin-info-sources p { margin: 4px 0 0; }
+.amin-info-editor .amin-form-grid { margin: 0; }
+.amin-info-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: auto; align-self: center; }
