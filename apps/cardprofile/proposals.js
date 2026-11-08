@@ -110,6 +110,32 @@ function resolveExact(tree, path) {
     return { node: hit, path: trail };
 }
 
+/** For a path that does not resolve: the deepest existing group it starts with (trail, [] for
+ *  the top level) and the names below it that are missing. null when no group fits. */
+export function missingPart(tree, path) {
+    const parts = String(path ?? '').split(/\s*\/\s*/).map(segment).filter(Boolean);
+    if (parts.length > 1 && segment(tree.name ?? '') === parts[0] && !(tree.children ?? []).some(node => node.kind !== 'text' && segment(node.key) === parts[0])) parts.shift();
+    const loose = text => text.normalize('NFKC').replace(/\s+/g, '');
+    let nodes = tree.children, trail = [];
+    for (const [index, part] of parts.entries()) {
+        const [, name, nth] = part.match(/^(.*?)(?:#(\d+))?$/);
+        let matches = (nodes ?? []).filter(node => node.kind === 'group' && segment(node.key) === name);
+        if (!matches.length) matches = (nodes ?? []).filter(node => node.kind === 'group' && loose(segment(node.key)) === loose(name));
+        const hit = matches.length === 1 && !nth ? matches[0] : nth ? matches[Number(nth) - 1] : null;
+        if (!hit) {
+            if (matches.length > 1) return null;
+            // An entry with this name is already here (a field, or a duplicate without #n):
+            // that is a mistake in the path, not a missing section. 事件#7 past the last 事件 is new.
+            const same = (nodes ?? []).filter(node => node.kind !== 'text' && loose(segment(node.key)) === loose(name));
+            if (same.length && !(nth && Number(nth) > same.length && index === parts.length - 1)) return null;
+            const rest = parts.slice(index).map(value => value.replace(/#\d+$/, ''));
+            return rest.every(value => value && !/[\[\]:：]/.test(value)) ? { trail, rest } : null;
+        }
+        trail.push(hit); nodes = hit.children;
+    }
+    return null;
+}
+
 /** A trail of nodes written back as a path resolvePath accepts (键#2 for repeated keys). */
 export function pathText(tree, trail) {
     let siblings = tree.children;
@@ -143,11 +169,26 @@ export function checkItem(profile, raw, id, { user = '' } = {}) {
     if (Array.isArray(raw.items)) item.items = raw.items.filter(object).slice(0, 30).map(child => ({ key: segment(child.key).slice(0, LIMITS.key), value: clean(child.value).slice(0, LIMITS.value) }));
     try {
         if (!['set', 'add', 'remove'].includes(op)) throw Error(`不支持的操作“${raw.op}”。`);
-        const hit = resolvePath(profile.current, item.path);
+        let hit;
+        try { hit = op === 'add' && !item.path ? { node: null, path: [] } : resolvePath(profile.current, item.path); }
+        catch (error) {
+            // A section or entry the copy does not have yet: add it (creating the missing
+            // sections) instead of failing, when everything above it exists.
+            const missing = op === 'remove' ? null : missingPart(profile.current, item.path);
+            if (!missing) throw error;
+            if (op === 'set') {
+                // set only becomes add for a new entry in a section that exists (事件#7 after six 事件).
+                if (typeof item.value !== 'string' || missing.rest.length !== 1 || !missing.trail.length) throw error;
+                item.op = 'add'; item.key = missing.rest.at(-1); missing.rest = missing.rest.slice(0, -1);
+            } else if (!item.key && !item.items) { item.key = missing.rest.at(-1); missing.rest = missing.rest.slice(0, -1); }
+            if (missing.rest.length) item.create = missing.rest;
+            item.path = pathText(profile.current, missing.trail);
+            hit = { node: missing.trail.at(-1) ?? null, path: missing.trail };
+        }
         const locked = lockedBy(profile, hit.path);
         if (locked) { item.status = 'locked'; return item; }
         if (item.by && profile.panel?.on) { const allowed = panelPermission(profile, item.by, hit.path, user); if (!allowed.ok) throw Error(allowed.error); }
-        if (op === 'set' && hit.node.kind === 'group') {
+        if (item.op === 'set' && hit.node.kind === 'group') {
             // set on a group: models mean its one content field (or the one named 描述/内容…).
             const fields = hit.node.children.filter(node => node.kind === 'field');
             const pick = fields.length === 1 ? fields[0] : fields.find(node => ['描述', '内容', '说明', '简介', '概述', '简要描述'].includes(segment(node.key)));
@@ -155,13 +196,13 @@ export function checkItem(profile, raw, id, { user = '' } = {}) {
             item.path = pathText(profile.current, [...hit.path, pick]);
             hit.node = pick; hit.path = [...hit.path, pick];
         }
-        if (op === 'set') {
+        if (item.op === 'set') {
             if (hit.node.kind !== 'field') throw Error('只能修改带内容的条目，分组请用 add/remove。');
             if (typeof item.value !== 'string') throw Error('缺少新内容。');
             if (item.value === hit.node.value) throw Error('与当前内容相同。');
             item.before = hit.node.value;
-        } else if (op === 'add') {
-            if (hit.node.kind !== 'group') throw Error('新增的位置必须是分组。');
+        } else if (item.op === 'add') {
+            if (hit.node && hit.node.kind !== 'group') throw Error('新增的位置必须是分组。');
             if (!item.key || /[\[\]:：]/.test(item.key)) throw Error('新增条目需要有效的键名。');
             if (item.items ? !item.items.length || item.items.some(child => !child.key || /[\[\]:：]/.test(child.key)) : typeof item.value !== 'string') throw Error('新增条目缺少内容。');
         } else if (hit.node.kind === 'field') item.before = hit.node.value;
@@ -171,21 +212,26 @@ export function checkItem(profile, raw, id, { user = '' } = {}) {
 
 /** Apply one accepted item to the copy (paths are resolved again: the copy may have changed). */
 export function applyItem(profile, item, { at = new Date().toISOString() } = {}) {
-    const hit = resolvePath(profile.current, item.path);
+    const hit = item.op === 'add' && !item.path ? { node: null, path: [] } : resolvePath(profile.current, item.path);
     if (lockedBy(profile, hit.path)) throw Error('这个分区已锁定，先在应用里解除锁定。');
-    const where = pathLabel(hit.path), why = item.reason ? `（${item.reason}）` : '';
+    const where = [pathLabel(hit.path), ...(item.create ?? [])].filter(Boolean).join(' / ') || '最外层', why = item.reason ? `（${item.reason}）` : '';
     return edit(profile, `${item.by ? `${item.by} 改写面板` : '采纳 AI 建议'}：${item.op === 'set' ? '修改' : item.op === 'add' ? '新增' : '删除'} ${where}${item.op === 'add' ? ' / ' + item.key : ''}${why}`, next => {
-        const target = locate(next.current, hit.node.id);
+        const target = hit.node ? locate(next.current, hit.node.id) : null;
         // Each applied item remembers how to undo itself (see undoItem).
         if (item.op === 'set') { if (target.node.kind !== 'field') throw Error('只能修改带内容的条目。'); item.undo = { id: target.node.id, value: target.node.value }; target.node.value = item.value; }
         else if (item.op === 'remove') { item.undo = { node: copy(target.node), parentId: hit.path.at(-2)?.id ?? null, index: target.index }; target.siblings.splice(target.index, 1); }
         else {
-            if (target.node.kind !== 'group') throw Error('新增的位置必须是分组。');
+            if (target && target.node.kind !== 'group') throw Error('新增的位置必须是分组。');
             const make = (fields) => ({ id: `n${next.nextId++}`, star: true, ...fields });
+            let children = target ? target.node.children : next.current.children, top = null;
+            for (const name of item.create ?? []) {
+                const group = make({ kind: 'group', key: name, star: false, children: [] });
+                children.push(group); top ??= group; children = group.children;
+            }
             const created = item.items
                 ? make({ kind: 'group', key: item.key, children: item.items.map(child => make({ kind: 'field', key: child.key, value: child.value })) })
                 : make({ kind: 'field', key: item.key, value: item.value });
-            target.node.children.push(created); item.undo = { id: created.id };
+            children.push(created); item.undo = { id: (top ?? created).id };
         }
     }, at);
 }
@@ -236,7 +282,8 @@ function describeOp(item) {
     if (item.op === 'set') return { title: `修改 ${where}`, before: item.before ?? '', after: item.value ?? '' };
     if (item.op === 'remove') return { title: `删除 ${where}`, before: item.before ?? '', after: '' };
     const after = item.items ? item.items.map(child => `${child.key}：${child.value}`).join('；') : item.value ?? '';
-    return { title: `新增 ${where} / ${item.key ?? ''}`, before: '', after };
+    const place = [where, ...(item.create ?? [])].filter(Boolean).join(' / ');
+    return { title: `新增 ${place ? place + ' / ' : ''}${item.key ?? ''}${item.create?.length ? `（新建分区 ${item.create.join(' / ')}）` : ''}`, before: '', after };
 }
 
 /** The line appended to the chat draft when the player rewrites a panel from the app. */

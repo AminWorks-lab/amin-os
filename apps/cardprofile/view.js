@@ -1,5 +1,5 @@
 import { getSharedCardProfileService, chatCharacters } from './service.js';
-import { diffProfile, pathLabel, locate, DIFF_MODES, USER_TOKEN, NOTE_KINDS, PANEL_METHODS, PANEL_AWARE } from './model.js';
+import { diffProfile, pathLabel, locate, walk, DIFF_MODES, USER_TOKEN, NOTE_KINDS, PANEL_METHODS, PANEL_AWARE } from './model.js';
 import { describe, storyLine, panelManner } from './proposals.js';
 import { contextLine } from '../shared/context-line.js';
 
@@ -205,6 +205,15 @@ export function mount(target, { service } = {}) {
         }, 'amin-primary');
     }
 
+    // Parts of the template the parser kept as plain text: after the closing "]" of the root,
+    // or lines that look like a section opener it did not recognise.
+    function unreadParts(tree) {
+        const lines = tree.after ? tree.after.split('\n').filter(line => line.trim()).length : 0;
+        let openers = 0;
+        walk(tree.children, child => { if (child.kind === 'text' && /[\[【]\s*$/.test(child.value)) openers++; });
+        return [lines ? `模板结尾的“]”之后还有 ${lines} 行。` : '', openers ? `有 ${openers} 行像分区开头但没认出来。` : ''].join('');
+    }
+
     function profilePage(entry) {
         const profile = entry.profile, changes = diffProfile(profile);
         const byId = new Map(changes.map(change => [change.id, change]));
@@ -221,6 +230,18 @@ export function mount(target, { service } = {}) {
                 if (!globalThis.confirm?.('按新卡重新导入会丢弃本聊天副本里的全部改动，确定吗？')) return;
                 await api.reimport(entry.key); say('已按新卡重新导入。'); render();
             }, 'amin-danger');
+        }
+
+        const unread = unreadParts(profile.current);
+        if (unread) {
+            const warn = card('有内容没有读成条目');
+            warn.dataset.state = 'warning';
+            warn.append(node('p', `${unread}这些内容会照原样发送，但不能在这里编辑，“让 AI 改”和 AI 建议也改不到。常见原因是中间多写了一个“]”，或者分区的开头写法不是“分区:[”。改好原文后重新导入这份副本。`, 'amin-meta'));
+            if (entry.kind === 'card') button(toolbar(warn), '按角色卡重新读取', async () => {
+                if (!globalThis.confirm?.('重新读取会丢弃本聊天副本里的全部改动，确定吗？')) return;
+                try { await api.reimport(entry.key); say('已重新读取角色卡。'); } catch (error) { say(error.message, 'error'); }
+                render();
+            });
         }
 
         const settings = card(null);

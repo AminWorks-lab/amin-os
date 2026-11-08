@@ -1,6 +1,6 @@
 // Per-chat living copies of character-card descriptions written in the bracket template.
 // The card keeps the original; the chat keeps {baseline, current} trees and a change log.
-import { parseCard, writeCard } from './format.js';
+import { parseCard, writeCard, liftBlocks } from './format.js';
 
 export const KEY = 'amin_os_card_profile_v1';
 export const DIFF_MODES = Object.freeze(['summary', 'inline', 'off']);
@@ -23,7 +23,8 @@ export function validateNode(node, ids) {
     if (!object(node) || typeof node.id !== 'string' || !node.id || ids.has(node.id)) fail('角色资料条目编号无效或重复。');
     ids.add(node.id);
     if (!['group', 'field', 'text'].includes(node.kind) || typeof node.star !== 'boolean') fail('角色资料条目类型无效。');
-    if (node.sep !== undefined && (typeof node.sep !== 'string' || !/^\s*[:：]\s*$/.test(node.sep))) fail('角色资料分隔符无效。');
+    if (node.sep !== undefined && (typeof node.sep !== 'string' || !/^\s*[:：=]\s*$/.test(node.sep))) fail('角色资料分隔符无效。');
+    if (node.block !== undefined && (node.block !== true || node.kind !== 'group')) fail('角色资料分组无效。');
     if (node.kind !== 'text' && (typeof node.key !== 'string' || node.key.length > LIMITS.key || /[\n\[\]]/.test(node.key) || (node.kind === 'field' && /[:：]/.test(node.key)) || !node.key.trim())) fail('角色资料键名无效：' + String(node.key).slice(0, 40));
     if (node.kind === 'group') { if (!Array.isArray(node.children)) fail('角色资料分组无效。'); for (const child of node.children) validateNode(child, ids); }
     else if (typeof node.value !== 'string' || node.value.length > LIMITS.value || node.value.includes('\n')) fail('角色资料内容无效或过长（不能换行）。');
@@ -34,6 +35,7 @@ export function validateTree(tree) {
     if (typeof tree.before !== 'string' || typeof tree.after !== 'string' || !Array.isArray(tree.children)) fail('角色资料结构无效。');
     const ids = new Set();
     for (const child of tree.children) validateNode(child, ids);
+    walk(tree.children, (node, path) => { if (node.block && path.length > 1) fail('角色资料分组无效。'); });
     return ids;
 }
 export function validateProfile(profile) {
@@ -88,6 +90,19 @@ export function normalizeProfile(profile) {
     if (next.propose === undefined) next.propose = true;
     if (next.locked === undefined) next.locked = [];
     if (next.proposeMode === undefined) next.proposeMode = 'review';
+    return liftProfile(next);
+}
+/** Copies saved before 0.27.9 kept `名字=[ … ]` blocks after the first one as plain text in
+ *  `after`. Lift them into groups the same way in baseline and current so ids still match. */
+function liftProfile(profile) {
+    const has = tree => /^[^=\[\]\n]+?\s*=\s*\[\s*$/m.test(tree?.after ?? '');
+    if (!has(profile.current) && !has(profile.baseline)) return profile;
+    const next = { ...profile, baseline: copy(profile.baseline), current: copy(profile.current) };
+    let id = next.nextId;
+    const lift = tree => { let local = next.nextId; const count = liftBlocks(tree, () => `n${local++}`); id = Math.max(id, local); return count; };
+    if (next.baseline.after === next.current.after) { lift(next.baseline); lift(next.current); }
+    else { lift(next.current); next.nextId = id; lift(next.baseline); }
+    next.nextId = id;
     return next;
 }
 export const PROPOSAL_STATUS = Object.freeze(['pending', 'accepted', 'ignored', 'invalid', 'locked', 'undone']);
