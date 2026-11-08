@@ -59,3 +59,13 @@ test('add creates missing sections, set past the last duplicate adds a new entry
     assert.equal(checkItem(profile, { op: 'set', path: '没有/这项', value: 'c' }, 'i4').status, 'invalid', 'set does not create sections');
     assert.equal(checkItem(profile, { op: 'set', path: '外貌/发色/深浅', value: 'c' }, 'i5').status, 'invalid', 'a field is not turned into a section');
 });
+
+test('keys that contain "/" stay whole in paths', () => {
+    const profile = createProfile({ avatar: 'a', hash: 'h', description: '凉=[\n经历与背景:[\n*起源/来历: 原文\n关键经历:[\n*a: b\n]\n]\n]' });
+    for (const path of ['经历与背景/起源/来历', '经历与背景/起源 / 来历', '起源/来历']) {
+        const item = checkItem(profile, { op: 'set', path, value: '新' }, 'i');
+        assert.equal(item.status, 'pending', path);
+        assert.equal(applyItem(profile, item).current.children[0].children[0].value, '新');
+    }
+    assert.equal(checkItem(profile, { op: 'set', path: '经历与背景/关键经历/a', value: 'c' }, 'i').status, 'pending');
+});
