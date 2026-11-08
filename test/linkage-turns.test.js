@@ -205,3 +205,34 @@ test('an automatic turn still updates world status when another change of the tu
         assert.equal(f.ctx.chatMetadata[STATE_KEY].modules.inventory.items?.length ?? 0, 0);
     } finally { f.dispose(); }
 });
+
+test('回复后由 AminOS 分析: the reply has no block, the update comes from the analysis request', async () => {
+    let sequence = 0;
+    const ctx = { characterId: 1, getCurrentChatId: () => 'after-chat', extensionSettings: {}, chat: [{ is_user: true, name: 'user', mes: '起点' }],
+        chatMetadata: { [KEY]: { ...emptyLinkageState(), enabled: true, mode: 'auto', generator: 'after', modules: { status: { enabled: true, read: true, write: true } } } },
+        async saveMetadata() {} };
+    const state = emptyState({ updatedAt: '2026-10-10T00:00:00.000Z' });
+    state.modules.status = { 版本: 1, 项目: { 玩家: { 生命: 76 } } };
+    ctx.chatMetadata[STATE_KEY] = validateState(state);
+    const runtime = createStoryStateRuntime(() => ctx, { backups: { available: () => false, status: () => ({ available: false }), savePrevious: async () => {} } });
+    const asked = [];
+    let moveOn = false;
+    const api = createLinkageService(() => ctx, { adapters: [status], createId: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`, backups: { available: () => false },
+        analyze: async (c, index) => { asked.push(index); if (moveOn) ctx.chat.push({ is_user: true, mes: '抢先发送' }); return tagged([change('status', 'set', '玩家.生命', { value: moveOn ? 10 : 50 })]); } });
+    try {
+        assert.equal(api.captureGeneration('normal'), true);
+        ctx.chat.push({ is_user: false, mes: '受了伤。', swipe_id: 0 });
+        await api.collectReply(1);
+        assert.deepEqual(asked, [1]);
+        assert.equal(ctx.chatMetadata[STATE_KEY].modules.status.项目.玩家.生命, 50);
+        assert.equal(api.turns().length, 1);
+        // The chat moves on while analysing: the late result is dropped.
+        ctx.chat.push({ is_user: true, mes: '继续' });
+        assert.equal(api.captureGeneration('normal'), true);
+        ctx.chat.push({ is_user: false, mes: '又受了伤。', swipe_id: 0 });
+        moveOn = true;
+        await api.collectReply(3);
+        assert.equal(ctx.chatMetadata[STATE_KEY].modules.status.项目.玩家.生命, 50, 'the late result is not applied');
+        assert.match(api.status(), /分析期间聊天已经继续/);
+    } finally { api.dispose(); runtime.destroy(); }
+});

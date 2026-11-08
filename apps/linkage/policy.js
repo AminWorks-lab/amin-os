@@ -24,7 +24,10 @@ export function validateJSON(value, depth = 0) {
 export const emptyLinkageState = () => ({ version: 1, enabled: false, mode: 'auto', modules: {}, extraRules: '', links: [], applied: [] });
 export function validateLinkageState(raw) {
     validateJSON(raw);
-    if (!plain(raw) || raw.version !== 1 || Object.keys(raw).some(k => !['version','enabled','mode','modules','extraRules','links','applied','dataSource','contextBudget','advancedActions'].includes(k))) throw Error('联动资料版本或字段不兼容。');
+    if (!plain(raw) || raw.version !== 1 || Object.keys(raw).some(k => !['version','enabled','mode','modules','extraRules','links','applied','dataSource','contextBudget','advancedActions','generator'].includes(k))) throw Error('联动资料版本或字段不兼容。');
+    // generator: 'inline' (the story model writes the block in its reply, default) or 'after'
+    // (AminOS asks its own AI for the update once the reply is finished).
+    if (raw.generator !== undefined && !['inline', 'after'].includes(raw.generator)) throw Error('联动更新生成方式无效。');
     if (typeof raw.enabled !== 'boolean' || !['review', 'auto'].includes(raw.mode) || !plain(raw.modules) || typeof raw.extraRules !== 'string' || raw.extraRules.length > 40000) throw Error('联动设置格式无效。');
     if (raw.contextBudget !== undefined) {
         const budget = raw.contextBudget;

@@ -211,14 +211,16 @@ const PROTOCOL_HEADER = [
     '- 不得改开关、权限、设置、世界书、全局库、存档、骰点或聊天正文。',
 ].join('\n');
 
-export function buildUpdateRules(ctx, { purpose = 'story', write = purpose === 'story' } = {}) {
+export function buildUpdateRules(ctx, { purpose = 'story', write = purpose === 'story', analysis = false } = {}) {
     const settings = readLinkageSettings(ctx);
     if (!settings.enabled || !write) return '';
     const writable = adapters.filter(adapter => mayRead(ctx, adapter.id, settings) && mayWrite(ctx, adapter.id, settings));
     if (!writable.length) return '';
     const rules = inheritedRules(ctx, writable), advanced = settings.advancedActions === true;
+    // Analysis after the reply: the model reads a finished turn and writes only the block.
+    const header = analysis ? PROTOCOL_HEADER.replace(/^正常输出剧情正文，末尾附一个完整 (<amin_update>JSON<\/amin_update>)；/m, '阅读给出的这一轮剧情，只输出一个完整 $1，不写正文、不解释；') : PROTOCOL_HEADER;
     return [
-        PROTOCOL_HEADER,
+        header,
         ...writable.map(adapter => `■ module:${adapter.id} · ${adapter.label}\n${renderContract(adapter.spec, { advanced, sources: false })}${adapter.contractNote?.(ctx) ? '\n' + adapter.contractNote(ctx) : ''}`),
         rules ? `【原应用数值规则】\n${rules}` : '',
         settings.extraRules ? `【用户补充要求】\n${settings.extraRules}` : '',

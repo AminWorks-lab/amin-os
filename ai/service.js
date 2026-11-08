@@ -25,7 +25,7 @@ export const AI_APPS = [
     {id:'characters',name:'人物卡',tasks:['人物卡 · 资料生成']},
     {id:'inventory',name:'背包与账本',tasks:['背包与账本 · 资料生成']},
     {id:'scene',name:'场景与时间',tasks:['场景与时间 · 资料生成','场景与时间 · 提取时间']},
-    {id:'linkage',name:'联合初始化',tasks:['联合初始化 · 资料生成']},
+    {id:'linkage',name:'联动更新',tasks:['联合初始化 · 资料生成','联动更新 · 回复后分析']},
     {id:'cardprofile',name:'角色卡资料',tasks:['角色卡资料 · 资料生成','角色卡资料 · 按要求修改']},
 ];
 const appId = app => AI_APPS.find(a=>a.id===app||a.tasks.includes(app))?.id;

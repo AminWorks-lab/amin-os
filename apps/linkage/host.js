@@ -103,6 +103,9 @@ export function createLinkageHost(getContext, {
         const value = buildPrompt(promptContext(getContext(), active), { purpose: active.purpose, write: true });
         if (typeof value !== 'string') throw Error('独立剧情更新规则无效');
         active.prompt = value;
+        // "回复后由 AminOS 分析": the story prompt carries the data only; the rules go to the
+        // separate analysis request after the reply (see service.collectReply).
+        if (readSettings(getContext()).generator === 'after') { active.after = true; getContext().setExtensionPrompt(LINKAGE_UPDATE_PROMPT_KEY, '', 1, 0, false, 0); return; }
         getContext().setExtensionPrompt(LINKAGE_UPDATE_PROMPT_KEY, value, 1, 0, false, 0, () => {
             try {
                 if (run !== active || !current(active) || !independent(getContext()) || !readSettings(getContext()).enabled) return false;
@@ -116,7 +119,7 @@ export function createLinkageHost(getContext, {
     // Warn once per chat and severity; the status line keeps the latest estimate.
     function checkBudget(active) {
         if (!current(active)) return;
-        const result = checkPromptBudget(getContext(), [active.data, active.prompt]);
+        const result = checkPromptBudget(getContext(), [active.data, active.after ? '' : active.prompt]);
         active.budget = result;
         const text = budgetMessage(result);
         if (!text) return;
@@ -203,7 +206,7 @@ export function createLinkageHost(getContext, {
                     if (!current(active) || run !== active) return;
                     active.captured = true;
                 }
-                say('已注入独立剧情更新规则，等待新的完整角色回复');
+                say(active.after ? '本轮正文不带更新规则；回复完成后由 AminOS 分析变化' : '已注入独立剧情更新规则，等待新的完整角色回复');
             } catch (error) { active.failed = true; clearData(); say('本轮未能准备接收更新：' + error.message); }
             return;
         }

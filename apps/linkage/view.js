@@ -118,6 +118,11 @@ export function mount(target, options = {}) {
             control.value = draft.mode === 'auto' ? 'auto' : 'review';
             control.addEventListener('change', () => { draft.mode = control.value; markDraft(); }); inputNodes.push(control);
             row.append(make('span', '模型更新方式'), control, make('small', '自动模式也会校验整组变更；发生错误时保留原资料。')); settingsPanel.append(row);
+            const genRow = make('label', '', 'amin-field'), gen = make('select'); gen.setAttribute('aria-label', '更新由谁生成');
+            for (const [value, label] of [['inline', '正文模型顺带输出'], ['after', '回复后由 AminOS 分析']]) { const option = make('option', label); option.value = value; gen.append(option); }
+            gen.value = draft.generator === 'after' ? 'after' : 'inline';
+            gen.addEventListener('change', () => { draft.generator = gen.value; markDraft(); }); inputNodes.push(gen);
+            genRow.append(make('span', '更新由谁生成'), gen, make('small', '“回复后由 AminOS 分析”：正文提示词里不放更新规则，回复写完后用 AI 设置里“联动更新”的模型单独分析本轮变化，每轮多一次调用。')); settingsPanel.append(genRow);
         }
         const advanced = checkbox('发送高级动作说明', draft.advancedActions === true, value => { draft.advancedActions = value; }); inputNodes.push(advanced.input);
         settingsPanel.append(advanced.row, infoNote(document, '开启后附带不常用动作的说明。', '默认只发送常用动作以节省上下文；开启后附带阈值规则、日程、属性绑定、周期结算、编年史草稿等动作的说明。关闭时模型输出的这些动作仍会照常校验。', 'amin-meta'));

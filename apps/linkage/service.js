@@ -64,7 +64,7 @@ function rememberHint(identity, storage) {
 }
 
 export function createLinkageService(getContext = () => globalThis.SillyTavern?.getContext?.(), { adapters = allAdapters, createId = uuid, now = () => new Date().toISOString(), buildPrompt = buildUnifiedPrompt, manualModules = null,
-    backups = null, hintStorage = (() => { try { return globalThis.localStorage; } catch { return null; } })(),
+    backups = null, analyze = (ctx, index) => import('./analysis.js').then(module => module.analyzeTurn(ctx, index)), hintStorage = (() => { try { return globalThis.localStorage; } catch { return null; } })(),
     notifyRegenerate = text => globalThis.toastr?.info?.(text, 'Amin OS', { timeOut: 12000 }) } = {}) {
     if (manualModules !== null && (!Array.isArray(manualModules) || !manualModules.length || manualModules.some(id => !['characters','inventory','relationships','scene','journal','status'].includes(id)) || new Set(manualModules).size !== manualModules.length)) throw Error('手动生成范围无效。');
     const manualScope = manualModules === null ? null : new Set(manualModules);
@@ -72,7 +72,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
     const batchLabel = manualScope ? 'AI 资料生成' : '跨应用剧情更新';
     const operation = createOperationService(getContext), listeners = new Set(), candidates = new Map();
     const paths = [...new Map([[KEY], ...adapters.flatMap(a => a.paths).filter(path => !derivedHistories.has(path[0]))].map(path => [JSON.stringify(path), path])).values()];
-    let pending = null, generation = null, message = '', hostMessage = '', disposed = false, templateBusy = false, backupStore = backups;
+    let analyzing = false, pending = null, generation = null, message = '', hostMessage = '', disposed = false, templateBusy = false, backupStore = backups;
     // Run-local records: rejected batches (any chat) and automatically applied turns.
     const rejections = [], turns = [], hinted = new Set();
     const notify = () => { for (const callback of [...listeners]) { try { callback(); } catch { /* A view cannot interrupt a commit. */ } } };
@@ -205,6 +205,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         if (manualScope) return false;
         if (!['normal','regenerate','swipe'].includes(type)) return false;
         const ctx = context(); if (!readLinkageState(ctx).enabled || operation.busy() || operation.dirty()) return false;
+        if (analyzing) { try { notifyRegenerate('上一轮回复还在分析中，这一轮用的是更新前的资料；上一轮的分析结果不会再应用。'); } catch { /* A notice cannot interrupt generation. */ } }
         if (['regenerate','swipe'].includes(type)) hintRegenerate(ctx, source);
         const chat = [...(ctx.chat ?? [])];
         if (['regenerate','swipe'].includes(type) && chat.length && !chat.at(-1).is_user && !chat.at(-1).is_system
@@ -218,20 +219,34 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         if (!basis) return null;
         const ctx = context(), chat = ctx.chat ?? [], reply = chat[index];
         if (ctx.chatMetadata !== basis.metadata || chatIdentity(ctx) !== basis.identity || !Number.isInteger(index) || index !== chat.length - 1 || index !== basis.path.length || !same(chatPath(chat.slice(0,index)),basis.path) || !reply || reply.is_user || reply.is_system) return null;
-        if (!hasUpdate(reply.mes)) {
+        let text = reply.mes;
+        if (readLinkageState(ctx).generator === 'after') {
+            // The reply carries no block: AminOS asks its own AI for this turn's update.
+            message = '正文已完成，AminOS 正在分析本轮变化…'; analyzing = true; notify();
+            const before = sourceFor(ctx,index);
+            try { text = await analyze(ctx, index); }
+            catch (error) { reject('', before, error); message = '回复后分析失败：' + error.message; notify(); return { outcome:'invalid' }; }
+            finally { analyzing = false; notify(); }
+            // The chat moved on (new message, edit, swipe) while the AI was analysing: the result
+            // belongs to a state that is gone, so it is not applied.
+            const now = getContext();
+            if (now?.chatMetadata !== basis.metadata || !same(sourceFor(now,index), before) || now.chat.length - 1 !== index) {
+                message = '分析期间聊天已经继续或改动，本轮分析结果没有应用。'; notify(); return { outcome:'invalid' };
+            }
+        } else if (!hasUpdate(reply.mes)) {
             message = '本轮回复未返回 amin_update 更新块；请检查模型输出及消息原文正则。'; notify();
             return { outcome:'missing' };
         }
-        const candidate = { id:basis.id, source:sourceFor(ctx,index), text:reply.mes, basis };
+        const candidate = { id:basis.id, source:sourceFor(ctx,index), text, basis };
         try {
-            const parsed = parse(reply.mes);
+            const parsed = parse(text);
             if (!parsed.changes.length) {
                 ensureGeneration(candidate);
                 message = '模型已返回更新块：本轮无可提交的变化，未修改资料。'; notify();
                 return { outcome:'empty' };
             }
         } catch (error) {
-            reject(reply.mes, candidate.source, error);
+            reject(text, candidate.source, error);
             message = '更新块无效或已过期：' + error.message; notify();
             return { outcome:'invalid' };
         }
@@ -310,7 +325,7 @@ export function createLinkageService(getContext = () => globalThis.SillyTavern?.
         },
         stage, preview, confirm, discard(){operation.discard();pending=null;message='已取消预览。';notify();},
         async retrySave(){try{return await operation.retrySave();}finally{message=operation.status();notify();}},
-        busy:()=>templateBusy || operation.busy(), dirty:operation.dirty, status:()=>[message||operation.status(),hostMessage].filter(Boolean).join('\n'), context,
+        analyzing:()=>analyzing, busy:()=>templateBusy || operation.busy(), dirty:operation.dirty, status:()=>[message||operation.status(),hostMessage].filter(Boolean).join('\n'), context,
         reportHost(value){hostMessage=String(value??'');notify();},
         suggestions:()=>[...candidates.values()].filter(c=>c.source.identity===chatIdentity(getContext())).map(({id,source,text})=>({id,source:clone(source),text})),
         stageSuggestion(id){const candidate=candidates.get(id);if(!candidate)throw Error('更新建议已失效。');return stage(candidate.text,{candidate});},
