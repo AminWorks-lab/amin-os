@@ -41,7 +41,7 @@ export function validateTree(tree) {
 export function validateProfile(profile) {
     if (!object(profile) || typeof profile.avatar !== 'string' || !profile.avatar || typeof profile.cardName !== 'string') fail('角色资料来源无效。');
     if (typeof profile.sourceHash !== 'string' || typeof profile.importedAt !== 'string' || !Number.isInteger(profile.nextId) || profile.nextId < 1) fail('角色资料来源无效。');
-    if (typeof profile.replace !== 'boolean' || !DIFF_MODES.includes(profile.diff)) fail('角色资料发送设置无效。');
+    if (typeof profile.replace !== 'boolean' || !DIFF_MODES.includes(profile.diff) || (profile.fallback !== undefined && typeof profile.fallback !== 'boolean')) fail('角色资料发送设置无效。');
     if (profile.source !== undefined) {
         const source = profile.source;
         if (object(source) && source.type === 'custom') {
@@ -210,7 +210,7 @@ export function restoreNode(profile, id, { at = new Date().toISOString() } = {})
 export function resetProfile(profile, { at = new Date().toISOString() } = {}) {
     return edit(profile, '全部恢复为初始版本', next => { next.current = copy(next.baseline); }, at);
 }
-export function setOptions(profile, { replace, diff, propose, proposeMode, lock, panel, ask }) {
+export function setOptions(profile, { replace, diff, propose, proposeMode, lock, panel, ask, fallback }) {
     const next = copy(profile);
     // 让 AI 改 remembers who rewrites and whether to write it into the story, per copy.
     if (ask !== undefined) next.ask = { by: String(ask.by ?? next.ask?.by ?? '').trim().slice(0, LIMITS.key), story: ask.story ?? next.ask?.story ?? true };
@@ -229,6 +229,8 @@ export function setOptions(profile, { replace, diff, propose, proposeMode, lock,
         next.locked = [...set];
     }
     if (replace !== undefined) next.replace = !!replace;
+    // World-info copies only: send the copy on its own when the book did not send the entry.
+    if (fallback !== undefined) next.fallback = !!fallback;
     if (diff !== undefined) { if (!DIFF_MODES.includes(diff)) fail('对照格式无效。'); next.diff = diff; }
     return validateProfile(next);
 }

@@ -238,7 +238,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
 
     // ---- prompt replacement ----
     function substitute(ctx) { return typeof ctx.substituteParams === 'function' ? text => ctx.substituteParams(text) : null; }
-    function apply(target, dryRun, promptText = () => '') {
+    function apply(target, dryRun, promptText = () => '', insert = () => {}) {
         let ctx; try { ctx = getContext(); } catch { return; }
         if (!ctx?.chatMetadata?.[KEY]) return;
         let store; try { store = read(ctx); } catch (error) { if (!dryRun) notice(`角色卡资料无法读取，本轮按原角色卡发送：${error.message}`); return; }
@@ -249,7 +249,7 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             ...owned(ctx, store).map(([id, value]) => ({ id, value, original: value.source.text,
                 world: value.source.title || value.current.name })),
         ];
-        const absent = [], changed = [];
+        const changed = [], extra = [];
         let whole = null;
         for (const job of jobs) {
             if (!job.value?.replace) continue;
@@ -258,19 +258,23 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
             const forms = candidates(job.original, macro);
             // Read before replacing: a miss is then measured against what the prompt really had.
             const matched = target(forms, text);
-            if (dryRun) continue;
             let check = null;
-            if (!matched && job.world) { whole ??= promptText(); lastPrompt = { chat: key, text: whole }; check = coverage(forms, whole); }
-            results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched, ...(check ? { absent: check.found * 2 < check.lines, lines: check.lines, found: check.found, sample: check.sample.slice(0, 60) } : {}) });
-            if (matched || warned.has(key + '\n' + job.id)) continue;
+            if (!matched && job.world) { whole ??= promptText(); if (!dryRun) lastPrompt = { chat: key, text: whole }; check = coverage(forms, whole); }
+            // The entry is not in the prompt at all (preset slot off, budget, not triggered): send
+            // the copy on its own. When the entry is there but changed, sending both would duplicate it.
+            const gone = !!check && check.found * 2 < check.lines;
+            if (gone && job.value.fallback) extra.push(`【世界书条目 · ${job.world}（本聊天的当前版本）】\n${text}`);
+            if (dryRun) continue;
+            results.set(key + '\n' + job.id, { at: new Date().toISOString(), matched, ...(check ? { absent: gone, extra: gone && !!job.value.fallback, lines: check.lines, found: check.found, sample: check.sample.slice(0, 60) } : {}) });
+            if (matched || gone || warned.has(key + '\n' + job.id)) continue;
             warned.add(key + '\n' + job.id);
             if (!job.world) { notice(job.missing); continue; }
-            (check.found * 2 < check.lines ? absent : changed).push({ name: job.world, ...check });
+            changed.push({ name: job.world, ...check });
         }
-        if (!dryRun && (absent.length || changed.length)) {
+        if (extra.length) { try { insert(extra.join('\n\n')); } catch {} }
+        if (!dryRun && changed.length) {
             notice([
                 ...changed.map(item => `世界书条目“${item.name}”发送了，但和导入时的原文对不上（${item.lines} 行里有 ${item.lines - item.found} 行不一样，比如「${item.sample.slice(0, 30)}」），本轮按世界书原样发送。条目改过的话，在角色卡资料里点“按世界书现内容更新原文”。`),
-                absent.length ? `世界书条目“${absent.map(item => item.name).join('、')}”本轮完全不在发送内容里，所以没有替换。打开角色卡资料里这份资料，点“检查没发送的原因”可以看具体原因（常驻条目也可能被预设关掉的世界信息块或 token 预算挡掉）。` : '',
             ].filter(Boolean).join('\n'));
         }
         if (!dryRun) notify();
@@ -278,11 +282,13 @@ export function createCardProfileService(getContext = () => globalThis.SillyTave
     function onChatPrompt(data) {
         if (!data || !Array.isArray(data.chat)) return;
         let history = []; try { history = (getContext()?.chat ?? []).map(message => message?.mes).filter(text => typeof text === 'string'); } catch {}
-        apply((forms, text) => replaceInMessages(data.chat, forms, text, { history }), !!data.dryRun, () => data.chat.map(messageText).join('\n'));
+        // Extra blocks go after the leading system messages (where character definitions sit).
+        const insert = text => { let at = data.chat.findIndex(message => message?.role !== 'system'); if (at < 0) at = data.chat.length; data.chat.splice(at, 0, { role: 'system', content: text }); };
+        apply((forms, text) => replaceInMessages(data.chat, forms, text, { history }), !!data.dryRun, () => data.chat.map(messageText).join('\n'), insert);
     }
     function onTextPrompt(data) {
         if (!data || typeof data.prompt !== 'string') return;
-        apply((forms, text) => { const result = replaceInText(data.prompt, forms, text); data.prompt = result.prompt; return result.matched; }, !!data.dryRun, () => data.prompt);
+        apply((forms, text) => { const result = replaceInText(data.prompt, forms, text); data.prompt = result.prompt; return result.matched; }, !!data.dryRun, () => data.prompt, text => { data.prompt = `${text}\n\n${data.prompt}`; });
     }
     // ---- AI proposals ----
     function activeProfiles(ctx) {

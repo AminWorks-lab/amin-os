@@ -264,13 +264,21 @@ export function mount(target, { service } = {}) {
             render();
         };
         propose.append(proposeMode);
-        modeRow.append(mode); top.append(replace, propose, modeRow); settings.append(top);
+        modeRow.append(mode); top.append(replace);
+        if (entry.kind === 'world') {
+            const fallback = node('label', null, 'amin-check'), fallbackBox = node('input');
+            fallbackBox.type = 'checkbox'; fallbackBox.checked = !!profile.fallback;
+            fallbackBox.onchange = async () => { try { await api.options(entry.key, { fallback: fallbackBox.checked }); say(fallbackBox.checked ? '世界书没发送这个条目时，会把副本单独发送一次（会多占这一条的 token）。' : '世界书没发送这个条目时不再补发。'); } catch (error) { say(error.message, 'error'); } render(); };
+            fallback.append(fallbackBox, node('span', '世界书没发送时单独发送副本'));
+            top.append(fallback);
+        }
+        top.append(propose, modeRow); settings.append(top);
         panelSettings(settings, entry);
         const result = entry.result;
         settings.append(node('p', [
             changes.length ? `与初始版本相比有 ${changes.length} 处改动` : '与初始版本相同',
-            !profile.replace ? (entry.kind === 'note' ? '暂停发送' : '替换已暂停') : !result ? '本次打开后还没有发送过' : entry.kind === 'note' ? '最近一次发送已附上' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? (result.absent ? '最近一次发送时这个世界书条目完全不在发送内容里，所以没替换。点下面的“检查没发送的原因”' : `最近一次发送时条目和导入时的原文对不上（${result.lines ?? '?'} 行里有 ${(result.lines ?? 0) - (result.found ?? 0)} 行不一样${result.sample ? `，比如「${result.sample}」` : ''}），按世界书原样发送；条目改过的话点“按世界书现内容更新原文”`) : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
-        ].join(' · '), result && !result.matched && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
+            !profile.replace ? (entry.kind === 'note' ? '暂停发送' : '替换已暂停') : !result ? '本次打开后还没有发送过' : entry.kind === 'note' ? '最近一次发送已附上' : result.matched ? '最近一次发送已替换' : entry.kind === 'world' ? (result.absent ? (result.extra ? '最近一次发送时世界书没有发送这个条目，已把副本单独发送（想知道世界书为什么没发，点下面的“检查没发送的原因”）' : '最近一次发送时世界书没有发送这个条目，所以没替换。点下面的“检查没发送的原因”；也可以打开“世界书没发送时单独发送副本”') : `最近一次发送时条目和导入时的原文对不上（${result.lines ?? '?'} 行里有 ${(result.lines ?? 0) - (result.found ?? 0)} 行不一样${result.sample ? `，比如「${result.sample}」` : ''}），按世界书原样发送；条目改过的话点“按世界书现内容更新原文”`) : '最近一次发送没找到角色描述，按原卡发送（可能是预设用别的方式引用了描述）',
+        ].join(' · '), result && !result.matched && !result.extra && profile.replace ? 'amin-meta amin-cardprofile-miss' : 'amin-meta'));
 
         askPanel(entry);
 
