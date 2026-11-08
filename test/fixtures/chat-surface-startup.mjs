@@ -32,6 +32,7 @@ const stubs = {
     './apps/views.js': { views: {} },
     './apps/linkage/service.js': { getSharedService: () => ({ reportHost() {} }) },
     './apps/linkage/host.js': { createLinkageHost: () => ({ status: () => ({}) }) },
+    './apps/linkage/regenerate-undo.js': { installRegenerateUndo: () => () => {} },
     './apps/linkage/prompt.js': { buildUpdateRules() {}, buildDataPrompt() {} },
     './apps/linkage/open.js': { setLinkageOpener() {} },
     './tile-live-feed.js': { createLiveTileFeed: () => ({}) },

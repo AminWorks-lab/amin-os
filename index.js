@@ -12,6 +12,7 @@ import { createShell } from './shell.js';
 import { views } from './apps/views.js';
 import { getSharedService as getLinkageService } from './apps/linkage/service.js';
 import { createLinkageHost } from './apps/linkage/host.js';
+import { installRegenerateUndo } from './apps/linkage/regenerate-undo.js';
 import { buildUpdateRules, buildDataPrompt } from './apps/linkage/prompt.js';
 import { setLinkageOpener } from './apps/linkage/open.js';
 import { createLiveTileFeed } from './tile-live-feed.js';
@@ -58,6 +59,10 @@ export function initialize() {
             globalThis.toastr?.error?.('外置剧情状态尚未恢复，请查看 Amin OS 剧情存储或联动更新中的错误。');
         }
     };
+    // Registered before the linkage host so the undo finishes before the new generation reads the data.
+    installRegenerateUndo({ linkage,
+        cardprofile: () => import('./apps/cardprofile/service.js').then(m => m.getSharedCardProfileService()).catch(() => null),
+        saves: () => import('./apps/saves/service.js').then(m => m.getSharedSavesService()) });
     const linkageHost = createLinkageHost(() => globalThis.SillyTavern?.getContext?.(), {
         buildPrompt: buildUpdateRules, buildDataPrompt, beforeGeneration: type => state2.prepareGeneration(type), captureGeneration: linkage.captureGeneration,
         collectReply: linkage.collectReply, cancelGeneration: linkage.cancelGeneration,
@@ -109,7 +114,7 @@ export function initialize() {
     for(const id of ['characters','inventory','relationships','saves','dice','scene','journal','organizations','effects','information','worldbooks','tts'])installExtraFloorButtons(id);
     const ev=ctx.eventTypes??ctx.event_types??{};
     if(ev.CHAT_CHANGED)ctx.eventSource?.on(ev.CHAT_CHANGED,()=>queueMicrotask(()=>shell.refreshActive()));
-    globalThis.AminOS=Object.freeze({version:'0.29.4',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
+    globalThis.AminOS=Object.freeze({version:'0.29.5',open:()=>shell.open(),openApp:id=>shell.showApp(id),close:()=>shell.close()});
     return shell;
 }
 
